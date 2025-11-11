@@ -1,0 +1,31 @@
+{
+  "name": "metal-backend",
+  "version": "1.0.0",
+  "description": "B2B scrap trading portal which connects local and international scrap buyers and sellers",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "make:module": "node scripts/create-module.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.893.0",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "http-errors": "^2.0.0",
+    "http-status": "^2.1.0",
+    "joi": "^18.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "nodemailer": "^7.0.6",
+    "sequelize": "^6.37.7",
+    "sqlite3": "^5.1.7",
+    "stripe": "^18.5.0",
+    "winston": "^3.17.0"
+  }
+}
