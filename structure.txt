@@ -1,0 +1,28 @@
+├── src
+│   ├── app.ts
+│   ├── config
+│   │   ├── db.ts
+│   │   ├── mongo.ts
+│   │   ├── sequelize.ts
+│   ├── db
+│   │   ├── core
+│   │   ├── migrations
+│   │   └── seeder-data
+│   ├── environment.ts
+│   ├── middlewares
+│   ├── routes
+│   │   ├── user
+│   │   │   ├── permission.api.ts
+│   │   │   ├── user-api.ts
+│   │   │   ├── user-handler.ts
+│   │   │   └── user-model.ts
+│   │   ├── driver
+│   │   │   ├── driver-api.ts
+│   │   │   ├── driver-handler.ts
+│   │   │   └── driver-model.ts
+│   ├── server.ts
+│   ├── services
+│   ├── template
+│   ├── utils
+│   ├── validations
+└── tsconfig.json
