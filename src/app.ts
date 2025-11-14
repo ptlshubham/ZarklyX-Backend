@@ -10,9 +10,10 @@ import routes from "./routes/route-index";
 
 const config = (configs as { [key: string]: any })[environment];
 const app = express();
-const userRoutes = require('./routes/api-app/user/user-api');
 const settingsRoutes = require('./routes/api-app/settings/settings-api')
 // const employeeRoutes = require('./routes/api-webapp/employee/employee-api');
+
+const userRoutes = require('./routes/api-webapp/user/user-api');
 import employeeRoutes from './routes/api-webapp/employee/employee-api';
 import zonesRoutes from './routes/api-webapp/zones/zones-api'; 
 import { Cronjob } from "./services/cron-service";
@@ -20,9 +21,9 @@ import path from "path";
 app.use(express.json());
 
 app.use("/user", userRoutes);
-app.use ("/settings", settingsRoutes);
-app.use("/employee", employeeRoutes);
-app.use("/zones", zonesRoutes);
+// app.use ("/settings", settingsRoutes);
+// app.use("/employee", employeeRoutes);
+// app.use("/zones", zonesRoutes);
 
 
 //global error handler
