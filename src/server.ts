@@ -6,17 +6,9 @@ import { initControlDBConnection } from "./db/core/control-db";
 import http from "http";
 import cors from 'cors';
 import { ConsoleSpinner } from "./services/console-info";
-const userRoutes = require('./routes/api-app/user/user-api');
-// const employeeRoutes = require('./routes/api-webapp/employee/employee-api');
-import employeeRoutes from './routes/api-webapp/employee/employee-api';
-const appVersionRoutes = require('./routes/api-app/app-version/app-version-api');
-const settingsRoutes = require('./routes/api-app/settings/settings-api');
+const userRoutes = require('./routes/api-webapp/user/user-api');
 
 import path from "path";
-// import { settingsRoutes } from './routes/api-app/settings/settings-api';
-// import "../src/models/index";
-import zonesRoutes from './routes/api-webapp/zones/zones-api'; // Uncomment if you have zones routes
-
 const app = express();
 
 
@@ -32,12 +24,8 @@ app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'pro
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 app.use("/user", userRoutes);
-app.use('/appVersion', appVersionRoutes);
-app.use('/settings', settingsRoutes);
 
 // Web App Apis Route Index
-app.use("/employee", employeeRoutes);
-app.use("/zones", zonesRoutes); // Uncomment if you have zones routes
 // Initialize databases (MySQL main, MongoDB and control DB)
 (async () => {
   try {
@@ -62,10 +50,23 @@ app.use("/zones", zonesRoutes); // Uncomment if you have zones routes
 
 const server = http.createServer(app);
 
-const unsecurePort = 9005;
-server.listen(unsecurePort, () => {
-  ConsoleSpinner.success(`HTTP Server running at ${unsecurePort}`);
-});
+// Allow overriding the port with the PORT environment variable (useful in dev or CI)
+const unsecurePort = Number(process.env.PORT) || 9005;
+
+// Start server with explicit error handling so EADDRINUSE gives a clear message
+server.listen(unsecurePort)
+  .on('listening', () => {
+    ConsoleSpinner.success(`HTTP Server running at ${unsecurePort}`);
+  })
+  .on('error', (err: any) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`Port ${unsecurePort} is already in use. ${err.message}`);
+      console.error('Stop the process using that port or set PORT to a free port before retrying.');
+      process.exit(1);
+    }
+    console.error('Server error:', err);
+    process.exit(1);
+  });
 
 
 app.get("/api/health", (req: Request, res: Response) => {

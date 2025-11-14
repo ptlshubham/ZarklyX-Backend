@@ -57,7 +57,6 @@ export const initControlDBConnection = async (maxAttempts = 6): Promise<boolean>
   return false;
 };
 
-
 // Sync Database Models and run Seeders
 // const syncControlledDB = () => {
 //   db.sync({ alter: true })
