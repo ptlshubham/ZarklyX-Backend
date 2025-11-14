@@ -5,12 +5,11 @@ import { User } from "../../routes/api-webapp/user/user-model";
 
 
 export {
-  // For Mobile App
   User,
 };
 
 export function initControlDB(sequelize: Sequelize) {
-  // For Mobile App
+  // For web App
   User.initModel(sequelize);
 
 

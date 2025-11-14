@@ -16,7 +16,6 @@ export class User extends Model<
     declare referId: string;
     declare firstName: string;
     declare lastName: string;
-    // declare name: string;
     declare email: string | null;
     declare contact: string; // Number → String
     declare userType: "organization" | "freelancer";
@@ -52,10 +51,6 @@ export class User extends Model<
                     type: DataTypes.STRING,
                     allowNull: true,
                 },
-                // name: {
-                //     type: DataTypes.STRING(255),
-                //     allowNull: false,
-                // },
                 contact: {
                     type: DataTypes.STRING(15),
                     allowNull: true,
