@@ -6,7 +6,6 @@ import {
     Model,
     Sequelize,
 } from "sequelize";
-import { hashPassword, checkPassword } from "../../../services/password-service";
 
 export class User extends Model<
     InferAttributes<User>,
@@ -20,6 +19,8 @@ export class User extends Model<
     declare contact: string; // Number → String
     declare userType: "organization" | "freelancer";
     declare secretCode: string | null;
+    declare isthemedark: boolean;
+    declare categories: string[] | null; 
     declare isDeleted: boolean;
     declare deletedAt: CreationOptional<Date>;
     declare isEmailVerified: boolean;
@@ -85,11 +86,24 @@ export class User extends Model<
                 userType: {
                     type: DataTypes.ENUM("organization", "freelancer"),
                     allowNull: false,
-                    //   defaultValue: "email",
                 },
                 secretCode: {
                     type: DataTypes.STRING,
                     allowNull: true,
+                    unique: {
+                        name: "secretCode",
+                        msg: "secret Code must be unique",
+                    }
+                },
+                isthemedark: {
+                        type: DataTypes.BOOLEAN,
+                        allowNull: true,
+                        defaultValue: false,
+                },
+                   categories: {
+                    type: DataTypes.JSON,
+                    allowNull: true,
+                    defaultValue: null,
                 },
                 isDeleted: {
                     type: DataTypes.BOOLEAN,

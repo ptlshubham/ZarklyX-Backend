@@ -14,7 +14,7 @@ const settingsRoutes = require('./routes/api-app/settings/settings-api')
 // const employeeRoutes = require('./routes/api-webapp/employee/employee-api');
 
 const userRoutes = require('./routes/api-webapp/user/user-api');
-import { Cronjob } from "./services/cron-service";
+// import { Cronjob } from "./services/cron-service";
 import path from "path";
 app.use(express.json());
 
@@ -24,7 +24,7 @@ app.use("/user", userRoutes);
 //global error handler
 app.use(errorHandler);
 
-Cronjob.startAll();
+// Cronjob.startAll();
 
 app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
 app.post('*', (req, res, next) => {
