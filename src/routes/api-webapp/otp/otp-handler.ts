@@ -6,9 +6,6 @@ const { MakeQuery } = require("../../../services/model-service");
 import axios from "axios";
 import { sendOTP } from "../../../services/otp-service"; 
 
-
-console.log(Otp);
-
 //function a get user by id
 // export const getUserByid = (id: string) => {
 //   return User.findOne({

@@ -6,9 +6,9 @@ import { initControlDBConnection } from "./db/core/control-db";
 import http from "http";
 import cors from 'cors';
 import { ConsoleSpinner } from "./services/console-info";
-const userRoutes = require('./routes/api-webapp/user/user-api');
-const companyRoutes = require('./routes/api-webapp/company/company-api');
-const otpRoutes = require('./routes/api-webapp/otp/otp-api');
+import userRoutes from './routes/api-webapp/user/user-api';
+import companyRoutes from './routes/api-webapp/company/company-api';
+import otpRoutes from './routes/api-webapp/otp/otp-api';
 
 
 import path from "path";
