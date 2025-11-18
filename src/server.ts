@@ -21,8 +21,6 @@ app.use(cors({
   credentials: true,               // only if you want to send cookies
 }));
 
-
-
 app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));

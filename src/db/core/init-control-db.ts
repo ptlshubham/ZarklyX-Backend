@@ -14,7 +14,6 @@ export {
   Otp,
   // LoginHistory,
 };
-
 export function initControlDB(sequelize: Sequelize) {
   // For web App
   User.initModel(sequelize);

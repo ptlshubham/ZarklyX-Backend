@@ -26,7 +26,6 @@ app.use("/company", companyRoutes);
 app.use("/otp", otpRoutes);
 // app.use("/loginHistory", loginHistoryRoutes);
 
-
 //global error handler
 app.use(errorHandler);
 
