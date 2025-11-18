@@ -6,22 +6,22 @@ import {
     Model,
     Sequelize,
 } from "sequelize";
+import { hashPassword, checkPassword } from "../../../services/password-service";
 
-export class User extends Model<
-    InferAttributes<User>,
-    InferCreationAttributes<User>
+export class Otp extends Model<
+    InferAttributes<Otp>,
+    InferCreationAttributes<Otp>
 > {
     declare id: CreationOptional<number>;
-    declare referId: string;
-    declare companyId: number;
-    declare firstName: string;
-    declare lastName: string;
+    declare userId: number | null;
     declare email: string | null;
     declare contact: string; // Number → String
-    declare userType: "organization" | "freelancer";
-    declare secretCode: string | null;
-    declare isthemedark: boolean;
-    declare categories: string[] | null;
+    declare otp: string | null; // OTP for email
+    declare mbOTP: string | null; // OTP for mobile
+    declare loginOTP: string | null;
+    declare otpVerify: boolean;
+    declare otpExpiresAt: Date | null; // Expiry time for email otp
+    declare mbOTPExpiresAt: Date | null; // Expiry time for mobile otp
     declare isDeleted: boolean;
     declare deletedAt: CreationOptional<Date>;
     declare isEmailVerified: boolean;
@@ -30,9 +30,8 @@ export class User extends Model<
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
-
-    static initModel(sequelize: Sequelize): typeof User {
-        User.init(
+    static initModel(sequelize: Sequelize): typeof Otp {
+        Otp.init(
             {
                 id: {
                     type: DataTypes.INTEGER,
@@ -41,34 +40,36 @@ export class User extends Model<
                     allowNull: false,
                     unique: true,
                 },
-                companyId: {
-                    type: DataTypes.INTEGER,
-                },
-                referId: {
-                    type: DataTypes.STRING,
-                    allowNull: true
-                },
-                firstName: {
-                    type: DataTypes.STRING,
-                    allowNull: true,
-                },
-                lastName: {
-                    type: DataTypes.STRING,
-                    allowNull: true,
-                },
+              userId: {
+  type: DataTypes.INTEGER,
+  allowNull: false,
+  references: {
+    model: 'Users',
+    key: 'id',
+  }
+},
                 contact: {
                     type: DataTypes.STRING(15),
                     allowNull: true,
                     unique: {
                         name: "contact",
-                        msg: "Contact number must be unique",
+                        msg: "Mobile number must be unique",
                     },
                     validate: {
                         notEmpty: {
-                            msg: "Contact number cannot be empty",
+                            msg: "Mobile number cannot be empty",
                         }
                     }
                 },
+
+                // mobile_number: {
+                //   type: DataTypes.STRING(15),
+                //   allowNull: false,
+                //   unique: {
+                //     name: "mobile_number",
+                //     msg: "Mobile number must be unique",
+                //   },
+                // },
                 email: {
                     type: DataTypes.STRING(255),
                     allowNull: false,
@@ -77,29 +78,38 @@ export class User extends Model<
                         msg: "Email must be unique",
                     },
                 },
-
-                userType: {
-                    type: DataTypes.ENUM("organization", "freelancer"),
-                    allowNull: false,
-                },
-                secretCode: {
+            
+                // role: {
+                //   type: DataTypes.ENUM("driver", "passenger"),
+                //   allowNull: false,
+                // },
+          
+                otp: {
                     type: DataTypes.STRING,
-                    allowNull: true,
-                    unique: {
-                        name: "secretCode",
-                        msg: "secret Code must be unique",
-                    }
+                    allowNull: true
                 },
-                isthemedark: {
+                mbOTP: {
+                    type: DataTypes.STRING,
+                    allowNull: true
+                },
+                loginOTP: {
+                    type: DataTypes.STRING,
+                    allowNull: true
+                },
+                otpVerify: {
                     type: DataTypes.BOOLEAN,
                     allowNull: true,
-                    defaultValue: false,
+                    defaultValue: false
                 },
-                categories: {
-                    type: DataTypes.JSON,
+                otpExpiresAt: {
+                    type: DataTypes.DATE,
                     allowNull: true,
-                    defaultValue: null,
                 },
+                mbOTPExpiresAt: {
+                    type: DataTypes.DATE,
+                    allowNull: true,
+                },
+            
                 isDeleted: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: false,
@@ -133,15 +143,15 @@ export class User extends Model<
             },
             {
                 sequelize,
-                freezeTableName: true,
-                tableName: "user",
+                modelName: "otp",
+                tableName: "otp",
                 timestamps: true
             }
         );
 
-        return User;
+        return Otp;
     }
 }
 
-export const initUserModel = (sequelize: Sequelize) => User.initModel(sequelize);
+export const initOtpModel = (sequelize: Sequelize) => Otp.initModel(sequelize);
 // export default User;

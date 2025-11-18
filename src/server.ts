@@ -7,6 +7,9 @@ import http from "http";
 import cors from 'cors';
 import { ConsoleSpinner } from "./services/console-info";
 const userRoutes = require('./routes/api-webapp/user/user-api');
+const companyRoutes = require('./routes/api-webapp/company/company-api');
+const otpRoutes = require('./routes/api-webapp/otp/otp-api');
+
 
 import path from "path";
 const app = express();
@@ -24,6 +27,8 @@ app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'pro
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 app.use("/user", userRoutes);
+app.use("/company", companyRoutes);
+app.use("/otp", otpRoutes);
 
 // Web App Apis Route Index
 // Initialize databases (MySQL main, MongoDB and control DB)

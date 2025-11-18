@@ -17,7 +17,16 @@ import {
   getUserByMbMo,
 } from "./user-handler";
 import { alreadyExist, serverError, unauthorized, } from "../../../utils/responseHandler";
-import { User } from "../../api-webapp/user/user-model";
+import { User } from "../../api-webapp/user/user-model";import {
+  hashPassword,
+  checkPassword,
+  generateRandomPassword,
+  generateOTP
+} from "../../../services/password-service";
+import { sendEmail } from "../../../services/mailService";
+import { sendOTP } from "../../../services/otp-service";
+import { generateToken } from "../../../services/jwtToken-service";
+import { tokenMiddleWare } from "../../../services/jwtToken-service";
 // import { ErrorLogger } from "../../../db/core/logger/error-logger";
 import ErrorLogger from "../../../db/core/logger/error-logger";
 // import { responseEncoding } from "axios";
@@ -44,7 +53,7 @@ router.post("/register", async (req, res) => {
 
 
     // Validation
-    if (!referId || !firstName || !lastName || !contact || !userType) {
+    if (!referId || !firstName || !lastName || !email || !contact || !userType || !secretCode) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -68,7 +77,7 @@ router.post("/register", async (req, res) => {
     }
 
 
-        let finalSecretCode = secretCode;
+    let finalSecretCode = secretCode;
 
     if (!finalSecretCode) {
       finalSecretCode = await generateUniqueSecretCode();
@@ -101,7 +110,7 @@ router.post("/register", async (req, res) => {
         userId: user.id,
         secretCode: user.secretCode,
       },
-      
+
     });
 
   } catch (error: any) {
@@ -111,15 +120,15 @@ router.post("/register", async (req, res) => {
 });
 
 // Get user by ID
-router.get("/getUserID/:id", async (req: Request, res: Response) => {
+router.get("/getUserID/:id",tokenMiddleWare, async (req: Request, res: Response) => {
   try {
 
     const { id } = req.params;
     const user: any = await getUserByid(id);
 
-  if (!user){
-    return notFound(res, "User not found");
-  }
+    if (!user) {
+      return notFound(res, "User not found");
+    }
     return res.status(200).json({
       success: true,
       message: "User retrieved successfully.",
@@ -132,7 +141,7 @@ router.get("/getUserID/:id", async (req: Request, res: Response) => {
 });
 
 // Get all Users
-router.get("/getAllUser", async (req, res) => {
+router.get("/getAllUser",tokenMiddleWare, async (req, res) => {
   try {
     const allUser = await getAllUser(req.query);
     sendEncryptedResponse(res, allUser, "Got all users");
@@ -143,7 +152,7 @@ router.get("/getAllUser", async (req, res) => {
 });
 
 // Update user 
-router.post("/updateById", async (req, res) => {
+router.post("/updateById", tokenMiddleWare, async (req, res) => {
   const t = await dbInstance.transaction();
   try {
     const user = await updateUser(Number(req.body.id), req.body, t);
@@ -171,7 +180,7 @@ router.post("/updateById", async (req, res) => {
 });
 
 // Delete User
-router.delete("/deleteUser/:id", async (req: Request, res: Response) => {
+router.delete("/deleteUser/:id", tokenMiddleWare,async (req: Request, res: Response) => {
   const { id } = req.params;
 
   // Convert 'id' to number
@@ -192,7 +201,7 @@ router.delete("/deleteUser/:id", async (req: Request, res: Response) => {
     }
 
     await t.commit();
-     return res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "User deleted successfully.",
       data: user,
@@ -211,7 +220,7 @@ router.post("/updateTheme", async (req, res) => {
   try {
     const user = await updateTheme(Number(req.body.id), req.body, t);
     await t.commit();
-     
+
     sendEncryptedResponse(res, user, "User updated successfully");
   } catch (error: any) {
     await t.rollback();
@@ -219,7 +228,60 @@ router.post("/updateTheme", async (req, res) => {
   }
 });
 
+router.post("/login", tokenMiddleWare, async (req: Request, res: Response) => {
+  try {
+    const bodyData = req.body;
+    const { email, contact, fcmToken } = bodyData;
 
+    // Validation
+    if (!email && !contact) {
+      return serverError(res, "Email or mobile number is required for login.");
+    }
 
+    // User Lookup
+    const findCondition: any = {};
+    if (email) findCondition.email = email;
+    if (contact) findCondition.contact = contact;
+
+    const user = await User.findOne({ where: findCondition });
+    if (!user) {
+      return serverError(res, "User not found. Please register first.");
+    }
+
+    // OTP Verification Check
+    const isVerified =
+      (email && user.isEmailVerified) ||
+      (contact && user.isMobileVerified);
+
+    if (!isVerified) {
+      return serverError(
+        res,
+        "OTP not verified. Please verify your email or mobile number before login."
+      );
+    }
+
+    // JWT Token
+    const authToken = generateToken(user);
+
+    // Optional: Save/update FCM token
+    // if (fcmToken) {
+    //   await user.update({ fcmToken });
+    // }
+
+    // Final Response
+    const nameData = user.email || user.contact || `User ID ${user.id}`;
+    return sendEncryptedResponse(
+      res,
+      {
+        userId: user.id,
+        authToken,
+      },
+      `Login successful for ${nameData}.`
+    );
+  } catch (error) {
+    console.error("Error in /login:", error);
+    return serverError(res, "Something went wrong during login.");
+  }
+});
 
 module.exports = router;
