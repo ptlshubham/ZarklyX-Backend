@@ -26,7 +26,7 @@ const transporter = nodemailer.createTransport({
     // user: "your_current@gmail.com", // your Gmail address 
     // pass: 'your_secure_pass', // replace with your app password 
     user: "br.rinkal1997@gmail.com", // your Gmail address // br.rinkal1997@gmail.com
-    pass: 'dmtz kgzb vadp cdki', // replace with your app password // dmtz kgzb vadp cdki
+    pass: 'lhbodchvrstpqmhf', // replace with your app password // dmtz kgzb vadp cdki
   },
 });
 
@@ -133,7 +133,7 @@ export const sendOTP = async (
 ): Promise<{ success: boolean; message?: string }> => {
   console.log("RAW OTP DATA RECEIVED:", data);
 
-  const contact = data.mobile || data.contact || data.mobileNumber;
+  const contact = data.contact || data.contact || data.contact;
   const email = data.email;
 
   console.log("Extracted mobile:", contact);

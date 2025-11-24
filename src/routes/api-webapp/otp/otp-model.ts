@@ -7,6 +7,7 @@ import {
     Sequelize,
 } from "sequelize";
 import { hashPassword, checkPassword } from "../../../services/password-service";
+import { User } from "../../../routes/api-webapp/user/user-model";
 
 export class Otp extends Model<
     InferAttributes<Otp>,
@@ -40,14 +41,14 @@ export class Otp extends Model<
                     allowNull: false,
                     unique: true,
                 },
-              userId: {
-  type: DataTypes.INTEGER,
-  allowNull: false,
-  references: {
-    model: 'Users',
-    key: 'id',
-  }
-},
+                userId: {
+                    type: DataTypes.INTEGER,
+                    allowNull: false,
+                    references: {
+                        model: User, // Reference the User model
+                        key: "id",
+                    },
+                },
                 contact: {
                     type: DataTypes.STRING(15),
                     allowNull: true,
@@ -78,12 +79,12 @@ export class Otp extends Model<
                         msg: "Email must be unique",
                     },
                 },
-            
+
                 // role: {
                 //   type: DataTypes.ENUM("driver", "passenger"),
                 //   allowNull: false,
                 // },
-          
+
                 otp: {
                     type: DataTypes.STRING,
                     allowNull: true
@@ -109,7 +110,7 @@ export class Otp extends Model<
                     type: DataTypes.DATE,
                     allowNull: true,
                 },
-            
+
                 isDeleted: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: false,

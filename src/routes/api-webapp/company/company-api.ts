@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import { Company } from "../../../routes/api-webapp/company/company-model";
-import { UserCompany } from "./user-company-model";
+import { UserCompany } from "../../../routes/api-webapp/company/user-company-model"
 import { User } from "../../../routes/api-webapp/user/user-model";
 import {
   getUserCompanies,
@@ -56,7 +56,9 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response) => {
         description: company.description,
         logo: company.logo,
         email: company.email,
-        phone: company.phone,
+        contact: company.contact,
+        no_of_clients: company.no_of_clients,
+        address: company.address,
         website: company.website,
         industryType: company.industryType,
         userRole: userCompanyData.role,
@@ -189,8 +191,7 @@ router.post(
  * Create a new company (Admin only)
  */
 router.post(
-  "/create",
-  tokenMiddleWare,
+  "/addCompany",
   async (req: Request, res: Response) => {
     const t = await dbInstance.transaction();
     try {
@@ -199,12 +200,14 @@ router.post(
         name,
         description,
         email,
-        phone,
+        contact,
         address,
         city,
         state,
         zipcode,
         country,
+        timezone,
+        no_of_clients,
         website,
         logo,
         registrationNumber,
@@ -236,13 +239,15 @@ router.post(
           name,
           description,
           email,
-          phone,
+          contact,
           address,
           city,
           state,
           zipcode,
           country,
           website,
+          timezone,
+          no_of_clients,
           logo,
           registrationNumber,
           industryType,
@@ -275,6 +280,47 @@ router.post(
   }
 );
 
+
+// Add Company Details Endpoint
+// router.post("/add-company-details", tokenMiddleWare, async (req, res) => {
+//   try {
+//     const {
+//       companyName,
+//       website,
+//       country,
+//       timezone,
+//     } = req.body;
+//     const userId = req.user.id;
+
+//     // Validation
+//     if (!companyName || !website || !country || !timezone) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields for company details.",
+//       });
+//     }
+
+//     // Update user's record with company details
+//     const user = await User.findByPk(userId);
+//     if (!user) {
+//       return notFound(res, "User not found.");
+//     }
+
+//     user.companyName = companyName;
+//     user.website = website;
+//     user.country = country;
+//     user.timezone = timezone;
+//     await user.save();
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Company details added successfully.",
+//     });
+//   } catch (error: any) {
+//     ErrorLogger.write({ type: "add-company-details error", error });
+//     return serverError(res, error.message || "Failed to add company details.");
+//   }
+// });
 /**
  * PUT /company/:companyId/update
  * Update company details (Admin/Owner only)

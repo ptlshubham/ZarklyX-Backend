@@ -47,17 +47,35 @@ export async function generateUniqueSecretCode(): Promise<string> {
 
 // Define the user payload interface
 interface UserPayload {
-  referId?: string;
-  firstName?: string;
-  lastName?: string;
+    referId?: string | null;
+  companyId?: number | null;        // Required for step 5
+  firstName?: string | null;
+  lastName?: string | null;
   email?: string;
   contact?: string;
-  userType?: userType;
+  userType?: userType | "organization" | "freelancer";
   secretCode?: string;
   isthemedark?: boolean;
+  categories?: any[] | null;        // (JSON array of categories)
   isEmailVerified?: boolean;
   isMobileVerified?: boolean;
+  isRegistering?: boolean;
+  registrationStep?: number;
+  isActive?: boolean;
   [key: string]: any;
+  // referId?: string;
+  //   companyId?: number | null;        
+  // firstName?: string;
+  // lastName?: string;
+  // email?: string;
+  // contact?: string;
+  // userType?: userType;
+  // secretCode?: string;
+  //   categories?: any[] | null;
+  // isthemedark?: boolean;
+  // isEmailVerified?: boolean;
+  // isMobileVerified?: boolean;
+  // [key: string]: any;
 }
 
 // Function to add user to DB

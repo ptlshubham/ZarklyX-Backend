@@ -1,7 +1,7 @@
 import { Company } from "../../../routes/api-webapp/company/company-model";
 import { UserCompany } from "./user-company-model";
 import { Op, Transaction, Sequelize } from "sequelize";
-
+import { User } from "../../../routes/api-webapp/user/user-model";
 // Get all companies
 export const getAllCompanies = async () => {
   return await Company.findAll({
@@ -20,7 +20,7 @@ export const getUserCompanies = async (userId: number) => {
   return await Company.findAll({
     include: [
       {
-        model: UserCompany,
+        model: User,
         where: { userId, status: "active" },
         attributes: ["id", "role", "isOwner", "status", "joinedAt"],
       },
@@ -72,7 +72,26 @@ export const updateCompany = async (
 };
 
 // Add user to company
-export const addUserToCompany = async (
+// export const addUserToCompany  = async (
+//   userId: number,
+//   companyId: number,
+//   role: "admin" | "manager" | "employee" | "viewer" = "employee",
+//   isOwner: boolean = false,
+//   transaction?: Transaction
+// ) => {
+//   return await UserCompany.create(
+//     {
+//       userId,
+//       companyId,
+//       role,
+//       isOwner,
+//       status: "active",
+//       joinedAt: new Date(),
+//     },
+//     { transaction }
+//   );
+// };
+export const addUserToCompany  = async (
   userId: number,
   companyId: number,
   role: "admin" | "manager" | "employee" | "viewer" = "employee",
