@@ -6,6 +6,7 @@ import {
     Model,
     Sequelize,
 } from "sequelize";
+import { checkPassword, hashPassword } from "../../../services/password-service";
 
 export class User extends Model<
     InferAttributes<User>,
@@ -13,23 +14,33 @@ export class User extends Model<
 > {
     declare id: CreationOptional<number>;
     declare referId: string;
+    declare companyId: number | null;
     declare firstName: string;
     declare lastName: string;
     declare email: string | null;
     declare contact: string; // Number → String
-    declare userType: "organization" | "freelancer";
+    declare userType: string | null;
     declare secretCode: string | null;
     declare isthemedark: boolean;
-    declare categories: string[] | null; 
+    declare password: string;
+    declare countryCode: string | null;
+    // declare categories: "food" | "healthCare" | "NGos";
+    declare categories: string[] | null;
     declare isDeleted: boolean;
-    declare deletedAt: CreationOptional<Date>;
+    declare deletedAt: CreationOptional<Date | null>;
+    // declare deletedAt: CreationOptional<Date>;
     declare isEmailVerified: boolean;
+    declare isRegistering: boolean;
+    declare registrationStep: number;
     declare isMobileVerified: boolean;
     declare isActive: boolean;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
- 
+    //validate password
+    validatePassword(this: User, userPass: string) {
+        return checkPassword(userPass, this.password);
+    }
     static initModel(sequelize: Sequelize): typeof User {
         User.init(
             {
@@ -39,6 +50,11 @@ export class User extends Model<
                     autoIncrement: true,
                     allowNull: false,
                     unique: true,
+                },
+                companyId: {
+                    type: DataTypes.INTEGER,
+                    allowNull: true,
+                    defaultValue: null,
                 },
                 referId: {
                     type: DataTypes.STRING,
@@ -65,15 +81,6 @@ export class User extends Model<
                         }
                     }
                 },
-
-                // contact: {
-                //   type: DataTypes.STRING(15),
-                //   allowNull: false,
-                //   unique: {
-                //     name: "mobile_number",
-                //     msg: "Mobile number must be unique",
-                //   },
-                // },
                 email: {
                     type: DataTypes.STRING(255),
                     allowNull: false,
@@ -82,10 +89,10 @@ export class User extends Model<
                         msg: "Email must be unique",
                     },
                 },
-
                 userType: {
                     type: DataTypes.ENUM("organization", "freelancer"),
-                    allowNull: false,
+                    allowNull: true,
+                    defaultValue: null,
                 },
                 secretCode: {
                     type: DataTypes.STRING,
@@ -96,11 +103,28 @@ export class User extends Model<
                     }
                 },
                 isthemedark: {
-                        type: DataTypes.BOOLEAN,
-                        allowNull: true,
-                        defaultValue: false,
+                    type: DataTypes.BOOLEAN,
+                    allowNull: true,
+                    defaultValue: false,
                 },
-                   categories: {
+                password: {
+                    type: DataTypes.STRING(255),
+                    set(this: User, value: string) {
+                        if (!value) return;
+                        let hash = null;
+                        hash = hashPassword(value);
+                        this.setDataValue("password", hash);
+                    },
+                    allowNull: true,
+                },
+                countryCode: {
+                    // 👈 NEW FIELD
+                    type: DataTypes.STRING(10),
+                    allowNull: true,
+                    defaultValue: null,
+                },
+
+                categories: {
                     type: DataTypes.JSON,
                     allowNull: true,
                     defaultValue: null,
@@ -116,6 +140,16 @@ export class User extends Model<
                 isEmailVerified: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: false,
+                },
+                isRegistering: {
+                    type: DataTypes.BOOLEAN,
+                    defaultValue: false,
+                    allowNull: false,
+                },
+                registrationStep: {
+                    type: DataTypes.INTEGER,
+                    defaultValue: 0,
+                    allowNull: false,
                 },
                 isMobileVerified: {
                     type: DataTypes.BOOLEAN,

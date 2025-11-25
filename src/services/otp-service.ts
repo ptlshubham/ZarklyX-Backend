@@ -26,7 +26,7 @@ const transporter = nodemailer.createTransport({
     // user: "your_current@gmail.com", // your Gmail address 
     // pass: 'your_secure_pass', // replace with your app password 
     user: "br.rinkal1997@gmail.com", // your Gmail address // br.rinkal1997@gmail.com
-    pass: 'dmtz kgzb vadp cdki', // replace with your app password // dmtz kgzb vadp cdki
+    pass: 'lhbodchvrstpqmhf', // replace with your app password // dmtz kgzb vadp cdki
   },
 });
 
@@ -70,7 +70,7 @@ export const sendMobileOTP = async (data: any, type: string): Promise<{ success:
       template_id: GLOBAL_CONSTANTS.otpTemplateID.register,
       recipients: [
         {
-          mobiles: `${COUNTRY_CODE}${data.mobile_number}`,
+          mobiles: `${COUNTRY_CODE}${data.contact}`,
           var: data.mbOTP,
         },
       ],
@@ -81,7 +81,7 @@ export const sendMobileOTP = async (data: any, type: string): Promise<{ success:
       template_id: GLOBAL_CONSTANTS.otpTemplateID.login,
       recipients: [
         {
-          mobiles: `${COUNTRY_CODE}${data.mobile_number}`,
+          mobiles: `${COUNTRY_CODE}${data.contact}`,
           var1: data.mbOTP,
         },
       ],
@@ -133,14 +133,14 @@ export const sendOTP = async (
 ): Promise<{ success: boolean; message?: string }> => {
   console.log("RAW OTP DATA RECEIVED:", data);
 
-  const mobile_number = data.mobile || data.mobile_number || data.mobileNumber;
+  const contact = data.contact || data.contact || data.contact;
   const email = data.email;
 
-  console.log("Extracted mobile:", mobile_number);
+  console.log("Extracted mobile:", contact);
   console.log("Extracted email:", email);
 
-  if (mobile_number) {
-    return await sendMobileOTP({ mobile_number, mbOTP: data.mbOTP }, type);
+  if (contact) {
+    return await sendMobileOTP({ contact, mbOTP: data.mbOTP }, type);
   } else if (email) {
     return await sendEmailOTP({ email, otp: data.otp }, type);
   } else {

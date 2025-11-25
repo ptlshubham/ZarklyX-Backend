@@ -6,7 +6,10 @@ import { initControlDBConnection } from "./db/core/control-db";
 import http from "http";
 import cors from 'cors';
 import { ConsoleSpinner } from "./services/console-info";
-const userRoutes = require('./routes/api-webapp/user/user-api');
+import userRoutes from './routes/api-webapp/user/user-api';
+import companyRoutes from './routes/api-webapp/company/company-api';
+import otpRoutes from './routes/api-webapp/otp/otp-api';
+
 
 import path from "path";
 const app = express();
@@ -18,12 +21,12 @@ app.use(cors({
   credentials: true,               // only if you want to send cookies
 }));
 
-
-
 app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 app.use("/user", userRoutes);
+app.use("/company", companyRoutes);
+app.use("/otp", otpRoutes);
 
 // Web App Apis Route Index
 // Initialize databases (MySQL main, MongoDB and control DB)

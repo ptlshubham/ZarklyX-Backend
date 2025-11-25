@@ -9,8 +9,8 @@ console.log(User);
 
 // user type
 export enum userType {
-    ORGANIZATION = "organization",
-    FREELANCER = "freelancer",
+  ORGANIZATION = "organization",
+  FREELANCER = "freelancer",
 }
 
 // login type
@@ -21,10 +21,10 @@ export enum LoginType {
 }
 
 const LoginType_fields = [
-    "id",
-    "email"
+  "id",
+  "email"
 ];
-    
+
 
 
 // Function to generate a uniwue secret code
@@ -47,57 +47,75 @@ export async function generateUniqueSecretCode(): Promise<string> {
 
 // Define the user payload interface
 interface UserPayload {
-    referId?: string;
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-    contact?: string;
-    userType?: userType;
-    secretCode?: string;
-    isthemedark?: boolean;
-    isEmailVerified?: boolean;
-    isMobileVerified?: boolean;
-    [key: string]: any;
+    referId?: string | null;
+  companyId?: number | null;        // Required for step 5
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string;
+  contact?: string;
+  userType?: userType | "organization" | "freelancer";
+  secretCode?: string;
+  isthemedark?: boolean;
+  categories?: any[] | null;        // (JSON array of categories)
+  isEmailVerified?: boolean;
+  isMobileVerified?: boolean;
+  isRegistering?: boolean;
+  registrationStep?: number;
+  isActive?: boolean;
+  [key: string]: any;
+  // referId?: string;
+  //   companyId?: number | null;        
+  // firstName?: string;
+  // lastName?: string;
+  // email?: string;
+  // contact?: string;
+  // userType?: userType;
+  // secretCode?: string;
+  //   categories?: any[] | null;
+  // isthemedark?: boolean;
+  // isEmailVerified?: boolean;
+  // isMobileVerified?: boolean;
+  // [key: string]: any;
 }
 
 // Function to add user to DB
 export const addUser = async (body: UserPayload, t: Transaction) => {
-    return User.create(body as any, { transaction: t });
+  return User.create(body as any, { transaction: t });
 };
 
 //for get user filter
 export const getAllUser = (query: any) => {
-    const {
-        limit: rawLimit,
-        offset: rawOffset,
-        modelOption,
-        orderBy,
-        attributes,
-        forExcel,
-    } = MakeQuery({
-        query,
-        Model: User,
-    });
+  const {
+    limit: rawLimit,
+    offset: rawOffset,
+    modelOption,
+    orderBy,
+    attributes,
+    forExcel,
+  } = MakeQuery({
+    query,
+    Model: User,
+  });
 
-    // Parse limit and offset with fallback values
-    const limit = Number(rawLimit) || 10;
-    const offset = Number(rawOffset) || 0;
+  // Parse limit and offset with fallback values
+  const limit = Number(rawLimit) || 10;
+  const offset = Number(rawOffset) || 0;
 
-    let modalParam: any = {
-        where: modelOption,
-        attributes,
-        order: orderBy,
-        raw: true,
-        // include, // You can uncomment this if needed
-    };
+  let modalParam: any = {
+    where: modelOption,
+    attributes,
+    order: orderBy,
+    raw: true,
+    // include, // You can uncomment this if needed
+  };
 
-    // Add pagination only if not for Excel
-    if (!forExcel) {
-        modalParam.limit = limit;
-        modalParam.offset = offset;
-    }
+  // Add pagination only if not for Excel
+  if (!forExcel) {
+    modalParam.limit = limit;
+    modalParam.offset = offset;
+  }
 
-    return User.findAndCountAll(modalParam);
+  return User.findAndCountAll(modalParam);
 };
 
 // for get user by ID
@@ -106,7 +124,7 @@ export const getUserByid = async (id: string) => {
 };
 
 // Update employee details
-export const updateUser= async (id: number, body: any, t: any) => {
+export const updateUser = async (id: number, body: any, t: any) => {
   return await User.update(body, { where: { id }, transaction: t });
 };
 
@@ -175,64 +193,64 @@ export const tenantUserByEmail$ = async (email: string) => {
 
 //for delete user
 export const deleteUser = async (id: number, transaction: any) => {
-    const user = await User.findOne({ where: { id }, transaction });
+  const user = await User.findOne({ where: { id }, transaction });
 
-    if (!user) {
-        console.log(`User with ID ${id} not found.`);
-        return null;
-    }
+  if (!user) {
+    console.log(`User with ID ${id} not found.`);
+    return null;
+  }
 
-    // Perform soft delete
-    const updatedUser = await user.update(
-        {
-            isDeleted: true,
-            deletedAt: new Date(),
-        },
-        { transaction }
-    );
+  // Perform soft delete
+  const updatedUser = await user.update(
+    {
+      isDeleted: true,
+      deletedAt: new Date(),
+    },
+    { transaction }
+  );
 
-    console.log(`User with ID ${id} marked as deleted.`);
-    return updatedUser;
+  console.log(`User with ID ${id} marked as deleted.`);
+  return updatedUser;
 };
 
 
 //for get all user for dropdown
 export const UserData = (body: any) => {
-    const { email, id } = body;
-    return User.findOne({
-        where: { email },
-        attributes: ["email", "id"],
-        raw: true,
-    });
+  const { email, id } = body;
+  return User.findOne({
+    where: { email },
+    attributes: ["email", "id"],
+    raw: true,
+  });
 };
 
 //to get User by email
 export const getUserByEmail = (data: any) => {
-    return User.findOne({
-        where: {
-            email: data.email,
-        },
-        raw: true,
-    });
+  return User.findOne({
+    where: {
+      email: data.email,
+    },
+    raw: true,
+  });
 };
 
 //to get User by mb no
 export const getUserByMbMo = (data: any) => {
-    return User.findOne({
-        where: {
-            contact: data.contact,
-        },
-        raw: true,
-    });
+  return User.findOne({
+    where: {
+      contact: data.contact,
+    },
+    raw: true,
+  });
 
 };
 
 export const checkUserActive = async (email: string) => {
-    const user = await User.findOne({
-        where: {
-            email,
-            // isActive: true, // or whatever your column is
-        },
-    });
-    return !!user;
+  const user = await User.findOne({
+    where: {
+      email,
+      // isActive: true, // or whatever your column is
+    },
+  });
+  return !!user;
 };

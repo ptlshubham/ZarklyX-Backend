@@ -1,0 +1,499 @@
+import express, { Request, Response } from "express";
+import { Company } from "../../../routes/api-webapp/company/company-model";
+import { UserCompany } from "../../../routes/api-webapp/company/user-company-model"
+import { User } from "../../../routes/api-webapp/user/user-model";
+import {
+  getUserCompanies,
+  getCompanyWithUserRole,
+  createCompany,
+  updateCompany,
+  addUserToCompany,
+  removeUserFromCompany,
+  updateUserCompanyRole,
+  isUserInCompany,
+  getUserPrimaryCompany,
+  deactivateUserCompany,
+} from "./company-handler";
+import { tokenMiddleWare } from "../../../services/jwtToken-service";
+import {
+  serverError,
+  alreadyExist,
+} from "../../../utils/responseHandler";
+import { sendEncryptedResponse } from "../../../services/encryptResponse-service";
+import { notFound, other } from "../../../services/response";
+import dbInstance from "../../../db/core/control-db";
+import ErrorLogger from "../../../db/core/logger/error-logger";
+
+const router = express.Router();
+
+/**
+ * GET /company/list
+ * Get all companies associated with the logged-in user
+ * Returns list of companies with user's role in each
+ */
+router.get("/list", tokenMiddleWare, async (req: Request, res: Response) => {
+  try {
+    const userId: any = (req as any).user?.id;
+    if (!userId) {
+      return serverError(res, "User ID not found in token");
+    }
+
+    const companies = await getUserCompanies(userId);
+
+    if (!companies || companies.length === 0) {
+      return sendEncryptedResponse(
+        res,
+        { companies: [] },
+        "No companies associated with this user"
+      );
+    }
+
+    const formattedCompanies = companies.map((company: any) => {
+      const userCompanyData = company.UserCompanies?.[0] || {};
+      return {
+        id: company.id,
+        name: company.name,
+        description: company.description,
+        logo: company.logo,
+        email: company.email,
+        contact: company.contact,
+        no_of_clients: company.no_of_clients,
+        address: company.address,
+        website: company.website,
+        industryType: company.industryType,
+        userRole: userCompanyData.role,
+        isOwner: userCompanyData.isOwner,
+        joinedAt: userCompanyData.joinedAt,
+        isActive: company.isActive,
+      };
+    });
+
+    return sendEncryptedResponse(
+      res,
+      { companies: formattedCompanies },
+      "Companies retrieved successfully"
+    );
+  } catch (error: any) {
+    ErrorLogger.write({ type: "getCompanies error", error });
+    return serverError(res, error?.message || "Failed to retrieve companies");
+  }
+});
+
+/**
+ * GET /company/:companyId/details
+ * Get detailed information about a specific company
+ * (Same as Facebook profile view)
+ */
+router.get("/:companyId/details",
+  tokenMiddleWare,
+  async (req: Request, res: Response) => {
+    try {
+      const userId: any = (req as any).user?.id;
+      const { companyId } = req.params;
+
+      if (!userId) {
+        return serverError(res, "User ID not found in token");
+      }
+
+      if (!companyId) {
+        return serverError(res, "Company ID is required");
+      }
+
+      // Check if user has access to this company
+      const hasAccess = await isUserInCompany(userId, parseInt(companyId));
+      if (!hasAccess) {
+        return serverError(res, "You do not have access to this company");
+      }
+
+      // Get company details with user's role
+      const companyDetails = await getCompanyWithUserRole(
+        userId,
+        parseInt(companyId)
+      );
+
+      if (!companyDetails) {
+        return notFound(res, "Company not found");
+      }
+
+      return sendEncryptedResponse(
+        res,
+        companyDetails,
+        "Company details retrieved successfully"
+      );
+    } catch (error: any) {
+      ErrorLogger.write({ type: "getCompanyDetails error", error });
+      return serverError(
+        res,
+        error?.message || "Failed to retrieve company details"
+      );
+    }
+  }
+);
+
+/**
+ * POST /company/switch/:companyId
+ * Switch to a specific company
+ * Returns the company data after switch (like viewing a profile)
+ */
+router.post("/switch/:companyId",
+  tokenMiddleWare,
+  async (req: Request, res: Response) => {
+    try {
+      const userId: any = (req as any).user?.id;
+      const { companyId } = req.params;
+
+      if (!userId) {
+        return serverError(res, "User ID not found in token");
+      }
+
+      if (!companyId) {
+        return serverError(res, "Company ID is required");
+      }
+
+      // Verify user belongs to this company
+      const hasAccess = await isUserInCompany(userId, parseInt(companyId));
+      if (!hasAccess) {
+        return serverError(res, "You cannot switch to this company");
+      }
+
+      // Get company details with full information
+      const companyData = await getCompanyWithUserRole(
+        userId,
+        parseInt(companyId)
+      );
+
+      if (!companyData) {
+        return notFound(res, "Company not found");
+      }
+
+      // Log the company switch (optional - for audit trail)
+      // You can save this to a logs table if needed
+
+      return sendEncryptedResponse(
+        res,
+        {
+          currentCompany: companyData,
+          message: `Switched to ${companyData.name}`,
+        },
+        `Successfully switched to ${companyData.name}`
+      );
+    } catch (error: any) {
+      ErrorLogger.write({ type: "switchCompany error", error });
+      return serverError(res, error?.message || "Failed to switch company");
+    }
+  }
+);
+
+/**
+ * POST /company/create
+ * Create a new company (Admin only)
+ */
+router.post("/addCompany",
+  async (req: Request, res: Response) => {
+    const t = await dbInstance.transaction();
+    try {
+      const userId: any = (req as any).user?.id;
+      const {
+        name,
+        description,
+        email,
+        contact,
+        address,
+        city,
+        state,
+        zipcode,
+        country,
+        timezone,
+        no_of_clients,
+        website,
+        logo,
+        registrationNumber,
+        industryType,
+        accountType,
+        businessArea,
+      } = req.body;
+
+      if (!userId) {
+        await t.rollback();
+        return serverError(res, "User ID not found in token");
+      }
+
+      if (!name) {
+        await t.rollback();
+        return serverError(res, "Company name is required");
+      }
+
+      // Check if company name already exists
+      const existingCompany = await Company.findOne({ where: { name } });
+      if (existingCompany) {
+        await t.rollback();
+        return alreadyExist(res, "Company name already exists");
+      }
+
+      // Create company
+      const company = await createCompany(
+        {
+          name,
+          description,
+          email,
+          contact,
+          address,
+          city,
+          state,
+          zipcode,
+          country,
+          website,
+          timezone,
+          no_of_clients,
+          logo,
+          registrationNumber,
+          industryType,
+          accountType,
+          businessArea,
+          isActive: true,
+        },
+        t
+      );
+
+      // Add creator as company owner
+      await addUserToCompany(userId, company.id, "admin", true, t);
+
+      await t.commit();
+
+      return sendEncryptedResponse(
+        res,
+        {
+          companyId: company.id,
+          name: company.name,
+          createdAt: company.createdAt,
+        },
+        "Company created successfully"
+      );
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "createCompany error", error });
+      return serverError(res, error?.message || "Failed to create company");
+    }
+  }
+);
+
+
+// Add Company Details Endpoint
+// router.post("/add-company-details", tokenMiddleWare, async (req, res) => {
+//   try {
+//     const {
+//       companyName,
+//       website,
+//       country,
+//       timezone,
+//     } = req.body;
+//     const userId = req.user.id;
+
+//     // Validation
+//     if (!companyName || !website || !country || !timezone) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields for company details.",
+//       });
+//     }
+
+//     // Update user's record with company details
+//     const user = await User.findByPk(userId);
+//     if (!user) {
+//       return notFound(res, "User not found.");
+//     }
+
+//     user.companyName = companyName;
+//     user.website = website;
+//     user.country = country;
+//     user.timezone = timezone;
+//     await user.save();
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Company details added successfully.",
+//     });
+//   } catch (error: any) {
+//     ErrorLogger.write({ type: "add-company-details error", error });
+//     return serverError(res, error.message || "Failed to add company details.");
+//   }
+// });
+/**
+ * PUT /company/:companyId/update
+ * Update company details (Admin/Owner only)
+ */
+router.put("/:companyId/update",
+  async (req: Request, res: Response) => {
+    const t = await dbInstance.transaction();
+    try {
+      const userId: any = (req as any).user?.id;
+      const { companyId } = req.params;
+
+      if (!userId) {
+        await t.rollback();
+        return serverError(res, "User ID not found in token");
+      }
+
+      if (!companyId) {
+        await t.rollback();
+        return serverError(res, "Company ID is required");
+      }
+
+      // Check if user is admin/owner of company
+      //   const userCompany = await UserCompany.findOne({
+      //     where: { userId, companyId: parseInt(companyId) },
+      //   });
+
+      //   if (!userCompany || !["admin", "manager"].includes(userCompany.role)) {
+      //     await t.rollback();
+      //     return serverError(res, "You do not have permission to update this company");
+      //   }
+
+      // Update company
+      const updatedCompany = await updateCompany(
+        parseInt(companyId),
+        req.body,
+        t
+      );
+
+      await t.commit();
+
+      return sendEncryptedResponse(
+        res,
+        updatedCompany,
+        "Company updated successfully"
+      );
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "updateCompany error", error });
+      return serverError(res, error?.message || "Failed to update company");
+    }
+  }
+);
+
+/**
+ * POST /company/:companyId/add-user
+ * Add a user to a company (Admin/Owner only)
+ */
+router.post("/:companyId/add-user",
+  async (req: Request, res: Response) => {
+    const t = await dbInstance.transaction();
+    try {
+      const userId: any = (req as any).user?.id;
+      const { companyId } = req.params;
+      const { targetUserId, role = "employee", isOwner = false } = req.body;
+
+      if (!userId) {
+        await t.rollback();
+        return serverError(res, "User ID not found in token");
+      }
+
+      if (!companyId || !targetUserId) {
+        await t.rollback();
+        return serverError(res, "Company ID and User ID are required");
+      }
+
+      // Check permissions
+      //   const userCompany = await UserCompany.findOne({
+      //     where: { userId, companyId: parseInt(companyId) },
+      //   });
+
+      //   if (!userCompany || !["admin"].includes(userCompany.role)) {
+      //     await t.rollback();
+      //     return serverError(res, "You do not have permission to add users");
+      //   }
+
+      // Check if target user exists
+      const targetUser = await User.findByPk(targetUserId);
+      if (!targetUser) {
+        await t.rollback();
+        return notFound(res, "User not found");
+      }
+
+      // Check if user already in company
+      const existingRelation = await UserCompany.findOne({
+        where: {
+          userId: targetUserId,
+          companyId: parseInt(companyId),
+        },
+      });
+
+      if (existingRelation) {
+        await t.rollback();
+        return alreadyExist(res, "User already associated with this company");
+      }
+
+      // Add user to company
+      await addUserToCompany(
+        targetUserId,
+        parseInt(companyId),
+        role,
+        isOwner,
+        t
+      );
+
+      await t.commit();
+
+      return sendEncryptedResponse(
+        res,
+        { userId: targetUserId, role, isOwner },
+        "User added to company successfully"
+      );
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "addUserToCompany error", error });
+      return serverError(res, error?.message || "Failed to add user to company");
+    }
+  }
+);
+
+/**
+ * DELETE /company/:companyId/remove-user/:targetUserId
+ * Remove a user from a company (Admin/Owner only)
+ */
+router.delete("/:companyId/remove-user/:targetUserId",
+  async (req: Request, res: Response) => {
+    const t = await dbInstance.transaction();
+    try {
+      const userId: any = (req as any).user?.id;
+      const { companyId, targetUserId } = req.params;
+
+      if (!userId) {
+        await t.rollback();
+        return serverError(res, "User ID not found in token");
+      }
+
+      if (!companyId || !targetUserId) {
+        await t.rollback();
+        return serverError(res, "Company ID and User ID are required");
+      }
+
+      // Check permissions
+      //   const userCompany = await UserCompany.findOne({
+      //     where: { userId, companyId: parseInt(companyId) },
+      //   });
+
+      //   if (!userCompany || !["admin"].includes(userCompany.role)) {
+      //     await t.rollback();
+      //     return serverError(res, "You do not have permission to remove users");
+      //   }
+
+      // Remove user from company
+      await removeUserFromCompany(
+        parseInt(targetUserId),
+        parseInt(companyId),
+        t
+      );
+
+      await t.commit();
+
+      return sendEncryptedResponse(res, {}, "User removed from company successfully");
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "removeUserFromCompany error", error });
+      return serverError(res, error?.message || "Failed to remove user from company");
+    }
+  }
+);
+
+export default router;
