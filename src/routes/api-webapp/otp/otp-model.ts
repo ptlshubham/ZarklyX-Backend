@@ -31,6 +31,12 @@ export class Otp extends Model<
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
+
+       //validate password
+    validatePassword(this: User, userPass: string) {
+        return checkPassword(userPass, this.password);
+    }
+    
     static initModel(sequelize: Sequelize): typeof Otp {
         Otp.init(
             {

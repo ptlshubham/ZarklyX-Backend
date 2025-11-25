@@ -84,8 +84,7 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response) => {
  * Get detailed information about a specific company
  * (Same as Facebook profile view)
  */
-router.get(
-  "/:companyId/details",
+router.get("/:companyId/details",
   tokenMiddleWare,
   async (req: Request, res: Response) => {
     try {
@@ -136,8 +135,7 @@ router.get(
  * Switch to a specific company
  * Returns the company data after switch (like viewing a profile)
  */
-router.post(
-  "/switch/:companyId",
+router.post("/switch/:companyId",
   tokenMiddleWare,
   async (req: Request, res: Response) => {
     try {
@@ -190,8 +188,7 @@ router.post(
  * POST /company/create
  * Create a new company (Admin only)
  */
-router.post(
-  "/addCompany",
+router.post("/addCompany",
   async (req: Request, res: Response) => {
     const t = await dbInstance.transaction();
     try {
@@ -325,8 +322,7 @@ router.post(
  * PUT /company/:companyId/update
  * Update company details (Admin/Owner only)
  */
-router.put(
-  "/:companyId/update",
+router.put("/:companyId/update",
   async (req: Request, res: Response) => {
     const t = await dbInstance.transaction();
     try {
@@ -379,8 +375,7 @@ router.put(
  * POST /company/:companyId/add-user
  * Add a user to a company (Admin/Owner only)
  */
-router.post(
-  "/:companyId/add-user",
+router.post("/:companyId/add-user",
   async (req: Request, res: Response) => {
     const t = await dbInstance.transaction();
     try {
@@ -456,8 +451,7 @@ router.post(
  * DELETE /company/:companyId/remove-user/:targetUserId
  * Remove a user from a company (Admin/Owner only)
  */
-router.delete(
-  "/:companyId/remove-user/:targetUserId",
+router.delete("/:companyId/remove-user/:targetUserId",
   async (req: Request, res: Response) => {
     const t = await dbInstance.transaction();
     try {

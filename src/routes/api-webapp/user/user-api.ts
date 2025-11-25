@@ -3,21 +3,23 @@ import { Request, Response } from "express";
 import { notFound } from "../../../services/response"
 import { sendEncryptedResponse } from "../../../services/encryptResponse-service";
 import dbInstance from "../../../db/core/control-db";
-import { alreadyExist, serverError, unauthorized, } from "../../../utils/responseHandler";
+import { alreadyExist, serverError, other, unauthorized, } from "../../../utils/responseHandler";
 import {
   generateOTP
 } from "../../../services/password-service";
 import { sendOTP } from "../../../services/otp-service";
-import { generateToken } from "../../../services/jwtToken-service";
-import { hashPassword, checkPassword } from "../../../services/password-service";
+import { generateToken, tokenMiddleWare } from "../../../services/jwtToken-service";
+import { hashPassword, checkPassword, generateRandomPassword } from "../../../services/password-service";
 import {
   updateUser,
   deleteUser,
   getUserByid,
   getAllUser,
   updateTheme,
+  UserData,
   generateUniqueSecretCode,
 } from "./user-handler";
+import { sendEmail } from "../../../services/mailService";
 import { createCompany, addUserToCompany } from "../company/company-handler";
 import { Otp } from "../../../routes/api-webapp/otp/otp-model";
 import { User } from "../../api-webapp/user/user-model";
@@ -149,6 +151,212 @@ const router = express.Router();
 // });
 
 // password with countrycode api 
+// router.post("/register/start", async (req: Request, res: Response) => {
+//   const t = await dbInstance.transaction();
+//   try {
+//     const {
+//       referId,
+//       firstName,
+//       lastName,
+//       email,
+//       contact,
+//       password,
+//       confirmPassword,
+//       countryCode,   // optional from FE
+//     } = req.body;
+
+//     console.log("[register/start] BODY:", req.body);
+
+//     // Basic validation
+//     if (!firstName || !lastName || !email || !contact) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "firstName, lastName, email, contact are required",
+//       });
+//     }
+
+//     // Password validations
+//     if (!password || !confirmPassword) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "password and confirmPassword are required",
+//       });
+//     }
+
+//     if (password !== confirmPassword) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "password and confirmPassword must match",
+//       });
+//     }
+
+//     if (password.length < 6) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "Password must be at least 6 characters.",
+//       });
+//     }
+
+//     // 🔐 password hash
+//     const passwordHash = await hashPassword(password);
+
+//     // Contact + Country Code logic
+//     const rawContact: string = String(contact).trim();
+//     const digitsOnly = rawContact.replace(/\D/g, ""); // sirf numbers
+
+//     if (digitsOnly.length < 10) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid contact number.",
+//       });
+//     }
+
+//     let finalCountryCode = "+91"; // default India
+//     let localNumber = digitsOnly;
+
+//     // Case 1: user ne +CCXXXXXXXXXX diya hai
+//     if (rawContact.startsWith("+")) {
+//       // assume last 10 digits = local, baaki country code
+//       if (digitsOnly.length > 10) {
+//         const ccLen = digitsOnly.length - 10;
+//         finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
+//         localNumber = digitsOnly.slice(ccLen);
+//       }
+//     }
+//     // Case 2: koi aur full intl number (91XXXXXXXXXX, 441234567890, etc)
+//     else if (digitsOnly.length > 10) {
+//       const ccLen = digitsOnly.length - 10;
+//       finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
+//       localNumber = digitsOnly.slice(ccLen);
+//     }
+//     // Case 3: sirf 10 digits → assume India
+//     else if (digitsOnly.length === 10) {
+//       finalCountryCode = "+91";
+//       localNumber = digitsOnly;
+//     }
+
+//     // Agar FE ne directly countryCode bheja hai, toh usko override kar sakte ho:
+//     if (countryCode) {
+//       finalCountryCode = String(countryCode);
+//     }
+
+//     console.log("[register/start] Parsed contact:", {
+//       rawContact,
+//       finalCountryCode,
+//       localNumber,
+//     });
+
+//     // Duplicate check (email + contact)
+//     const existingUser: any = await User.findOne({
+//       where: {
+//         [Op.or]: [
+//           { email },
+//           { contact: localNumber },
+//         ],
+//       },
+//       transaction: t,
+//     });
+
+//     if (existingUser) {
+//       await t.rollback();
+//       return alreadyExist(res, "Email or contact already exists");
+//     }
+
+//     const finalSecretCode = await generateUniqueSecretCode();
+
+//     // Create user in "registering" mode
+//     const user: any = await User.create(
+//       {
+//         referId: referId || null,
+//         firstName,
+//         lastName,
+//         email,
+//         contact: localNumber,
+//         countryCode: finalCountryCode,  // 👈 store here
+//         password: passwordHash,        // 👈 hashed
+//         userType: null,                // step 4 pe set hoga
+//         secretCode: finalSecretCode,
+//         isthemedark: false,
+//         categories: null,
+//         isDeleted: false,
+//         isEmailVerified: false,
+//         isMobileVerified: false,
+//         isRegistering: true,
+//         registrationStep: 1,
+//         isActive: false,
+//       },
+//       { transaction: t }
+//     );
+
+//     // OTP generate
+//     const otpCode = generateOTP();
+//     const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+//     let otpRecord = await Otp.findOne({
+//       where: { userId: user.id },
+//       transaction: t,
+//     });
+
+//     if (!otpRecord) {
+//       otpRecord = await Otp.create(
+//         {
+//           userId: user.id,
+//           email: user.email,
+//           contact: user.contact,
+//           otp: otpCode,
+//           mbOTP: null,
+//           loginOTP: null,
+//           otpVerify: false,
+//           otpExpiresAt: expiry,
+//           mbOTPExpiresAt: null,
+//           isDeleted: false,
+//           isEmailVerified: false,
+//           isMobileVerified: false,
+//           isActive: true,
+//         },
+//         { transaction: t }
+//       );
+//     } else {
+//       otpRecord.email = user.email;
+//       otpRecord.contact = user.contact;
+//       otpRecord.otp = otpCode;
+//       otpRecord.otpExpiresAt = expiry;
+//       otpRecord.otpVerify = false;
+//       otpRecord.isDeleted = false;
+//       await otpRecord.save({ transaction: t });
+//     }
+
+//     // 📧 Send OTP on email
+//     const sendResult = await sendOTP({ email, otp: otpCode }, "register");
+//     if (!sendResult || !sendResult.success) {
+//       await t.rollback();
+//       return serverError(res, sendResult?.message || "Failed to send OTP.");
+//     }
+
+//     await t.commit();
+
+//     return res.status(200).json({
+//       success: true,
+//       message: `Signup step 1 done. OTP sent to ${email}.`,
+//       data: {
+//         userId: user.id,
+//         secretCode: user.secretCode,
+//         countryCode: finalCountryCode,
+//       },
+//     });
+//   } catch (error: any) {
+//     await t.rollback();
+//     ErrorLogger.write({ type: "register/start error", error });
+//     return serverError(res, error.message || "Failed to start registration.");
+//   }
+// });
+
+//signup 
 router.post("/register/start", async (req: Request, res: Response) => {
   const t = await dbInstance.transaction();
   try {
@@ -161,11 +369,12 @@ router.post("/register/start", async (req: Request, res: Response) => {
       password,
       confirmPassword,
       countryCode,   // optional from FE
+      // secretCode  // optional, 
     } = req.body;
 
     console.log("[register/start] BODY:", req.body);
 
-    // Basic validation
+    // 1) Basic field validation
     if (!firstName || !lastName || !email || !contact) {
       await t.rollback();
       return res.status(400).json({
@@ -174,7 +383,7 @@ router.post("/register/start", async (req: Request, res: Response) => {
       });
     }
 
-    // Password validations
+    // 2) Password validations
     if (!password || !confirmPassword) {
       await t.rollback();
       return res.status(400).json({
@@ -199,12 +408,13 @@ router.post("/register/start", async (req: Request, res: Response) => {
       });
     }
 
-    // 🔐 password hash
-    const passwordHash = await hashPassword(password);
+    // IMPORTANT: DO NOT HASH HERE
+    // const passwordHash = await hashPassword(password);
+    // We store plain password => model setter will hash it.
 
-    // Contact + Country Code logic
+    //  Contact + Country Code logic
     const rawContact: string = String(contact).trim();
-    const digitsOnly = rawContact.replace(/\D/g, ""); // sirf numbers
+    const digitsOnly = rawContact.replace(/\D/g, ""); // only numbers
 
     if (digitsOnly.length < 10) {
       await t.rollback();
@@ -217,30 +427,29 @@ router.post("/register/start", async (req: Request, res: Response) => {
     let finalCountryCode = "+91"; // default India
     let localNumber = digitsOnly;
 
-    // Case 1: user ne +CCXXXXXXXXXX diya hai
+    // Case 1: starts with "+" e.g. +919876543210, +441234567890
     if (rawContact.startsWith("+")) {
-      // assume last 10 digits = local, baaki country code
       if (digitsOnly.length > 10) {
         const ccLen = digitsOnly.length - 10;
         finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
         localNumber = digitsOnly.slice(ccLen);
       }
     }
-    // Case 2: koi aur full intl number (91XXXXXXXXXX, 441234567890, etc)
+    // Case 2: full intl number w/o "+" e.g. 919876543210, 441234567890
     else if (digitsOnly.length > 10) {
       const ccLen = digitsOnly.length - 10;
       finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
       localNumber = digitsOnly.slice(ccLen);
     }
-    // Case 3: sirf 10 digits → assume India
+    // Case 3: plain 10-digit -> assume India
     else if (digitsOnly.length === 10) {
       finalCountryCode = "+91";
       localNumber = digitsOnly;
     }
 
-    // Agar FE ne directly countryCode bheja hai, toh usko override kar sakte ho:
+    // If FE sends explicit countryCode, override
     if (countryCode) {
-      finalCountryCode = String(countryCode);
+      finalCountryCode = String(countryCode).trim();
     }
 
     console.log("[register/start] Parsed contact:", {
@@ -249,13 +458,10 @@ router.post("/register/start", async (req: Request, res: Response) => {
       localNumber,
     });
 
-    // Duplicate check (email + contact)
+    // 4) Duplicate check (email + contact)
     const existingUser: any = await User.findOne({
       where: {
-        [Op.or]: [
-          { email },
-          { contact: localNumber },
-        ],
+        [Op.or]: [{ email }, { contact: localNumber }],
       },
       transaction: t,
     });
@@ -267,7 +473,7 @@ router.post("/register/start", async (req: Request, res: Response) => {
 
     const finalSecretCode = await generateUniqueSecretCode();
 
-    // Create user in "registering" mode
+    // 5) Create user in registering mode
     const user: any = await User.create(
       {
         referId: referId || null,
@@ -275,9 +481,9 @@ router.post("/register/start", async (req: Request, res: Response) => {
         lastName,
         email,
         contact: localNumber,
-        countryCode: finalCountryCode,  // 👈 store here
-        password: passwordHash,        // 👈 hashed
-        userType: null,                // step 4 pe set hoga
+        countryCode: finalCountryCode,
+        password,                       // 👈 plain password, model will hash
+        userType: null,
         secretCode: finalSecretCode,
         isthemedark: false,
         categories: null,
@@ -291,7 +497,7 @@ router.post("/register/start", async (req: Request, res: Response) => {
       { transaction: t }
     );
 
-    // OTP generate
+    // 6) OTP generate / save
     const otpCode = generateOTP();
     const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
@@ -329,7 +535,7 @@ router.post("/register/start", async (req: Request, res: Response) => {
       await otpRecord.save({ transaction: t });
     }
 
-    // 📧 Send OTP on email
+    // 7) Send OTP on email
     const sendResult = await sendOTP({ email, otp: otpCode }, "register");
     if (!sendResult || !sendResult.success) {
       await t.rollback();
@@ -670,13 +876,12 @@ router.post("/register/categories", async (req: Request, res: Response) => {
 
     console.log("Raw input (category/categories):", input);
 
-    // ❗ Normalize: if array aaya hai, sirf first item allow
     if (Array.isArray(input)) {
       console.log("Input is array, length:", input.length);
 
       if (input.length === 0) {
         await t.rollback();
-        console.log("❌ Empty category array");
+        console.log("Empty category array");
         return res.status(400).json({
           success: false,
           message: "userId and a single category are required",
@@ -684,7 +889,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
       }
       if (input.length > 1) {
         await t.rollback();
-        console.log("❌ More than one category sent, only one allowed");
+        console.log("More than one category sent, only one allowed");
         return res.status(400).json({
           success: false,
           message: "Only one category can be selected",
@@ -698,7 +903,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
     // basic validation
     if (!userId || input === undefined || input === null) {
       await t.rollback();
-      console.log("❌ Missing userId or category value");
+      console.log("Missing userId or category value");
       return res.status(400).json({
         success: false,
         message: "userId and a single category are required",
@@ -715,7 +920,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
 
     let categoryId: number | null = null;
 
-    // 👉 CASE 1: numeric ID directly
+    //  CASE 1: numeric ID directly
     if (typeof input === "number") {
       console.log("Category input is numeric ID:", input);
       const cat = await Category.findByPk(input, { transaction: t });
@@ -733,7 +938,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
       }
       categoryId = cat.id;
     }
-    // 👉 CASE 2: string name, e.g. "food"
+    //  CASE 2: string name, e.g. "food"
     else if (typeof input === "string") {
       const name = input.trim();
       console.log("Category input is string name:", name);
@@ -770,7 +975,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
 
       categoryId = cat.id;
     }
-    // 👉 CASE 3: object { name, icon }
+    //  CASE 3: object { name, icon }
     else if (typeof input === "object" && input !== null) {
       const name = (input.name || "").trim();
       const icon = input.icon || null;
@@ -813,7 +1018,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
       categoryId = cat.id;
     } else {
       await t.rollback();
-      console.log("❌ Invalid category format, type:", typeof input);
+      console.log("Invalid category format, type:", typeof input);
       return res.status(400).json({
         success: false,
         message: "Invalid category format",
@@ -824,14 +1029,14 @@ router.post("/register/categories", async (req: Request, res: Response) => {
 
     if (!categoryId) {
       await t.rollback();
-      console.log("❌ categoryId is null after processing");
+      console.log("categoryId is null after processing");
       return res.status(400).json({
         success: false,
         message: "Could not resolve category",
       });
     }
 
-    // 🔴 SINGLE VALUE store in user.categories
+    // SINGLE VALUE store in user.categories
     user.categories = categoryId; // e.g. 2
     user.registrationStep = 3;
 
@@ -844,7 +1049,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
     await user.save({ transaction: t });
     await t.commit();
 
-    console.log("✅ Category saved successfully for user:", user.id);
+    console.log("Category saved successfully for user:", user.id);
 
     const responsePayload = {
       success: true,
@@ -857,7 +1062,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
     return res.status(200).json(responsePayload);
   } catch (error: any) {
     await t.rollback();
-    console.error("❌ Error in /user/register/categories:", error);
+    console.error("Error in /user/register/categories:", error);
     ErrorLogger.write({ type: "register/categories error", error });
     return serverError(res, error.message || "Failed to save category.");
   }
@@ -971,7 +1176,6 @@ router.post("/register/user-type", async (req: Request, res: Response) => {
       return notFound(res, "User not found");
     }
 
-    // (Optional but nice) – ensure he is in registration flow
     if (!user.isRegistering) {
       await t.rollback();
       return res.status(400).json({
@@ -1617,7 +1821,7 @@ router.post("/register/final", async (req: Request, res: Response) => {
 });
 
 // Get user by ID
-router.get("/getUserID/:id", async (req: Request, res: Response) => {
+router.get("/getUserID/:id", tokenMiddleWare, async (req: Request, res: Response) => {
   try {
 
     const { id } = req.params;
@@ -1637,19 +1841,35 @@ router.get("/getUserID/:id", async (req: Request, res: Response) => {
   }
 });
 
-// Get all Users
-router.get("/getAllUser", async (req, res) => {
+// Get all Users - encrypted respose
+// router.get("/getAllUser", async (req, res) => {
+//   try {
+//     const allUser = await getAllUser(req.query);
+
+//     sendEncryptedResponse(res, allUser, "Got all users");
+//   } catch (error: any) {
+//     ErrorLogger.write({ type: "getAllUser error", error });
+//     serverError(res, error);
+//   }
+// });
+router.get("/getAllUser", tokenMiddleWare, async (req, res) => {
   try {
     const allUser = await getAllUser(req.query);
-    sendEncryptedResponse(res, allUser, "Got all users");
+
+    return res.status(200).json({
+      success: true,
+      message: "Got all users",
+      data: allUser,
+    });
+
   } catch (error: any) {
     ErrorLogger.write({ type: "getAllUser error", error });
-    serverError(res, error);
+    return serverError(res, error);
   }
 });
 
 // Update user 
-router.post("/updateById", async (req, res) => {
+router.post("/updateById", tokenMiddleWare, async (req, res) => {
   const t = await dbInstance.transaction();
   try {
     const user = await updateUser(Number(req.body.id), req.body, t);
@@ -1677,7 +1897,7 @@ router.post("/updateById", async (req, res) => {
 });
 
 // Delete User
-router.delete("/deleteUser/:id", async (req: Request, res: Response) => {
+router.delete("/deleteUser/:id", tokenMiddleWare, async (req: Request, res: Response) => {
   const { id } = req.params;
 
   // Convert 'id' to number
@@ -1725,60 +1945,678 @@ router.post("/updateTheme", async (req, res) => {
   }
 });
 
+// login
+// router.post("/login", async (req: Request, res: Response) => {
+//   try {
+//     const { email, contact, password, otp, fcmToken } = req.body;
+
+//     // ------- Basic validation -------
+//     if (!email && !contact) {
+//       return serverError(res, "Email or mobile number is required for login.");
+//     }
+//     if (!password) {
+//       return serverError(res, "Password is required for login.");
+//     }
+
+//     // ------- Find user by email / contact -------
+//     const findCondition: any = {};
+//     if (email) findCondition.email = email;
+//     if (contact) findCondition.contact = contact;
+
+//     const user: any = await User.findOne({ where: findCondition });
+//     if (!user) {
+//       return serverError(res, "User not found. Please register first.");
+//     }
+
+//     // ------- Check password -------
+//     const isPasswordValid = await checkPassword(password, user.password);
+//     if (!isPasswordValid) {
+//       return unauthorized(res, "Invalid email/contact or password.");
+//     }
+
+//     //  registration completed & email verified
+//     if (!user.isEmailVerified) {
+//       return serverError(res, "Email not verified. Please complete signup first.");
+//     }
+
+//     //  password correct, OTP not yet provided -------
+//     if (!otp) {
+//       const loginOTP = generateOTP();
+//       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+//       // Find or create OTP row for this user
+//       let otpRecord: any = await Otp.findOne({
+//         where: { userId: user.id },
+//       });
+
+//       if (!otpRecord) {
+//         otpRecord = await Otp.create({
+//           userId: user.id,
+//           email: user.email,
+//           contact: user.contact,
+//           otp: null,
+//           mbOTP: null,
+//           loginOTP: String(loginOTP),
+//           otpVerify: false,
+//           otpExpiresAt: expiresAt,      // reuse same expiry field
+//           mbOTPExpiresAt: null,
+//           isDeleted: false,
+//           isEmailVerified: user.isEmailVerified,
+//           isMobileVerified: user.isMobileVerified,
+//           isActive: true,
+//         } as any);
+//       } else {
+//         otpRecord.loginOTP = String(loginOTP);
+//         otpRecord.otpExpiresAt = expiresAt;
+//         otpRecord.otpVerify = false;
+//         otpRecord.isDeleted = false;
+//         await otpRecord.save();
+//       }
+
+
+//       // Send OTP – prefer email, fallback to mobile
+//       let sendResult: any;
+//       if (user.email) {
+//         sendResult = await sendOTP({ email: user.email, otp: loginOTP }, "login");
+//       } else if (user.contact) {
+//         sendResult = await sendOTP(
+//           { contact: user.contact, mbOTP: loginOTP },
+//           "login"
+//         );
+//       }
+
+//       if (!sendResult || !sendResult.success) {
+//         return serverError(
+//           res,
+//           sendResult?.message || "Failed to send login OTP."
+//         );
+//       }
+//  const tokenPayload = {
+//       id: user.id,
+//       email: user.email,
+//       contact: user.contact,
+//       companyId: user.companyId || null,
+//       // roleId: user.roleId, // if you have this field
+//     };
+
+//     const authToken = await generateToken(tokenPayload, "30d");
+//       const nameData = user.email || user.contact || `User ID ${user.id}`;
+//       return res.status(200).json({
+//         success: true,
+//         step: "otp",
+//         message: `Password verified. Login OTP sent to ${nameData}.`,
+//       });
+//     }
+
+//     // password + OTP verify
+//     const otpRecord: any = await Otp.findOne({
+//       where: {
+//         userId: user.id,
+//         loginOTP: String(otp),
+//         isDeleted: false,
+//       },
+//     });
+
+//     if (!otpRecord) {
+//       return unauthorized(res, "Invalid login OTP.");
+//     }
+
+//     const now = new Date();
+//     if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
+//       return unauthorized(res, "Login OTP has expired. Please try again.");
+//     }
+
+//     // Mark login OTP as used
+//     otpRecord.loginOTP = null;
+//     otpRecord.otpExpiresAt = null;
+//     otpRecord.otpVerify = true;
+//     await otpRecord.save();
+
+//     // Optional: save FCM token
+//     // if (fcmToken) {
+//     //   await user.update({ fcmToken });
+//     // }
+
+//     // Generate JWT token
+//     const authToken = generateToken({
+//       id: user.id,
+//       email: user.email,
+//       contact: user.contact,
+//     });
+
+//     const nameData = user.email || user.contact || `User ID ${user.id}`;
+//     return sendEncryptedResponse(
+//       res,
+//       {
+//         userId: user.id,
+//         authToken,
+//       },
+//       `Login successful for ${nameData}.`
+//     );
+//   } catch (error: any) {
+//     console.error("Error in /login:", error);
+//     return serverError(res, "Something went wrong during login.");
+//   }
+// });
 router.post("/login", async (req: Request, res: Response) => {
   try {
-    const bodyData = req.body;
-    const { email, contact, fcmToken } = bodyData;
+    const { email, contact, password, otp, fcmToken } = req.body;
 
-    // Validation
+    // ------- Basic validation -------
     if (!email && !contact) {
       return serverError(res, "Email or mobile number is required for login.");
     }
+    if (!password) {
+      return serverError(res, "Password is required for login.");
+    }
 
-    // User Lookup
+    // ------- Find user by email / contact -------
     const findCondition: any = {};
     if (email) findCondition.email = email;
     if (contact) findCondition.contact = contact;
 
-    const user = await User.findOne({ where: findCondition });
+    const user: any = await User.findOne({ where: findCondition });
     if (!user) {
       return serverError(res, "User not found. Please register first.");
     }
 
-    // OTP Verification Check
-    const isVerified =
-      (email && user.isEmailVerified) ||
-      (contact && user.isMobileVerified);
+    // ------- Check password -------
+    const isPasswordValid = await checkPassword(password, user.password);
+    if (!isPasswordValid) {
+      return unauthorized(res, "Invalid email/contact or password.");
+    }
 
-    if (!isVerified) {
+    // registration completed & email verified
+    if (!user.isEmailVerified) {
       return serverError(
         res,
-        "OTP not verified. Please verify your email or mobile number before login."
+        "Email not verified. Please complete signup first."
       );
     }
 
-    // JWT Token
-    const authToken = generateToken(user);
+    // ------- STEP 1: password correct, OTP NOT yet provided -------
+    if (!otp) {
+      const loginOTP = generateOTP();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Optional: Save/update FCM token
+      // Find or create OTP row for this user
+      let otpRecord: any = await Otp.findOne({
+        where: { userId: user.id },
+      });
+
+      if (!otpRecord) {
+        otpRecord = await Otp.create({
+          userId: user.id,
+          email: user.email,
+          contact: user.contact,
+          otp: null,
+          mbOTP: null,
+          loginOTP: String(loginOTP),
+          otpVerify: false,
+          otpExpiresAt: expiresAt,
+          mbOTPExpiresAt: null,
+          isDeleted: false,
+          isEmailVerified: user.isEmailVerified,
+          isMobileVerified: user.isMobileVerified,
+          isActive: true,
+        } as any);
+      } else {
+        otpRecord.loginOTP = String(loginOTP);
+        otpRecord.otpExpiresAt = expiresAt;
+        otpRecord.otpVerify = false;
+        otpRecord.isDeleted = false;
+        await otpRecord.save();
+      }
+
+      // Send OTP – prefer email, fallback to mobile
+      let sendResult: any;
+      if (user.email) {
+        sendResult = await sendOTP({ email: user.email, otp: loginOTP }, "login");
+      } else if (user.contact) {
+        sendResult = await sendOTP(
+          { contact: user.contact, mbOTP: loginOTP },
+          "login"
+        );
+      }
+
+      if (!sendResult || !sendResult.success) {
+        return serverError(
+          res,
+          sendResult?.message || "Failed to send login OTP."
+        );
+      }
+
+      const nameData = user.email || user.contact || `User ID ${user.id}`;
+      return res.status(200).json({
+        success: true,
+        step: "otp",
+        message: `Password verified. Login OTP sent to ${nameData}.`,
+      });
+    }
+
+    // ------- STEP 2: password + OTP verify -------
+    const otpRecord: any = await Otp.findOne({
+      where: {
+        userId: user.id,
+        loginOTP: String(otp),
+        isDeleted: false,
+      },
+    });
+
+    if (!otpRecord) {
+      return unauthorized(res, "Invalid login OTP.");
+    }
+
+    const now = new Date();
+    if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
+      return unauthorized(res, "Login OTP has expired. Please try again.");
+    }
+
+    // Mark login OTP as used
+    otpRecord.loginOTP = null;
+    otpRecord.otpExpiresAt = null;
+    otpRecord.otpVerify = true;
+    await otpRecord.save();
+
+    // Optional: save FCM token
     // if (fcmToken) {
     //   await user.update({ fcmToken });
     // }
 
-    // Final Response
+    // ------- Generate JWT token (FINAL login) -------
+    // const tokenPayload = {
+    //   id: user.id,
+    //   email: user.email,
+    //   contact: user.contact,
+    //   companyId: user.companyId || null,
+    //   // roleId: user.roleId, // if you add this later
+    // };
+
+    // const token = await generateToken(tokenPayload, "30d");
+
     const nameData = user.email || user.contact || `User ID ${user.id}`;
     return sendEncryptedResponse(
       res,
       {
         userId: user.id,
-        authToken,
+        // token,
       },
       `Login successful for ${nameData}.`
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in /login:", error);
     return serverError(res, "Something went wrong during login.");
   }
 });
+
+// Login: verify OTP and issue JWT
+// router.post("/login/verify-otp", async (req: Request, res: Response) => {
+//   try {
+//     const { userId, otp, fcmToken } = req.body;
+
+//     if (!userId || !otp) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId and otp are required",
+//         data: null,
+//       });
+//     }
+
+//     const user: any = await User.findByPk(userId);
+//     if (!user) {
+//       return notFound(res, "User not found");
+//     }
+
+//     const otpRecord: any = await Otp.findOne({
+//       where: {
+//         userId,
+//         loginOTP: String(otp),
+//         isDeleted: false,
+//       },
+//     });
+
+//     if (!otpRecord) {
+//       return unauthorized(res, "Invalid login OTP.");
+//     }
+
+//     const now = new Date();
+//     if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
+//       return unauthorized(res, "Login OTP has expired. Please try again.");
+//     }
+
+//     // Mark login OTP as used
+//     otpRecord.loginOTP = null;
+//     otpRecord.otpExpiresAt = null;
+//     otpRecord.otpVerify = true;
+//     await otpRecord.save();
+
+//     // Optional: save FCM token on user
+//     // if (fcmToken) {
+//     //   await user.update({ fcmToken });
+//     // }
+
+//     // Generate JWT token
+//     const authToken = generateToken({
+//       id: user.id,
+//       email: user.email,
+//       contact: user.contact,
+//     });
+
+//     const nameData = user.email || user.contact || `User ID ${user.id}`;
+//     // return sendEncryptedResponse(
+//     //   res,
+//     //   {
+//     //     userId: user.id,
+//     //     authToken,
+//     //   },
+//     //   `Login successful for ${nameData}.`
+//     // );
+//     return res.status(200).json({
+//       success: true,
+//       message: `Login successful for ${nameData}.`,
+//       data: {
+//         userId: user.id,
+//         token: authToken,     
+//       },
+//     });
+//   } catch (error: any) {
+//     console.error("Error in /login/verify-otp:", error);
+//     return serverError(res, "Something went wrong during login OTP verification.");
+//   }
+// });
+
+router.post("/login/verify-otp", async (req: Request, res: Response) => {
+  try {
+    const { userId, otp } = req.body;
+
+    if (!userId || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and otp are required",
+      });
+    }
+
+    const user: any = await User.findByPk(userId);
+    if (!user) {
+      return notFound(res, "User not found");
+    }
+
+    const otpRecord: any = await Otp.findOne({
+      where: {
+        userId: user.id,
+        loginOTP: String(otp),
+        isDeleted: false,
+      },
+    });
+
+    if (!otpRecord) {
+      return unauthorized(res, "Invalid login OTP.");
+    }
+
+    const now = new Date();
+    if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
+      return unauthorized(res, "Login OTP has expired. Please try again.");
+    }
+
+    otpRecord.loginOTP = null;
+    otpRecord.otpExpiresAt = null;
+    otpRecord.otpVerify = true;
+    await otpRecord.save();
+
+    // 👇 IMPORTANT: await here
+    const tokenPayload = {
+      id: user.id,
+      email: user.email,
+      contact: user.contact,
+      companyId: user.companyId || null,
+    };
+
+    const token = await generateToken(tokenPayload, "30d"); // ✅ await
+
+    const nameData = user.email || user.contact || `User ID ${user.id}`;
+
+    return res.status(200).json({
+      success: true,
+      message: `Login successful for ${nameData}.`,
+      data: {
+        userId: user.id,
+        token, // now a proper JWT string
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in /login/verify-otp:", error);
+    return serverError(res, "Something went wrong during login OTP verification.");
+  }
+});
+
+//change password 
+router.post("/changePassword",
+  tokenMiddleWare,                       
+  async (req: Request, res: Response) => {
+    const t = await dbInstance.transaction();
+
+    try {
+      const { oldPassword, newPassword, confirmPassword } = req.body;
+
+      // validation
+      if (!oldPassword || !newPassword || !confirmPassword) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "oldPassword, newPassword and confirmPassword are required",
+        });
+      }
+
+      if (newPassword !== confirmPassword) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "newPassword and confirmPassword must match",
+        });
+      }
+
+      if (newPassword.length < 6) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "New password must be at least 6 characters.",
+        });
+      }
+
+      //  Get logged-in user ID from token
+      const authUser: any = (req as any).user;  
+
+      if (!authUser || !authUser.id) {
+        await t.rollback();
+        return unauthorized(res, "Invalid or missing token user.");
+      }
+
+      const user = await User.findByPk(authUser.id, {
+        attributes: ["id", "email", "password"],
+        transaction: t,
+      });
+
+      if (!user) {
+        await t.rollback();
+        return other(res, 404, "User not found.");
+      }
+
+      //  Check old password
+      const isOldValid = await checkPassword(oldPassword, user.password);
+      if (!isOldValid) {
+        await t.rollback();
+        return other(res, 400, "Your old password is wrong.");
+      }
+
+      // Set new password 
+      user.password = newPassword;
+      await user.save({ transaction: t });
+
+      await t.commit();
+
+      return res.status(200).json({
+        success: true,
+        message: "Your password has been successfully updated.",
+      });
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "changePassword error", error });
+      return serverError(res, error.message || "Failed to change password.");
+    }
+  }
+);
+
+//forgot password
+router.post("/forgotPassword", async (req, res) => {
+  let t = await dbInstance.transaction();
+
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({ where: { email } });
+
+    if (!user) {
+      await t.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "User not found with this email.",
+      });
+    }
+
+    // Generate new password
+    const newPWD = generateRandomPassword();  // ✔ e.g. "Xyz@1234"
+
+    // Send email
+    // const mailData = {
+    //   to: email,
+    //   subject: "Your New Password",
+    //   html: `<p>Your new password is <strong>${newPWD}</strong></p>`,
+    // };
+    // await sendEmail(mailData);
+
+    //     //send email - forgot pass
+    const mailData: any = {
+      to: email,
+      subject: "ZarklyX-New Password",
+      html: `<p> Your new password is <strong>${newPWD}</strong></p>.`,
+    };
+
+    sendEmail(mailData);
+
+    // Update new password (hashing enabled)
+    user.password = newPWD;        // ✔ triggers hashing in model setter
+    await user.save({ transaction: t });
+
+    await t.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: "New password sent to your email.",
+    });
+  } catch (error: any) {
+    await t.rollback();
+    ErrorLogger.write({ type: "forgotPassword error", error });
+
+    return serverError(res, error.message || "Something went wrong.");
+  }
+});
+// router.post("/forgotPassword", async (req, res) => {
+//   let t = await dbInstance.transaction();
+//   try {
+//     const { email } = req.body;
+
+//     let user = await UserData(req.body);
+
+//     if (!user) {
+//       throw unauthorized(res, "Invalid Email");
+//     }
+//     const newPWD = generateRandomPassword();
+
+//     //send email - forgot pass
+//     const mailData: any = {
+//       to: email,
+//       subject: "GreenBolt-New Password",
+//       html: `<p> Your new password is <strong>${newPWD}</strong></p>.`,
+//     };
+
+//     sendEmail(mailData);
+
+//     // update newly generated password
+//     const usr = await User.update({ password: newPWD }, { where: { email }, transaction: t });
+
+//     await t.commit();
+//     // success(res, user, "New Password Sent via Email");
+//     sendEncryptedResponse(res, user, "New Password Sent via Email");
+//   } catch (error: any) {
+//     ErrorLogger.write({ type: "forgotPassword error", error });
+//     await t.rollback();
+//     serverError(res, error);
+//   }
+// });
+
+// router.post("/login", async (req: Request, res: Response) => {
+//   try {
+//     const bodyData = req.body;
+//     const { email, contact, fcmToken } = bodyData;
+
+//     // Validation
+//     if (!email && !contact) {
+//       return serverError(res, "Email or mobile number is required for login.");
+//     }
+
+//     // User Lookup
+//     const findCondition: any = {};
+//     if (email) findCondition.email = email;
+//     if (contact) findCondition.contact = contact;
+
+//     const user = await User.findOne({ where: findCondition });
+//     if (!user) {
+//       return serverError(res, "User not found. Please register first.");
+//     }
+
+//     // OTP Verification Check
+//     const isVerified =
+//       (email && user.isEmailVerified) ||
+//       (contact && user.isMobileVerified);
+
+//     if (!isVerified) {
+//       return serverError(
+//         res,
+//         "OTP not verified. Please verify your email or mobile number before login."
+//       );
+//     }
+
+//     // JWT Token
+//     const authToken = generateToken(user);
+
+//     // Optional: Save/update FCM token
+//     // if (fcmToken) {
+//     //   await user.update({ fcmToken });
+//     // }
+
+//     // Final Response
+//     const nameData = user.email || user.contact || `User ID ${user.id}`;
+//     return sendEncryptedResponse(
+//       res,
+//       {
+//         userId: user.id,
+//         authToken,
+//       },
+//       `Login successful for ${nameData}.`
+//     );
+//   } catch (error) {
+//     console.error("Error in /login:", error);
+//     return serverError(res, "Something went wrong during login.");
+//   }
+// });
 
 export default router;

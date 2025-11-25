@@ -148,6 +148,5 @@ export class Company extends Model<
   }
 }
 
-// ✅ yeh line zaroor add karo
 export const initCompanyModel = (sequelize: Sequelize) =>
   Company.initModel(sequelize);
