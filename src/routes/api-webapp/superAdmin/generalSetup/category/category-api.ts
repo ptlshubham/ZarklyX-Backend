@@ -102,13 +102,11 @@ router.get("/getByCategoryId/:id", async (req, res): Promise<any> => {
 //     return serverError(res, "Something went wrong during Category module update.");
 //   }
 // });
-router.post("/updateCategoryById/:id", async (req, res): Promise<any> => {
+router.post("/updateCategoryById", async (req, res): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const id = Number(req.params.id);
-    console.log("Route/updateCategoryById -> id:", id);
 
-    const moduleData = await updateCategory(id, req.body, t);
+    const moduleData = await updateCategory(req.body.id, req.body, t);
     await t.commit();
 
     return res.status(200).json({
@@ -170,7 +168,7 @@ router.post("/updateCategoryById/:id", async (req, res): Promise<any> => {
 
 
 // Soft delete Category module (isActive = false)
-router.get("/removeById/:id", tokenMiddleWare, async (req, res): Promise<any> => {
+router.get("/removeById/:id", async (req, res): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
     const moduleData = await deleteCategory(Number(req.params.id), t);
