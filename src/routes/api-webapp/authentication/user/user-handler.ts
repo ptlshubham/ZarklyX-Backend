@@ -1,7 +1,8 @@
 
-import { User } from "../../api-webapp/user/user-model"; // Ensure correct import
+import { User } from "../../../../routes/api-webapp/authentication/user/user-model"; // Ensure correct import
 import { Op, Transaction } from "sequelize";
-const { MakeQuery } = require("../../../services/model-service");
+const { MakeQuery } =require ("../../../../services/model-service");
+// const { MakeQuery } = require("../../../services/model-service");
 import axios from "axios";
 
 

@@ -6,7 +6,7 @@ import {
     Model,
     Sequelize,
 } from "sequelize";
-import { checkPassword, hashPassword } from "../../../services/password-service";
+import { checkPassword, hashPassword } from "../../../../services/password-service";
 
 export class User extends Model<
     InferAttributes<User>,

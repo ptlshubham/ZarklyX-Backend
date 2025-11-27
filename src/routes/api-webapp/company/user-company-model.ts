@@ -110,7 +110,7 @@ import {
   Model,
   Sequelize,
 } from "sequelize";
-import { User } from "../../../routes/api-webapp/user/user-model";
+import { User } from "../../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../../routes/api-webapp/company/company-model";
 
 export class UserCompany extends Model<

@@ -1,7 +1,7 @@
 import { Company } from "../../../routes/api-webapp/company/company-model";
 import { UserCompany } from "./user-company-model";
 import { Op, Transaction, Sequelize } from "sequelize";
-import { User } from "../../../routes/api-webapp/user/user-model";
+import { User } from "../../../routes/api-webapp/authentication/user/user-model";
 // Get all companies
 export const getAllCompanies = async () => {
   return await Company.findAll({

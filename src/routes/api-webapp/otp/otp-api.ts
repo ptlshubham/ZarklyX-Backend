@@ -23,7 +23,7 @@ import { sendEmail } from "../../../services/mailService";
 import { generateToken } from "../../../services/jwtToken-service";
 import { tokenMiddleWare } from "../../../services/jwtToken-service";
 import { Otp } from "../../api-webapp/otp/otp-model";
-import { User } from "../../../routes/api-webapp/user/user-model";
+import { User } from "../../../routes/api-webapp/authentication/user/user-model";
 import { sendOTP } from "../../../services/otp-service";
 // import OtpTempStore  from "./otp-temp-store";
 
@@ -166,7 +166,7 @@ const router = express.Router();
 //     }
 //   }
 // );
-router.post("/send-otp", async (req: Request, res: Response) => {
+router.post("/send-otp", async (req: Request, res: Response): Promise<any>=> {
   try {
     const bodyData = req.body;
 
@@ -176,7 +176,8 @@ router.post("/send-otp", async (req: Request, res: Response) => {
 
     // Email or Mobile required
     if (!email && !contact) {
-      return serverError(res, "Email or mobile number is required.");
+       serverError(res, "Email or mobile number is required.");
+       return;
     }
 
     // Find user (existing user only)
@@ -187,7 +188,8 @@ router.post("/send-otp", async (req: Request, res: Response) => {
     const user = await User.findOne({ where: whereCondition });
 
     if (!user) {
-      return serverError(res, "User not found. Please register first.");
+       serverError(res, "User not found. Please register first.");
+       return;
     }
 
     // Generate OTP
@@ -243,22 +245,25 @@ router.post("/send-otp", async (req: Request, res: Response) => {
     }
 
     if (!sendResult || !sendResult.success) {
-      return serverError(res, sendResult?.message || "Failed to send OTP.");
+       serverError(res, sendResult?.message || "Failed to send OTP.");
+       return;
     }
 
     const nameData = email || contact;
-    return sendEncryptedResponse(
+     sendEncryptedResponse(
       res,
       { userId: user.id },
       `OTP sent to ${nameData}`
     );
+    return;
   } catch (error: any) {
     console.error("Error in /send-otp:", error);
     ErrorLogger.write({ type: "send-otp error", error });
-    return serverError(
+     serverError(
       res,
       error.message || "Something went wrong while sending OTP."
     );
+    return;
   }
 });
 
@@ -381,7 +386,7 @@ router.post("/send-otp", async (req: Request, res: Response) => {
 // );
 
 
-router.post("/resend-otp", async (req: Request, res: Response) => {
+router.post("/resend-otp", async (req: Request, res: Response): Promise<any> => {
   const sequelize = (Otp as any).sequelize;
   const t = await sequelize!.transaction();
   try {
@@ -628,7 +633,7 @@ router.post("/resend-otp", async (req: Request, res: Response) => {
 //     );
 //   }
 // });
-router.post("/verify-otp", async (req: Request, res: Response) => {
+router.post("/verify-otp", async (req: Request, res: Response): Promise<any>=> {
   const sequelize = (Otp as any).sequelize;
   const t = await sequelize!.transaction();
   try {
@@ -776,19 +781,7 @@ router.post("/verify-otp", async (req: Request, res: Response) => {
 //     );
 //   }
 // });
-router.get("/getAllOtp", async (req: Request, res: Response) => {
-  try {
-    const result = await getAllOtp(req.query);
-    return sendEncryptedResponse(res, result, "Got all OTP records.");
-  } catch (error: any) {
-    console.error("Error in /getAllOtp:", error);
-    ErrorLogger.write({ type: "getAllOtp error", error });
-    return serverError(
-      res,
-      error.message || "Failed to fetch OTP records."
-    );
-  }
-});
+
 
 export default router;
 

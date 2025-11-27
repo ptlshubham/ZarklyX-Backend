@@ -1,12 +1,12 @@
 import type { Sequelize } from "sequelize";
 
 // Models for Web -app
-import { User } from "../../routes/api-webapp/user/user-model";
+import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
 import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
-import { Category, initCategoryModel } from "../../routes/api-webapp/category/category-model";
-import { PremiumModule ,initPremiumModuleModel} from "../../routes/api-webapp/premiumModule/premiumModule-model"; 
+import { Category, initCategoryModel } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
+import { PremiumModule ,initPremiumModuleModel } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
 
 export {
   User,
@@ -19,11 +19,14 @@ export {
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
+  // User.initModel(sequelize);
   User.initModel(sequelize);
   Company.initModel(sequelize);
+  PremiumModule.initModel(sequelize);
+  Category.initModel(sequelize);
  initUserCompanyModel(sequelize);
- initCategoryModel(sequelize);
- initPremiumModuleModel(sequelize);
+//  initCategoryModel(sequelize);
+//  initPremiumModuleModel(sequelize);
   Otp.initModel(sequelize);
 // LoginHistory.initModel(sequelize);
 

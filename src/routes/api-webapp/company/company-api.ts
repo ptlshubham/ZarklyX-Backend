@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import { Company } from "../../../routes/api-webapp/company/company-model";
 import { UserCompany } from "../../../routes/api-webapp/company/user-company-model"
-import { User } from "../../../routes/api-webapp/user/user-model";
+import { User } from "../../../routes/api-webapp/authentication/user/user-model";
 import {
   getUserCompanies,
   getCompanyWithUserRole,
@@ -31,7 +31,7 @@ const router = express.Router();
  * Get all companies associated with the logged-in user
  * Returns list of companies with user's role in each
  */
-router.get("/list", tokenMiddleWare, async (req: Request, res: Response) => {
+router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promise<any>=> {
   try {
     const userId: any = (req as any).user?.id;
     if (!userId) {
@@ -86,7 +86,7 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response) => {
  */
 router.get("/:companyId/details",
   tokenMiddleWare,
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any> => {
     try {
       const userId: any = (req as any).user?.id;
       const { companyId } = req.params;
@@ -137,7 +137,7 @@ router.get("/:companyId/details",
  */
 router.post("/switch/:companyId",
   tokenMiddleWare,
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     try {
       const userId: any = (req as any).user?.id;
       const { companyId } = req.params;
@@ -189,7 +189,7 @@ router.post("/switch/:companyId",
  * Create a new company (Admin only)
  */
 router.post("/addCompany",
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -323,7 +323,7 @@ router.post("/addCompany",
  * Update company details (Admin/Owner only)
  */
 router.put("/:companyId/update",
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -376,7 +376,7 @@ router.put("/:companyId/update",
  * Add a user to a company (Admin/Owner only)
  */
 router.post("/:companyId/add-user",
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -452,7 +452,7 @@ router.post("/:companyId/add-user",
  * Remove a user from a company (Admin/Owner only)
  */
 router.delete("/:companyId/remove-user/:targetUserId",
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;

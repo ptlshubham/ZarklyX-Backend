@@ -28,8 +28,10 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.1",
     "ora": "5.4.1",
+    "qrcode": "^1.5.4",
     "sequelize": "^6.37.7",
     "sequelize-cli": "^6.6.2",
+    "speakeasy": "^2.0.0",
     "winston": "^3.8.2",
     "winston-daily-rotate-file": "^4.7.1"
   },
