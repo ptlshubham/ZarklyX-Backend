@@ -15,6 +15,7 @@ export class Category extends Model<
   declare icon: string | null;
   declare name: string;
   declare isActive: boolean;
+  declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
@@ -44,6 +45,11 @@ export class Category extends Model<
           type: DataTypes.BOOLEAN,
           allowNull: false,
           defaultValue: true,
+        },
+        isDeleted: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
         },
         createdAt: {
           type: DataTypes.DATE,

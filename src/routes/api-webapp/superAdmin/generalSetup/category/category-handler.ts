@@ -24,7 +24,7 @@ export const getCategoryByID = (params: any) => {
 export const getAllCategorys = async () => {
   return await Category.findAll({
     where: {
-      isActive: true,
+      isDeleted: false,
     },
     raw: true,
   });
@@ -33,7 +33,7 @@ export const getAllCategorys = async () => {
 // Soft delete Category module (set isActive = false)
 export const deleteCategory = async (id: number, t: any) => {
   return await Category.update(
-    { isActive: false },
+    { isActive: false, isDeleted: true },
     { where: { id }, transaction: t }
   );
 };
