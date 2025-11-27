@@ -1,15 +1,23 @@
 import express from "express";
 import { Request, Response } from "express";
-import { notFound } from "../../../services/response"
-import { sendEncryptedResponse } from "../../../services/encryptResponse-service";
-import dbInstance from "../../../db/core/control-db";
-import { alreadyExist, serverError, other, unauthorized, } from "../../../utils/responseHandler";
+// import { notFound } from "../../../../services/response";
+import { notFound } from "../../../../services/response";
+// import { sendEncryptedResponse } from "../../../../services/encryptResponse-service";
+import dbInstance from "../../../../db/core/control-db";
+// import { alreadyExist, serverError, other, unauthorized, } from "../../../../utils/responseHandler";
+import {
+  alreadyExist,
+  serverError,
+  unauthorized,
+  sendEncryptedResponse,
+  other,
+} from "../../../../utils/responseHandler";
 import {
   generateOTP
-} from "../../../services/password-service";
-import { sendOTP } from "../../../services/otp-service";
-import { generateToken, tokenMiddleWare } from "../../../services/jwtToken-service";
-import { hashPassword, checkPassword, generateRandomPassword } from "../../../services/password-service";
+} from "../../../../services/password-service";
+import { sendOTP } from "../../../../services/otp-service";
+import { generateToken, tokenMiddleWare } from "../../../../services/jwtToken-service";
+import { hashPassword, checkPassword, generateRandomPassword } from "../../../../services/password-service";
 import {
   updateUser,
   deleteUser,
@@ -18,19 +26,18 @@ import {
   updateTheme,
   UserData,
   generateUniqueSecretCode,
-} from "./user-handler";
-import { sendEmail } from "../../../services/mailService";
-import { createCompany, addUserToCompany } from "../company/company-handler";
-import { Otp } from "../../../routes/api-webapp/otp/otp-model";
-import { User } from "../../api-webapp/user/user-model";
-import { Company } from "../../api-webapp/company/company-model";
-import { Category } from "../../../routes/api-webapp/category/category-model";
-import { PremiumModule } from "../../../routes/api-webapp/premiumModule/premiumModule-model";
+} from "../../authentication/user/user-handler";
+import { sendEmail } from "../../../../services/mailService";
+import { createCompany, addUserToCompany } from "../../company/company-handler";
+import { Otp } from "../../../../routes/api-webapp/otp/otp-model";
+import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
+import { Company } from "../../../../routes/api-webapp/company/company-model";
+import { Category } from "../../../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
+import { PremiumModule } from "../../../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
 import { Op } from "sequelize";
 // import { ErrorLogger } from "../../../db/core/logger/error-logger";
-import ErrorLogger from "../../../db/core/logger/error-logger";
+import ErrorLogger from "../../../../db/core/logger/error-logger";
 // import { responseEncoding } from "axios";
-
 
 const router = express.Router();
 // type Params = { id: string };
@@ -277,9 +284,9 @@ const router = express.Router();
 //         lastName,
 //         email,
 //         contact: localNumber,
-//         countryCode: finalCountryCode,  // 👈 store here
-//         password: passwordHash,        // 👈 hashed
-//         userType: null,                // step 4 pe set hoga
+//         countryCode: finalCountryCode,  //  store here
+//         password: passwordHash,        // hashed
+//         userType: null,               
 //         secretCode: finalSecretCode,
 //         isthemedark: false,
 //         categories: null,
@@ -357,218 +364,450 @@ const router = express.Router();
 // });
 
 //signup 
-router.post("/register/start", async (req: Request, res: Response) => {
-  const t = await dbInstance.transaction();
-  try {
-    const {
-      referId,
-      firstName,
-      lastName,
-      email,
-      contact,
-      password,
-      confirmPassword,
-      countryCode,   // optional from FE
-      // secretCode  // optional, 
-    } = req.body;
+router.post(
+  "/register/start",
+  async (req: Request, res: Response): Promise<void> => {
+    const t = await dbInstance.transaction();
 
-    console.log("[register/start] BODY:", req.body);
+    try {
+      const {
+        referId,
+        firstName,
+        lastName,
+        email,
+        contact,
+        password,
+        confirmPassword,
+        countryCode, // optional from FE
+      } = req.body;
 
-    // 1) Basic field validation
-    if (!firstName || !lastName || !email || !contact) {
-      await t.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "firstName, lastName, email, contact are required",
+      console.log("[register/start] BODY (safe):", {
+        referId,
+        firstName,
+        lastName,
+        email,
+        contact,
+        countryCode,
       });
-    }
 
-    // 2) Password validations
-    if (!password || !confirmPassword) {
-      await t.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "password and confirmPassword are required",
-      });
-    }
+      /* 1) Basic field validation */
+      if (!firstName || !lastName || !email || !contact) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "firstName, lastName, email, contact are required",
+        });
+      }
 
-    if (password !== confirmPassword) {
-      await t.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "password and confirmPassword must match",
-      });
-    }
+      /* 2) Password validations – this is your first factor for 2FA */
+      if (!password || !confirmPassword) {
+        await t.rollback();
+         res.status(400).json({
+          success: false,
+          message: "password and confirmPassword are required",
+        });
+      }
 
-    if (password.length < 6) {
-      await t.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "Password must be at least 6 characters.",
-      });
-    }
+      if (password !== confirmPassword) {
+        await t.rollback();
+         res.status(400).json({
+          success: false,
+          message: "password and confirmPassword must match",
+        });
+      }
 
-    // IMPORTANT: DO NOT HASH HERE
-    // const passwordHash = await hashPassword(password);
-    // We store plain password => model setter will hash it.
+      if (password.length < 6) {
+        await t.rollback();
+         res.status(400).json({
+          success: false,
+          message: "Password must be at least 6 characters.",
+        });
+      }
 
-    //  Contact + Country Code logic
-    const rawContact: string = String(contact).trim();
-    const digitsOnly = rawContact.replace(/\D/g, ""); // only numbers
+      /* 3) Contact + Country Code logic */
+      const rawContact: string = String(contact).trim();
+      const digitsOnly = rawContact.replace(/\D/g, "");
 
-    if (digitsOnly.length < 10) {
-      await t.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "Invalid contact number.",
-      });
-    }
+      if (digitsOnly.length < 10) {
+        await t.rollback();
+         res.status(400).json({
+          success: false,
+          message: "Invalid contact number.",
+        });
+      }
 
-    let finalCountryCode = "+91"; // default India
-    let localNumber = digitsOnly;
+      let finalCountryCode = "+91"; // default India
+      let localNumber = digitsOnly;
 
-    // Case 1: starts with "+" e.g. +919876543210, +441234567890
-    if (rawContact.startsWith("+")) {
-      if (digitsOnly.length > 10) {
+      // Case 1: starts with "+" e.g. +919876543210
+      if (rawContact.startsWith("+")) {
+        if (digitsOnly.length > 10) {
+          const ccLen = digitsOnly.length - 10;
+          finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
+          localNumber = digitsOnly.slice(ccLen);
+        }
+      }
+      // Case 2: full intl number without "+" e.g. 919876543210
+      else if (digitsOnly.length > 10) {
         const ccLen = digitsOnly.length - 10;
         finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
         localNumber = digitsOnly.slice(ccLen);
       }
-    }
-    // Case 2: full intl number w/o "+" e.g. 919876543210, 441234567890
-    else if (digitsOnly.length > 10) {
-      const ccLen = digitsOnly.length - 10;
-      finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
-      localNumber = digitsOnly.slice(ccLen);
-    }
-    // Case 3: plain 10-digit -> assume India
-    else if (digitsOnly.length === 10) {
-      finalCountryCode = "+91";
-      localNumber = digitsOnly;
-    }
+      // Case 3: plain 10-digit (assume India)
+      else if (digitsOnly.length === 10) {
+        finalCountryCode = "+91";
+        localNumber = digitsOnly;
+      }
 
-    // If FE sends explicit countryCode, override
-    if (countryCode) {
-      finalCountryCode = String(countryCode).trim();
-    }
+      // Explicit FE override
+      if (countryCode) {
+        finalCountryCode = String(countryCode).trim();
+      }
 
-    console.log("[register/start] Parsed contact:", {
-      rawContact,
-      finalCountryCode,
-      localNumber,
-    });
+      console.log("[register/start] Parsed contact:", {
+        rawContact,
+        finalCountryCode,
+        localNumber,
+      });
 
-    // 4) Duplicate check (email + contact)
-    const existingUser: any = await User.findOne({
-      where: {
-        [Op.or]: [{ email }, { contact: localNumber }],
-      },
-      transaction: t,
-    });
+      /* 4) Duplicate check (email + contact) */
+      const existingUser: any = await User.findOne({
+        where: {
+          [Op.or]: [{ email }, { contact: localNumber }],
+        },
+        transaction: t,
+      });
 
-    if (existingUser) {
-      await t.rollback();
-      return alreadyExist(res, "Email or contact already exists");
-    }
+      if (existingUser) {
+        await t.rollback();
+         alreadyExist(res, "Email or contact already exists");
+         return;
+      }
 
-    const finalSecretCode = await generateUniqueSecretCode();
+      const finalSecretCode = await generateUniqueSecretCode();
 
-    // 5) Create user in registering mode
-    const user: any = await User.create(
-      {
-        referId: referId || null,
-        firstName,
-        lastName,
-        email,
-        contact: localNumber,
-        countryCode: finalCountryCode,
-        password,                       // 👈 plain password, model will hash
-        userType: null,
-        secretCode: finalSecretCode,
-        isthemedark: false,
-        categories: null,
-        isDeleted: false,
-        isEmailVerified: false,
-        isMobileVerified: false,
-        isRegistering: true,
-        registrationStep: 1,
-        isActive: false,
-      },
-      { transaction: t }
-    );
-
-    // 6) OTP generate / save
-    const otpCode = generateOTP();
-    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
-
-    let otpRecord = await Otp.findOne({
-      where: { userId: user.id },
-      transaction: t,
-    });
-
-    if (!otpRecord) {
-      otpRecord = await Otp.create(
+      /* 5) Create user in 'registering' mode
+         NOTE: password is plain here – your User model setter will hash it.
+      */
+      const user: any = await User.create(
         {
-          userId: user.id,
-          email: user.email,
-          contact: user.contact,
-          otp: otpCode,
-          mbOTP: null,
-          loginOTP: null,
-          otpVerify: false,
-          otpExpiresAt: expiry,
-          mbOTPExpiresAt: null,
+          referId: referId || null,
+          firstName,
+          lastName,
+          email,
+          contact: localNumber,
+          countryCode: finalCountryCode,
+          password, // model hashes it → first factor for future login 2FA
+          userType: null,
+          secretCode: finalSecretCode,
+          isthemedark: false,
+          categories: null,
           isDeleted: false,
           isEmailVerified: false,
           isMobileVerified: false,
-          isActive: true,
+          isRegistering: true,
+          registrationStep: 1,
+          isActive: false,
         },
         { transaction: t }
       );
-    } else {
-      otpRecord.email = user.email;
-      otpRecord.contact = user.contact;
-      otpRecord.otp = otpCode;
-      otpRecord.otpExpiresAt = expiry;
-      otpRecord.otpVerify = false;
-      otpRecord.isDeleted = false;
-      await otpRecord.save({ transaction: t });
-    }
 
-    // 7) Send OTP on email
-    const sendResult = await sendOTP({ email, otp: otpCode }, "register");
-    if (!sendResult || !sendResult.success) {
+      /* 6) Generate OTP (second factor, used here for email verification) */
+      const otpCode = generateOTP();
+      const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+
+      let otpRecord = await Otp.findOne({
+        where: { userId: user.id },
+        transaction: t,
+      });
+
+      if (!otpRecord) {
+        otpRecord = await Otp.create(
+          {
+            userId: user.id,
+            email: user.email,
+            contact: user.contact,
+            otp: otpCode, // signup OTP
+            mbOTP: null,
+            loginOTP: null, // separate login 2FA OTP (used in /login)
+            otpVerify: false,
+            otpExpiresAt: expiry,
+            mbOTPExpiresAt: null,
+            isDeleted: false,
+            isEmailVerified: false,
+            isMobileVerified: false,
+            isActive: true,
+          },
+          { transaction: t }
+        );
+      } else {
+        otpRecord.email = user.email;
+        otpRecord.contact = user.contact;
+        otpRecord.otp = otpCode;
+        otpRecord.otpExpiresAt = expiry;
+        otpRecord.otpVerify = false;
+        otpRecord.isDeleted = false;
+        await otpRecord.save({ transaction: t });
+      }
+
+      /* 7) Send OTP on email (second factor) */
+      const sendResult = await sendOTP({ email, otp: otpCode }, "register");
+      if (!sendResult || !sendResult.success) {
+        await t.rollback();
+         serverError(res, sendResult?.message || "Failed to send OTP.");
+         return;
+      }
+
+      await t.commit();
+
+      // If you want ENCRYPTED response (recommended – matches your login),
+      // use sendEncryptedResponse instead of res.status().json():
+       sendEncryptedResponse(
+        res,
+        {
+          userId: user.id,
+          secretCode: user.secretCode,
+          countryCode: finalCountryCode,
+        },
+        `Signup step 1 done. OTP sent to ${email}.`
+      );
+      return;
+
+      // If you want plain JSON instead, comment the above and use:
+      /*
+      return res.status(200).json({
+        success: true,
+        message: `Signup step 1 done. OTP sent to ${email}.`,
+        data: {
+          userId: user.id,
+          secretCode: user.secretCode,
+          countryCode: finalCountryCode,
+        },
+      });
+      */
+    } catch (error: any) {
       await t.rollback();
-      return serverError(res, sendResult?.message || "Failed to send OTP.");
+      ErrorLogger.write({ type: "register/start error", error });
+       serverError(
+        res,
+        error?.message || "Failed to start registration."
+      );
+      return;
     }
-
-    await t.commit();
-
-    return res.status(200).json({
-      success: true,
-      message: `Signup step 1 done. OTP sent to ${email}.`,
-      data: {
-        userId: user.id,
-        secretCode: user.secretCode,
-        countryCode: finalCountryCode,
-      },
-    });
-  } catch (error: any) {
-    await t.rollback();
-    ErrorLogger.write({ type: "register/start error", error });
-    return serverError(res, error.message || "Failed to start registration.");
   }
-});
+);
+// router.post("/register/start", async (req: Request, res: Response): Promise<void> => {
+//   const t = await dbInstance.transaction();
+//   try {
+//     const {
+//       referId,
+//       firstName,
+//       lastName,
+//       email,
+//       contact,
+//       password,
+//       confirmPassword,
+//       countryCode,   // optional from FE
+//       // secretCode  // optional, 
+//     } = req.body;
+
+//     console.log("[register/start] BODY:", req.body);
+
+//     // 1) Basic field validation
+//     if (!firstName || !lastName || !email || !contact) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "firstName, lastName, email, contact are required",
+//       });
+//     }
+
+//     // 2) Password validations
+//     if (!password || !confirmPassword) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "password and confirmPassword are required",
+//       });
+//     }
+
+//     if (password !== confirmPassword) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "password and confirmPassword must match",
+//       });
+//     }
+
+//     if (password.length < 6) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "Password must be at least 6 characters.",
+//       });
+//     }
+
+//     // IMPORTANT: DO NOT HASH HERE
+//     // const passwordHash = await hashPassword(password);
+//     // We store plain password => model setter will hash it.
+
+//     //  Contact + Country Code logic
+//     const rawContact: string = String(contact).trim();
+//     const digitsOnly = rawContact.replace(/\D/g, ""); // only numbers
+
+//     if (digitsOnly.length < 10) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid contact number.",
+//       });
+//     }
+
+//     let finalCountryCode = "+91"; // default India
+//     let localNumber = digitsOnly;
+
+//     // Case 1: starts with "+" e.g. +919876543210, +441234567890
+//     if (rawContact.startsWith("+")) {
+//       if (digitsOnly.length > 10) {
+//         const ccLen = digitsOnly.length - 10;
+//         finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
+//         localNumber = digitsOnly.slice(ccLen);
+//       }
+//     }
+//     // Case 2: full intl number w/o "+" e.g. 919876543210, 441234567890
+//     else if (digitsOnly.length > 10) {
+//       const ccLen = digitsOnly.length - 10;
+//       finalCountryCode = "+" + digitsOnly.slice(0, ccLen);
+//       localNumber = digitsOnly.slice(ccLen);
+//     }
+//     // Case 3: plain 10-digit -> assume India
+//     else if (digitsOnly.length === 10) {
+//       finalCountryCode = "+91";
+//       localNumber = digitsOnly;
+//     }
+
+//     // If FE sends explicit countryCode, override
+//     if (countryCode) {
+//       finalCountryCode = String(countryCode).trim();
+//     }
+
+//     console.log("[register/start] Parsed contact:", {
+//       rawContact,
+//       finalCountryCode,
+//       localNumber,
+//     });
+
+//     // 4) Duplicate check (email + contact)
+//     const existingUser: any = await User.findOne({
+//       where: {
+//         [Op.or]: [{ email }, { contact: localNumber }],
+//       },
+//       transaction: t,
+//     });
+
+//     if (existingUser) {
+//       await t.rollback();
+//       return alreadyExist(res, "Email or contact already exists");
+//     }
+
+//     const finalSecretCode = await generateUniqueSecretCode();
+
+//     // 5) Create user in registering mode
+//     const user: any = await User.create(
+//       {
+//         referId: referId || null,
+//         firstName,
+//         lastName,
+//         email,
+//         contact: localNumber,
+//         countryCode: finalCountryCode,
+//         password,                       // 👈 plain password, model will hash
+//         userType: null,
+//         secretCode: finalSecretCode,
+//         isthemedark: false,
+//         categories: null,
+//         isDeleted: false,
+//         isEmailVerified: false,
+//         isMobileVerified: false,
+//         isRegistering: true,
+//         registrationStep: 1,
+//         isActive: false,
+//       },
+//       { transaction: t }
+//     );
+
+//     // 6) OTP generate / save
+//     const otpCode = generateOTP();
+//     const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+//     let otpRecord = await Otp.findOne({
+//       where: { userId: user.id },
+//       transaction: t,
+//     });
+
+//     if (!otpRecord) {
+//       otpRecord = await Otp.create(
+//         {
+//           userId: user.id,
+//           email: user.email,
+//           contact: user.contact,
+//           otp: otpCode,
+//           mbOTP: null,
+//           loginOTP: null,
+//           otpVerify: false,
+//           otpExpiresAt: expiry,
+//           mbOTPExpiresAt: null,
+//           isDeleted: false,
+//           isEmailVerified: false,
+//           isMobileVerified: false,
+//           isActive: true,
+//         },
+//         { transaction: t }
+//       );
+//     } else {
+//       otpRecord.email = user.email;
+//       otpRecord.contact = user.contact;
+//       otpRecord.otp = otpCode;
+//       otpRecord.otpExpiresAt = expiry;
+//       otpRecord.otpVerify = false;
+//       otpRecord.isDeleted = false;
+//       await otpRecord.save({ transaction: t });
+//     }
+
+//     // 7) Send OTP on email
+//     const sendResult = await sendOTP({ email, otp: otpCode }, "register");
+//     if (!sendResult || !sendResult.success) {
+//       await t.rollback();
+//       return serverError(res, sendResult?.message || "Failed to send OTP.");
+//     }
+
+//     await t.commit();
+
+//     return res.status(200).json({
+//       success: true,
+//       message: `Signup step 1 done. OTP sent to ${email}.`,
+//       data: {
+//         userId: user.id,
+//         secretCode: user.secretCode,
+//         countryCode: finalCountryCode,
+//       },
+//     });
+//   } catch (error: any) {
+//     await t.rollback();
+//     ErrorLogger.write({ type: "register/start error", error });
+//     return serverError(res, error.message || "Failed to start registration.");
+//   }
+// });
 
 // signup steps:2 Verify OTP
-router.post("/register/verify-otp", async (req: Request, res: Response) => {
+router.post("/register/verify-otp", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
   try {
     const { userId, otp } = req.body;
 
     if (!userId || !otp) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "userId and otp are required",
       });
@@ -577,7 +816,7 @@ router.post("/register/verify-otp", async (req: Request, res: Response) => {
     const user: any = await User.findByPk(userId, { transaction: t });
     if (!user) {
       await t.rollback();
-      return notFound(res, "User not found");
+       notFound(res, "User not found");
     }
 
     const otpRecord: any = await Otp.findOne({
@@ -592,12 +831,12 @@ router.post("/register/verify-otp", async (req: Request, res: Response) => {
 
     if (!otpRecord) {
       await t.rollback();
-      return unauthorized(res, "Invalid OTP.");
+       unauthorized(res, "Invalid OTP.");
     }
 
     if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < new Date()) {
       await t.rollback();
-      return unauthorized(res, "OTP has expired.");
+       unauthorized(res, "OTP has expired.");
     }
 
     otpRecord.otpVerify = true;
@@ -612,14 +851,14 @@ router.post("/register/verify-otp", async (req: Request, res: Response) => {
 
     await t.commit();
 
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: "OTP verified. Proceed to categories selection.",
     });
   } catch (error: any) {
     await t.rollback();
     ErrorLogger.write({ type: "register/verify-otp error", error });
-    return serverError(res, error.message || "Failed to verify OTP.");
+     serverError(res, error.message || "Failed to verify OTP.");
   }
 });
 
@@ -864,209 +1103,231 @@ router.post("/register/verify-otp", async (req: Request, res: Response) => {
 // });
 
 //final -2 single id
-router.post("/register/categories", async (req: Request, res: Response) => {
-  const t = await dbInstance.transaction();
-  try {
-    console.log("===== [/user/register/categories] HIT =====");
-    console.log("Request body:", req.body);
+router.post(
+  "/register/categories",
+  async (req: Request, res: Response) => {
+    const t = await dbInstance.transaction();
 
-    const { userId } = req.body;
-    // we support both "category" and "categories"
-    let input: any = req.body.category ?? req.body.categories;
+    try {
+      console.log("===== [/user/register/categories] HIT =====");
+      console.log("Request body:", req.body);
 
-    console.log("Raw input (category/categories):", input);
+      const { userId } = req.body;
+      // support both "category" and "categories"
+      let input: any = req.body.category ?? req.body.categories;
 
-    if (Array.isArray(input)) {
-      console.log("Input is array, length:", input.length);
+      console.log("Raw input (category/categories):", input);
 
-      if (input.length === 0) {
+      if (Array.isArray(input)) {
+        console.log("Input is array, length:", input.length);
+
+        if (input.length === 0) {
+          await t.rollback();
+          console.log("Empty category array");
+          res.status(400).json({
+            success: false,
+            message: "userId and a single category are required",
+          });
+          return;
+        }
+
+        if (input.length > 1) {
+          await t.rollback();
+          console.log("More than one category sent, only one allowed");
+          res.status(400).json({
+            success: false,
+            message: "Only one category can be selected",
+          });
+          return;
+        }
+
+        input = input[0]; // sirf 1 value use karenge
+        console.log("Normalized single input from array:", input);
+      }
+
+      // basic validation
+      if (!userId || input === undefined || input === null) {
         await t.rollback();
-        console.log("Empty category array");
-        return res.status(400).json({
+        console.log("Missing userId or category value");
+        res.status(400).json({
           success: false,
           message: "userId and a single category are required",
         });
-      }
-      if (input.length > 1) {
-        await t.rollback();
-        console.log("More than one category sent, only one allowed");
-        return res.status(400).json({
-          success: false,
-          message: "Only one category can be selected",
-        });
+        return;
       }
 
-      input = input[0]; // sirf 1 value use karenge
-      console.log("Normalized single input from array:", input);
-    }
-
-    // basic validation
-    if (!userId || input === undefined || input === null) {
-      await t.rollback();
-      console.log("Missing userId or category value");
-      return res.status(400).json({
-        success: false,
-        message: "userId and a single category are required",
-      });
-    }
-
-    const user: any = await User.findByPk(userId, { transaction: t });
-    console.log("Fetched user:", user ? { id: user.id, email: user.email } : null);
-
-    if (!user) {
-      await t.rollback();
-      return notFound(res, "User not found");
-    }
-
-    let categoryId: number | null = null;
-
-    //  CASE 1: numeric ID directly
-    if (typeof input === "number") {
-      console.log("Category input is numeric ID:", input);
-      const cat = await Category.findByPk(input, { transaction: t });
+      const user: any = await User.findByPk(userId, { transaction: t });
       console.log(
-        "Category found by ID:",
-        cat ? { id: cat.id, name: cat.name } : null
+        "Fetched user:",
+        user ? { id: user.id, email: user.email } : null
       );
 
-      if (!cat) {
+      if (!user) {
         await t.rollback();
-        return res.status(400).json({
-          success: false,
-          message: "Category ID is invalid",
-        });
-      }
-      categoryId = cat.id;
-    }
-    //  CASE 2: string name, e.g. "food"
-    else if (typeof input === "string") {
-      const name = input.trim();
-      console.log("Category input is string name:", name);
-
-      if (!name) {
-        await t.rollback();
-        return res.status(400).json({
-          success: false,
-          message: "Category name cannot be empty",
-        });
+        notFound(res, "User not found");
+        return;
       }
 
-      let cat = await Category.findOne({
-        where: { name },
-        transaction: t,
-      });
-      console.log(
-        "Category found by name:",
-        cat ? { id: cat.id, name: cat.name } : null
-      );
+      let categoryId: number | null = null;
 
-      if (!cat) {
-        console.log("Category not found, creating new master row...");
-        cat = await Category.create(
-          {
-            name,
-            icon: null,
-            isActive: true,
-          },
-          { transaction: t }
+      // CASE 1: numeric ID directly
+      if (typeof input === "number") {
+        console.log("Category input is numeric ID:", input);
+        const cat = await Category.findByPk(input, { transaction: t });
+        console.log(
+          "Category found by ID:",
+          cat ? { id: cat.id, name: cat.name } : null
         );
-        console.log("New category created:", { id: cat.id, name: cat.name });
+
+        if (!cat) {
+          await t.rollback();
+          res.status(400).json({
+            success: false,
+            message: "Category ID is invalid",
+          });
+          return;
+        }
+        categoryId = cat.id;
       }
+      // CASE 2: string name, e.g. "food"
+      else if (typeof input === "string") {
+        const name = input.trim();
+        console.log("Category input is string name:", name);
 
-      categoryId = cat.id;
-    }
-    //  CASE 3: object { name, icon }
-    else if (typeof input === "object" && input !== null) {
-      const name = (input.name || "").trim();
-      const icon = input.icon || null;
+        if (!name) {
+          await t.rollback();
+          res.status(400).json({
+            success: false,
+            message: "Category name cannot be empty",
+          });
+          return;
+        }
 
-      console.log("Category input is object:", { name, icon });
-
-      if (!name) {
-        await t.rollback();
-        return res.status(400).json({
-          success: false,
-          message: "Category name is required",
+        let cat = await Category.findOne({
+          where: { name },
+          transaction: t,
         });
-      }
-
-      let cat = await Category.findOne({
-        where: { name },
-        transaction: t,
-      });
-      console.log(
-        "Category found by object name:",
-        cat ? { id: cat.id, name: cat.name } : null
-      );
-
-      if (!cat) {
-        console.log("Category not found, creating new master row from object...");
-        cat = await Category.create(
-          {
-            name,
-            icon,
-            isActive: true,
-          },
-          { transaction: t }
+        console.log(
+          "Category found by name:",
+          cat ? { id: cat.id, name: cat.name } : null
         );
-        console.log("New category created from object:", {
-          id: cat.id,
-          name: cat.name,
+
+        if (!cat) {
+          console.log("Category not found, creating new master row...");
+          cat = await Category.create(
+            {
+              name,
+              icon: null,
+              isActive: true,
+            },
+            { transaction: t }
+          );
+          console.log("New category created:", { id: cat.id, name: cat.name });
+        }
+
+        categoryId = cat.id;
+      }
+      // CASE 3: object { name, icon }
+      else if (typeof input === "object" && input !== null) {
+        const name = (input.name || "").trim();
+        const icon = input.icon || null;
+
+        console.log("Category input is object:", { name, icon });
+
+        if (!name) {
+          await t.rollback();
+          res.status(400).json({
+            success: false,
+            message: "Category name is required",
+          });
+          return;
+        }
+
+        let cat = await Category.findOne({
+          where: { name },
+          transaction: t,
         });
+        console.log(
+          "Category found by object name:",
+          cat ? { id: cat.id, name: cat.name } : null
+        );
+
+        if (!cat) {
+          console.log(
+            "Category not found, creating new master row from object..."
+          );
+          cat = await Category.create(
+            {
+              name,
+              icon,
+              isActive: true,
+            },
+            { transaction: t }
+          );
+          console.log("New category created from object:", {
+            id: cat.id,
+            name: cat.name,
+          });
+        }
+
+        categoryId = cat.id;
+      } else {
+        await t.rollback();
+        console.log("Invalid category format, type:", typeof input);
+        res.status(400).json({
+          success: false,
+          message: "Invalid category format",
+        });
+        return;
       }
 
-      categoryId = cat.id;
-    } else {
-      await t.rollback();
-      console.log("Invalid category format, type:", typeof input);
-      return res.status(400).json({
-        success: false,
-        message: "Invalid category format",
+      console.log("Resolved categoryId:", categoryId);
+
+      if (!categoryId) {
+        await t.rollback();
+        console.log("categoryId is null after processing");
+        res.status(400).json({
+          success: false,
+          message: "Could not resolve category",
+        });
+        return;
+      }
+
+      // SINGLE VALUE store in user.categories
+      user.categories = categoryId; // e.g. 2
+      user.registrationStep = 3;
+
+      console.log("Saving user with new category:", {
+        userId: user.id,
+        categoryId,
+        registrationStep: user.registrationStep,
       });
-    }
 
-    console.log("Resolved categoryId:", categoryId);
+      await user.save({ transaction: t });
+      await t.commit();
 
-    if (!categoryId) {
+      console.log("Category saved successfully for user:", user.id);
+
+      const responsePayload = {
+        success: true,
+        message: "Category saved. Proceed to user type selection.",
+        data: { categoryId },
+      };
+
+      console.log("Response payload:", responsePayload);
+
+      res.status(200).json(responsePayload);
+      return;
+    } catch (error: any) {
       await t.rollback();
-      console.log("categoryId is null after processing");
-      return res.status(400).json({
-        success: false,
-        message: "Could not resolve category",
-      });
+      console.error("Error in /user/register/categories:", error);
+      ErrorLogger.write({ type: "register/categories error", error });
+
+      serverError(res, error.message || "Failed to save category.");
+      return;
     }
-
-    // SINGLE VALUE store in user.categories
-    user.categories = categoryId; // e.g. 2
-    user.registrationStep = 3;
-
-    console.log("Saving user with new category:", {
-      userId: user.id,
-      categoryId,
-      registrationStep: user.registrationStep,
-    });
-
-    await user.save({ transaction: t });
-    await t.commit();
-
-    console.log("Category saved successfully for user:", user.id);
-
-    const responsePayload = {
-      success: true,
-      message: "Category saved. Proceed to user type selection.",
-      data: { categoryId },
-    };
-
-    console.log("Response payload:", responsePayload);
-
-    return res.status(200).json(responsePayload);
-  } catch (error: any) {
-    await t.rollback();
-    console.error("Error in /user/register/categories:", error);
-    ErrorLogger.write({ type: "register/categories error", error });
-    return serverError(res, error.message || "Failed to save category.");
   }
-});
+);
 
 // woring 
 // router.post("/register/categories", async (req: Request, res: Response) => {
@@ -1145,7 +1406,7 @@ router.post("/register/categories", async (req: Request, res: Response) => {
 // });
 
 // signup steps:4 User Type selection
-router.post("/register/user-type", async (req: Request, res: Response) => {
+router.post("/register/user-type", async (req: Request, res: Response): Promise<void>=> {
   const t = await dbInstance.transaction();
   try {
     const { userId, userType } = req.body;
@@ -1153,7 +1414,7 @@ router.post("/register/user-type", async (req: Request, res: Response) => {
     // Basic validation
     if (!userId || !userType) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "userId and userType are required",
       });
@@ -1163,7 +1424,7 @@ router.post("/register/user-type", async (req: Request, res: Response) => {
     const allowedTypes = ["freelancer", "organization"];
     if (!allowedTypes.includes(userType)) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "Invalid userType. Use 'freelancer' or 'organization'.",
       });
@@ -1173,12 +1434,12 @@ router.post("/register/user-type", async (req: Request, res: Response) => {
     const user: any = await User.findByPk(userId, { transaction: t });
     if (!user) {
       await t.rollback();
-      return notFound(res, "User not found");
+       notFound(res, "User not found");
     }
 
     if (!user.isRegistering) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "User is not in registration flow.",
       });
@@ -1191,14 +1452,15 @@ router.post("/register/user-type", async (req: Request, res: Response) => {
 
     await t.commit();
 
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: "User type saved. Proceed to company details.",
     });
   } catch (error: any) {
     await t.rollback();
     ErrorLogger.write({ type: "register/user-type error", error });
-    return serverError(res, error.message || "Failed to save user type.");
+     serverError(res, error.message || "Failed to save user type.");
+     return;
   }
 });
 
@@ -1284,7 +1546,7 @@ router.post("/register/user-type", async (req: Request, res: Response) => {
 //     return serverError(res, error.message || "Failed to save company details.");
 //   }
 // });
-router.post("/register/company", async (req: Request, res: Response) => {
+router.post("/register/company", async (req: Request, res: Response): Promise<void>=> {
   const t = await dbInstance.transaction();
   try {
     const {
@@ -1311,7 +1573,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
     // 1) Basic required fields
     if (!userId) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "userId is required",
       });
@@ -1319,7 +1581,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
 
     if (!companyName || !website || !country || !timezone) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message:
           "companyName, website, country and timezone are required for company registration.",
@@ -1341,7 +1603,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
 
     if (!user) {
       await t.rollback();
-      return notFound(res, "User not found");
+       notFound(res, "User not found");
     }
 
     // 3) Strict signup-flow validations
@@ -1349,7 +1611,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
     // user MUST be in signup flow
     if (!user.isRegistering) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message:
           "This user is not in registration flow. Company registration is only allowed during signup.",
@@ -1359,7 +1621,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
     // step 4 complete (OTP + categories + user-type)
     if (user.registrationStep !== 4) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message:
           "Company step is only allowed after user type selection (step 4).",
@@ -1369,7 +1631,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
     // only organization users can have a company in this flow
     if (user.userType !== "organization") {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message:
           "Company registration is only allowed for userType = 'organization'.",
@@ -1379,7 +1641,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
     // email should be verified by now
     if (!user.isEmailVerified) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message:
           "Email not verified. Please complete OTP verification before adding company.",
@@ -1389,7 +1651,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
     // user must NOT already have a company
     if (user.companyId) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message:
           "User is already linked to a company. Multiple companies are not allowed in this signup flow.",
@@ -1404,7 +1666,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
 
     if (existingCompany) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "Company name already exists. Please use a different name.",
       });
@@ -1450,7 +1712,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
 
     await t.commit();
 
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: "Company details saved. Proceed to clients & modules.",
       data: {
@@ -1462,7 +1724,8 @@ router.post("/register/company", async (req: Request, res: Response) => {
     await t.rollback();
     console.error("[/register/company] ERROR:", error);
     ErrorLogger.write({ type: "register/company error", error });
-    return serverError(res, error.message || "Failed to save company details.");
+     serverError(res, error.message || "Failed to save company details.");
+     return;
   }
 });
 
@@ -1668,7 +1931,7 @@ router.post("/register/company", async (req: Request, res: Response) => {
 // });
 
 // latest 
-router.post("/register/final", async (req: Request, res: Response) => {
+router.post("/register/final", async (req: Request, res: Response): Promise<void>=> {
   const t = await dbInstance.transaction();
 
   try {
@@ -1679,7 +1942,7 @@ router.post("/register/final", async (req: Request, res: Response) => {
     // 1) Basic validation
     if (!userId || !noOfClientsRange || !Array.isArray(selectedModules) || selectedModules.length === 0) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "userId, noOfClientsRange and non-empty selectedModules[] are required",
       });
@@ -1689,19 +1952,22 @@ router.post("/register/final", async (req: Request, res: Response) => {
     const user: any = await User.findByPk(userId, { transaction: t });
     if (!user) {
       await t.rollback();
-      return notFound(res, "User not found");
+       notFound(res, "User not found");
+       return;
     }
 
     if (!user.companyId) {
       await t.rollback();
-      return serverError(res, "Company not linked to this user.");
+       serverError(res, "Company not linked to this user.");
+       return;
     }
 
     // 3) Load company
     const company: any = await Company.findByPk(user.companyId, { transaction: t });
     if (!company) {
       await t.rollback();
-      return notFound(res, "Company not found");
+       notFound(res, "Company not found");
+       return;
     }
 
     // 4) Parse "0-5" / "15-20" / "50+"
@@ -1720,18 +1986,18 @@ router.post("/register/final", async (req: Request, res: Response) => {
 
     if (Number.isNaN(upperBound)) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message:
           "Invalid noOfClientsRange. Expected like '0-5', '5-15', '15-20' or '50+'.",
       });
     }
 
-    // 5) Build / create premium modules
+    //  Build / create premium modules
     const moduleIds: number[] = [];
 
     for (const item of selectedModules) {
-      // Case 1: numeric ID -> must exist
+      //  numeric ID -> must exist
       if (typeof item === "number") {
         const existing = await PremiumModule.findByPk(item, { transaction: t });
         if (existing) {
@@ -1743,11 +2009,11 @@ router.post("/register/final", async (req: Request, res: Response) => {
       let name: string | undefined;
       let icon: string | null = null;
 
-      // Case 2: string "Campaign"
+      // string "Campaign"
       if (typeof item === "string") {
         name = item;
       }
-      // Case 3: object { name, icon }
+      //  object { name, icon }
       else if (typeof item === "object" && item !== null) {
         name = (item as any).name;
         icon = (item as any).icon || null;
@@ -1782,7 +2048,7 @@ router.post("/register/final", async (req: Request, res: Response) => {
 
     if (distinctModuleIds.length === 0) {
       await t.rollback();
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "No valid premium modules provided.",
       });
@@ -1808,7 +2074,7 @@ router.post("/register/final", async (req: Request, res: Response) => {
       selectedModules: company.selectedModules,
     });
 
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: "Registration successful.",
     });
@@ -1816,28 +2082,31 @@ router.post("/register/final", async (req: Request, res: Response) => {
     await t.rollback();
     console.error("[/register/final] ERROR:", error);
     ErrorLogger.write({ type: "register/final error", error });
-    return serverError(res, error.message || "Failed to finalize registration.");
+     serverError(res, error.message || "Failed to finalize registration.");
+     return;
   }
 });
 
 // Get user by ID
-router.get("/getUserID/:id", tokenMiddleWare, async (req: Request, res: Response) => {
+router.get("/getUserID/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
   try {
 
     const { id } = req.params;
     const user: any = await getUserByid(id);
 
     if (!user) {
-      return notFound(res, "User not found");
+       notFound(res, "User not found");
+       return;
     }
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: "User retrieved successfully.",
       data: user,
     });
   } catch (error: any) {
     console.error({ type: "getUserById error", error });
-    return serverError(res, error);
+     serverError(res, error);
+     return;
   }
 });
 
@@ -1852,11 +2121,11 @@ router.get("/getUserID/:id", tokenMiddleWare, async (req: Request, res: Response
 //     serverError(res, error);
 //   }
 // });
-router.get("/getAllUser", tokenMiddleWare, async (req, res) => {
+router.get("/getAllUser", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
   try {
     const allUser = await getAllUser(req.query);
 
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: "Got all users",
       data: allUser,
@@ -1864,17 +2133,18 @@ router.get("/getAllUser", tokenMiddleWare, async (req, res) => {
 
   } catch (error: any) {
     ErrorLogger.write({ type: "getAllUser error", error });
-    return serverError(res, error);
+     serverError(res, error);
+     return;
   }
 });
 
 // Update user 
-router.post("/updateById", tokenMiddleWare, async (req, res) => {
+router.post("/updateById", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
   try {
     const user = await updateUser(Number(req.body.id), req.body, t);
     await t.commit();
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: "User updated successfully.",
       data: user,
@@ -1885,26 +2155,27 @@ router.post("/updateById", tokenMiddleWare, async (req, res) => {
       error.name === 'SequelizeUniqueConstraintError' &&
       error.errors?.some((e: any) => e.path === 'email')
     ) {
-      return res.status(409).json({
+       res.status(409).json({
         success: false,
         message: 'This email is already registered.',
         field: 'email'
       });
     }
     console.error("Users update Error:", error);
-    return serverError(res, "Something went wrong during user update.");
+     serverError(res, "Something went wrong during user update.");
+     return;
   }
 });
 
 // Delete User
-router.delete("/deleteUser/:id", tokenMiddleWare, async (req: Request, res: Response) => {
+router.delete("/deleteUser/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void>=> {
   const { id } = req.params;
 
   // Convert 'id' to number
   const userId = parseInt(id, 10);
 
   if (isNaN(userId)) {
-    return res.status(400).send("Invalid user ID");
+     res.status(400).send("Invalid user ID");
   }
 
   const t = await dbInstance.transaction();
@@ -1914,20 +2185,22 @@ router.delete("/deleteUser/:id", tokenMiddleWare, async (req: Request, res: Resp
 
     if (!user) {
       await t.rollback();
-      return notFound(res, "User not found");
+       notFound(res, "User not found");
+       return;
     }
 
     await t.commit();
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: "User deleted successfully.",
       data: user,
     });
-    return sendEncryptedResponse(res, user, "User deleted successfully (soft delete).");
+    // return sendEncryptedResponse(res, user, "User deleted successfully (soft delete).");
   } catch (error: any) {
     await t.rollback();
     ErrorLogger.write({ type: "deleteUser error", error });
-    return serverError(res, error.message || "Something went wrong while deleting user.");
+     serverError(res, error.message || "Something went wrong while deleting user.");
+     return;
   }
 });
 
@@ -2098,16 +2371,18 @@ router.post("/updateTheme", async (req, res) => {
 //     return serverError(res, "Something went wrong during login.");
 //   }
 // });
-router.post("/login", async (req: Request, res: Response) => {
+router.post("/login", async (req: Request, res: Response): Promise<void>=> {
   try {
     const { email, contact, password, otp, fcmToken } = req.body;
 
     // ------- Basic validation -------
     if (!email && !contact) {
-      return serverError(res, "Email or mobile number is required for login.");
+       serverError(res, "Email or mobile number is required for login.");
+       return;
     }
     if (!password) {
-      return serverError(res, "Password is required for login.");
+       serverError(res, "Password is required for login.");
+       return;
     }
 
     // ------- Find user by email / contact -------
@@ -2117,21 +2392,24 @@ router.post("/login", async (req: Request, res: Response) => {
 
     const user: any = await User.findOne({ where: findCondition });
     if (!user) {
-      return serverError(res, "User not found. Please register first.");
+       serverError(res, "User not found. Please register first.");
+       return;
     }
 
     // ------- Check password -------
     const isPasswordValid = await checkPassword(password, user.password);
     if (!isPasswordValid) {
-      return unauthorized(res, "Invalid email/contact or password.");
+       unauthorized(res, "Invalid email/contact or password.");
+       return;
     }
 
     // registration completed & email verified
     if (!user.isEmailVerified) {
-      return serverError(
+       serverError(
         res,
         "Email not verified. Please complete signup first."
       );
+      return;
     }
 
     // ------- STEP 1: password correct, OTP NOT yet provided -------
@@ -2180,21 +2458,22 @@ router.post("/login", async (req: Request, res: Response) => {
       }
 
       if (!sendResult || !sendResult.success) {
-        return serverError(
+         serverError(
           res,
           sendResult?.message || "Failed to send login OTP."
         );
+        return;
       }
 
       const nameData = user.email || user.contact || `User ID ${user.id}`;
-      return res.status(200).json({
+       res.status(200).json({
         success: true,
         step: "otp",
         message: `Password verified. Login OTP sent to ${nameData}.`,
       });
     }
 
-    // ------- STEP 2: password + OTP verify -------
+    // password + OTP verify
     const otpRecord: any = await Otp.findOne({
       where: {
         userId: user.id,
@@ -2204,12 +2483,14 @@ router.post("/login", async (req: Request, res: Response) => {
     });
 
     if (!otpRecord) {
-      return unauthorized(res, "Invalid login OTP.");
+       unauthorized(res, "Invalid login OTP.");
+       return;
     }
 
     const now = new Date();
     if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
-      return unauthorized(res, "Login OTP has expired. Please try again.");
+       unauthorized(res, "Login OTP has expired. Please try again.");
+       return;
     }
 
     // Mark login OTP as used
@@ -2235,7 +2516,7 @@ router.post("/login", async (req: Request, res: Response) => {
     // const token = await generateToken(tokenPayload, "30d");
 
     const nameData = user.email || user.contact || `User ID ${user.id}`;
-    return sendEncryptedResponse(
+     sendEncryptedResponse(
       res,
       {
         userId: user.id,
@@ -2245,92 +2526,16 @@ router.post("/login", async (req: Request, res: Response) => {
     );
   } catch (error: any) {
     console.error("Error in /login:", error);
-    return serverError(res, "Something went wrong during login.");
+     serverError(res, "Something went wrong during login.");
   }
 });
 
-// Login: verify OTP and issue JWT
-// router.post("/login/verify-otp", async (req: Request, res: Response) => {
-//   try {
-//     const { userId, otp, fcmToken } = req.body;
-
-//     if (!userId || !otp) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "userId and otp are required",
-//         data: null,
-//       });
-//     }
-
-//     const user: any = await User.findByPk(userId);
-//     if (!user) {
-//       return notFound(res, "User not found");
-//     }
-
-//     const otpRecord: any = await Otp.findOne({
-//       where: {
-//         userId,
-//         loginOTP: String(otp),
-//         isDeleted: false,
-//       },
-//     });
-
-//     if (!otpRecord) {
-//       return unauthorized(res, "Invalid login OTP.");
-//     }
-
-//     const now = new Date();
-//     if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
-//       return unauthorized(res, "Login OTP has expired. Please try again.");
-//     }
-
-//     // Mark login OTP as used
-//     otpRecord.loginOTP = null;
-//     otpRecord.otpExpiresAt = null;
-//     otpRecord.otpVerify = true;
-//     await otpRecord.save();
-
-//     // Optional: save FCM token on user
-//     // if (fcmToken) {
-//     //   await user.update({ fcmToken });
-//     // }
-
-//     // Generate JWT token
-//     const authToken = generateToken({
-//       id: user.id,
-//       email: user.email,
-//       contact: user.contact,
-//     });
-
-//     const nameData = user.email || user.contact || `User ID ${user.id}`;
-//     // return sendEncryptedResponse(
-//     //   res,
-//     //   {
-//     //     userId: user.id,
-//     //     authToken,
-//     //   },
-//     //   `Login successful for ${nameData}.`
-//     // );
-//     return res.status(200).json({
-//       success: true,
-//       message: `Login successful for ${nameData}.`,
-//       data: {
-//         userId: user.id,
-//         token: authToken,     
-//       },
-//     });
-//   } catch (error: any) {
-//     console.error("Error in /login/verify-otp:", error);
-//     return serverError(res, "Something went wrong during login OTP verification.");
-//   }
-// });
-
-router.post("/login/verify-otp", async (req: Request, res: Response) => {
+router.post("/login/verify-otp", async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId, otp } = req.body;
 
     if (!userId || !otp) {
-      return res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "userId and otp are required",
       });
@@ -2338,7 +2543,8 @@ router.post("/login/verify-otp", async (req: Request, res: Response) => {
 
     const user: any = await User.findByPk(userId);
     if (!user) {
-      return notFound(res, "User not found");
+       notFound(res, "User not found");
+       return;
     }
 
     const otpRecord: any = await Otp.findOne({
@@ -2350,12 +2556,14 @@ router.post("/login/verify-otp", async (req: Request, res: Response) => {
     });
 
     if (!otpRecord) {
-      return unauthorized(res, "Invalid login OTP.");
+       unauthorized(res, "Invalid login OTP.");
+       return;
     }
 
     const now = new Date();
     if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
-      return unauthorized(res, "Login OTP has expired. Please try again.");
+       unauthorized(res, "Login OTP has expired. Please try again.");
+       return;
     }
 
     otpRecord.loginOTP = null;
@@ -2363,7 +2571,7 @@ router.post("/login/verify-otp", async (req: Request, res: Response) => {
     otpRecord.otpVerify = true;
     await otpRecord.save();
 
-    // 👇 IMPORTANT: await here
+    // IMPORTANT: await here
     const tokenPayload = {
       id: user.id,
       email: user.email,
@@ -2375,7 +2583,7 @@ router.post("/login/verify-otp", async (req: Request, res: Response) => {
 
     const nameData = user.email || user.contact || `User ID ${user.id}`;
 
-    return res.status(200).json({
+     res.status(200).json({
       success: true,
       message: `Login successful for ${nameData}.`,
       data: {
@@ -2385,14 +2593,15 @@ router.post("/login/verify-otp", async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Error in /login/verify-otp:", error);
-    return serverError(res, "Something went wrong during login OTP verification.");
+     serverError(res, "Something went wrong during login OTP verification.");
+     return;
   }
 });
 
 //change password 
 router.post("/changePassword",
   tokenMiddleWare,                       
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<void>=> {
     const t = await dbInstance.transaction();
 
     try {
@@ -2401,7 +2610,7 @@ router.post("/changePassword",
       // validation
       if (!oldPassword || !newPassword || !confirmPassword) {
         await t.rollback();
-        return res.status(400).json({
+         res.status(400).json({
           success: false,
           message: "oldPassword, newPassword and confirmPassword are required",
         });
@@ -2409,7 +2618,7 @@ router.post("/changePassword",
 
       if (newPassword !== confirmPassword) {
         await t.rollback();
-        return res.status(400).json({
+         res.status(400).json({
           success: false,
           message: "newPassword and confirmPassword must match",
         });
@@ -2417,7 +2626,7 @@ router.post("/changePassword",
 
       if (newPassword.length < 6) {
         await t.rollback();
-        return res.status(400).json({
+         res.status(400).json({
           success: false,
           message: "New password must be at least 6 characters.",
         });
@@ -2428,7 +2637,7 @@ router.post("/changePassword",
 
       if (!authUser || !authUser.id) {
         await t.rollback();
-        return unauthorized(res, "Invalid or missing token user.");
+         unauthorized(res, "Invalid or missing token user.");
       }
 
       const user = await User.findByPk(authUser.id, {
@@ -2438,14 +2647,16 @@ router.post("/changePassword",
 
       if (!user) {
         await t.rollback();
-        return other(res, 404, "User not found.");
+         other(res, 404, "User not found.");
+         return;
       }
-
+// if (!user) return; 
       //  Check old password
       const isOldValid = await checkPassword(oldPassword, user.password);
       if (!isOldValid) {
         await t.rollback();
-        return other(res, 400, "Your old password is wrong.");
+         other(res, 400, "Your old password is wrong.");
+         return;
       }
 
       // Set new password 
@@ -2454,81 +2665,147 @@ router.post("/changePassword",
 
       await t.commit();
 
-      return res.status(200).json({
+       res.status(200).json({
         success: true,
         message: "Your password has been successfully updated.",
       });
     } catch (error: any) {
       await t.rollback();
       ErrorLogger.write({ type: "changePassword error", error });
-      return serverError(res, error.message || "Failed to change password.");
+       serverError(res, error.message || "Failed to change password.");
+       return;
     }
   }
 );
 
 //forgot password
-router.post("/forgotPassword", async (req, res) => {
-  let t = await dbInstance.transaction();
+// router.post("/forgotPassword", async (req: Request, res: Response): Promise<void> => {
+//   let t = await dbInstance.transaction();
 
-  try {
-    const { email } = req.body;
+//   try {
+//     const { email } = req.body;
 
-    if (!email) {
-      await t.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "Email is required",
+//     if (!email) {
+//       await t.rollback();
+//        res.status(400).json({
+//         success: false,
+//         message: "Email is required",
+//       });
+//     }
+
+//     // Find user
+//     const user = await User.findOne({ where: { email } });
+
+//     if (!user) {
+//       await t.rollback();
+//        res.status(404).json({
+//         success: false,
+//         message: "User not found with this email.",
+//       });
+//     }
+
+//     // Generate new password
+//     const newPWD = generateRandomPassword();  // ✔ e.g. "Xyz@1234"
+
+//     // Send email
+//     // const mailData = {
+//     //   to: email,
+//     //   subject: "Your New Password",
+//     //   html: `<p>Your new password is <strong>${newPWD}</strong></p>`,
+//     // };
+//     // await sendEmail(mailData);
+
+//     //     //send email - forgot pass
+//     const mailData: any = {
+//       to: email,
+//       subject: "ZarklyX-New Password",
+//       html: `<p> Your new password is <strong>${newPWD}</strong></p>.`,
+//     };
+
+//     sendEmail(mailData);
+
+//     // Update new password (hashing enabled)
+//     user.password = newPWD;        // ✔ triggers hashing in model setter
+//     await user.save({ transaction: t });
+
+//     await t.commit();
+
+//      res.status(200).json({
+//       success: true,
+//       message: "New password sent to your email.",
+//     });
+//   } catch (error: any) {
+//     await t.rollback();
+//     ErrorLogger.write({ type: "forgotPassword error", error });
+
+//      serverError(res, error.message || "Something went wrong.");
+//      return;
+//   }
+// });
+
+router.post(
+  "/forgotPassword",
+  async (req: Request, res: Response): Promise<void> => {
+    const t = await dbInstance.transaction();
+
+    try {
+      const { email } = req.body;
+
+      /* 1) Validate email */
+      if (!email) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "Email is required",
+        });
+        return;
+      }
+
+      /* 2) Find user */
+      const user: any = await User.findOne({ where: { email } });
+
+      if (!user) {
+        await t.rollback();
+        res.status(404).json({
+          success: false,
+          message: "User not found with this email.",
+        });
+        return;
+      }
+
+      /* 3) Generate new password */
+      const newPWD = generateRandomPassword(); // e.g. "Xyz@1234"
+
+      /* 4) Send email with new password */
+      const mailData: any = {
+        to: email,
+        subject: "ZarklyX - New Password",
+        html: `<p>Your new password is <strong>${newPWD}</strong></p>.`,
+      };
+
+      // if sendEmail returns a promise, it's better to await
+      await sendEmail(mailData);
+
+      /* 5) Update user password (model setter will hash) */
+      user.password = newPWD;
+      await user.save({ transaction: t });
+
+      await t.commit();
+
+      res.status(200).json({
+        success: true,
+        message: "New password sent to your email.",
       });
-    }
-
-    // Find user
-    const user = await User.findOne({ where: { email } });
-
-    if (!user) {
+      return;
+    } catch (error: any) {
       await t.rollback();
-      return res.status(404).json({
-        success: false,
-        message: "User not found with this email.",
-      });
+      ErrorLogger.write({ type: "forgotPassword error", error });
+
+      serverError(res, error?.message || "Something went wrong.");
+      return;
     }
-
-    // Generate new password
-    const newPWD = generateRandomPassword();  // ✔ e.g. "Xyz@1234"
-
-    // Send email
-    // const mailData = {
-    //   to: email,
-    //   subject: "Your New Password",
-    //   html: `<p>Your new password is <strong>${newPWD}</strong></p>`,
-    // };
-    // await sendEmail(mailData);
-
-    //     //send email - forgot pass
-    const mailData: any = {
-      to: email,
-      subject: "ZarklyX-New Password",
-      html: `<p> Your new password is <strong>${newPWD}</strong></p>.`,
-    };
-
-    sendEmail(mailData);
-
-    // Update new password (hashing enabled)
-    user.password = newPWD;        // ✔ triggers hashing in model setter
-    await user.save({ transaction: t });
-
-    await t.commit();
-
-    return res.status(200).json({
-      success: true,
-      message: "New password sent to your email.",
-    });
-  } catch (error: any) {
-    await t.rollback();
-    ErrorLogger.write({ type: "forgotPassword error", error });
-
-    return serverError(res, error.message || "Something went wrong.");
   }
-});
+);
 // router.post("/forgotPassword", async (req, res) => {
 //   let t = await dbInstance.transaction();
 //   try {

@@ -12,9 +12,12 @@ const config = (configs as { [key: string]: any })[environment];
 const app = express();
 // const settingsRoutes = require('./routes/api-app/settings/settings-api');
 
-const userRoutes = require('./routes/api-webapp/user/user-api');
+const userRoutes = require('./routes/api-webapp/authentication/user/user-api');
+// const userRoutes = require('./routes/api-webapp/user/user-api');
 const companyRoutes = require('./routes/api-webapp/company/company-api');
 const otpRoutes = require('./routes/api-webapp/otp/otp-api');
+const { categoryRoutes } = require('./routes/api-webapp/superAdmin/generalSetup/category/category-api');
+const { premiumModuleRoutes } = require('./routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api');
 // const loginHistoryRoutes = require('./routes/api-webapp/loginHistory/loginHistory-api');
 
 import path from "path";
@@ -24,6 +27,8 @@ app.use(cors());
 app.use("/user", userRoutes);
 app.use("/company", companyRoutes);
 app.use("/otp", otpRoutes);
+app.use("/category", categoryRoutes);
+app.use("/premiumModule", premiumModuleRoutes);
 // app.use("/loginHistory", loginHistoryRoutes);
 
 //global error handler

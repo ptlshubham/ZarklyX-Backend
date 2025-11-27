@@ -110,7 +110,7 @@ export const sendEmailOTP = async (data: { email: string; otp: number }, type: s
     const mailOptions = {
       from: emailConfig.user, // Use the configured email from environment
       to: data.email,
-      subject: `Your OTP for RideIt ${type}`,
+      subject: `Your OTP for ZarklyX ${type}`,
       html: `<p>Your OTP for <strong>${type}</strong> is <b>${data.otp}</b>. Do not share this with anyone.</p>`,
     };
 
