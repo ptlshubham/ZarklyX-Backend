@@ -24,7 +24,6 @@
 //   SENDER_EMAIL_PASSWORD: "your_secure_pwd", // App password or actual SMTP password
 // };
 
-// RESPONSE_ENCRYPTION_KEY=1ae40a58b24503503c64efdbc3fd45a8f6790a3aa67476d563f51dd6affc61a2
 // export default environment;
 
 export const env = {
