@@ -23,7 +23,7 @@ router.post("/addPremiumModule", async (req, res): Promise<any> => {
     await t.commit();
     return res.status(200).json({
       success: true,
-      message: "Premium module added successfully.",
+      message: "Premium added successfully.",
       data: moduleData,
     });
   } catch (error: any) {
@@ -35,13 +35,13 @@ router.post("/addPremiumModule", async (req, res): Promise<any> => {
     ) {
       return res.status(409).json({
         success: false,
-        message: "This premium module name is already registered.",
+        message: "This premium name is already registered.",
         field: "name",
       });
     }
 
     console.error("PremiumModule add Error:", error);
-    return serverError(res, "Something went wrong during premium module creation.");
+    return serverError(res, "Something went wrong during premium creation.");
   }
 });
 
@@ -51,12 +51,12 @@ router.get("/getAllPremiumModule", async (req, res): Promise<any> => {
     const modules = await getAllPremiumModules();
     return res.status(200).json({
       success: true,
-      message: "Premium modules retrieved successfully.",
+      message: "Premium retrieved successfully.",
       data: modules,
     });
   } catch (error) {
     console.error("PremiumModule getAll Error:", error);
-    return serverError(res, "Something went wrong during premium modules retrieval.");
+    return serverError(res, "Something went wrong during premium retrieval.");
   }
 });
 
@@ -66,27 +66,27 @@ router.get("/getByPremiumModuleId/:id", async (req, res): Promise<any> => {
     const moduleData = await getPremiumModuleByID(req.params);
     return res.status(200).json({
       success: true,
-      message: "Premium module retrieved successfully.",
+      message: "Premium retrieved successfully.",
       data: moduleData,
     });
   } catch (error) {
     console.error("PremiumModule getById Error:", error);
-    return serverError(res, "Something went wrong during premium module retrieval.");
+    return serverError(res, "Something went wrong during premium retrieval.");
   }
 });
 
 // Update premium module
-router.post("/updatePremiumModuleById/:id", async (req, res): Promise<any> => {
+router.post("/updatePremiumModuleById", async (req, res): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const id = Number(req.params.id); 
+    const id = Number(req.body.id); 
 
     const moduleData = await updatePremiumModule(id, req.body, t);
     await t.commit();
 
     return res.status(200).json({
       success: true,
-      message: "Premium module updated successfully.",
+      message: "Premium updated successfully.",
       data: moduleData,
     });
   } catch (error: any) {
@@ -98,59 +98,31 @@ router.post("/updatePremiumModuleById/:id", async (req, res): Promise<any> => {
     ) {
       return res.status(409).json({
         success: false,
-        message: "This Premium module name is already registered.",
+        message: "This Premium is already registered.",
         field: "name",
       });
     }
 
     console.error("Premium update Error:", error);
-    return serverError(res, "Something went wrong during Premium module update.");
+    return serverError(res, "Something went wrong during Premium update.");
   }
 });
-// router.post("/updatePremiumModuleById/:Id", async (req, res): Promise<any> => {
-//   const t = await dbInstance.transaction();
-//   try {
-//     const moduleData = await updatePremiumModule(Number(req.body.id), req.body, t);
-//     await t.commit();
-//     return res.status(200).json({
-//       success: true,
-//       message: "Premium module updated successfully.",
-//       data: moduleData,
-//     });
-//   } catch (error: any) {
-//     await t.rollback();
-
-//     if (
-//       error.name === "SequelizeUniqueConstraintError" &&
-//       error.errors?.some((e: any) => e.path === "name")
-//     ) {
-//       return res.status(409).json({
-//         success: false,
-//         message: "This premium module name is already registered.",
-//         field: "name",
-//       });
-//     }
-
-//     console.error("PremiumModule update Error:", error);
-//     return serverError(res, "Something went wrong during premium module update.");
-//   }
-// });
 
 // Soft delete premium module (isActive = false)
-router.get("/removeById/:id", tokenMiddleWare, async (req, res): Promise<any> => {
+router.get("/removeById/:id", async (req, res): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
     const moduleData = await deletePremiumModule(Number(req.params.id), t);
     await t.commit();
     return res.status(200).json({
       success: true,
-      message: "Premium module deleted successfully.",
+      message: "Premium deleted successfully.",
       data: moduleData,
     });
   } catch (error) {
-    console.error("PremiumModule delete Error:", error);
+    console.error("Premium delete Error:", error);
     await t.rollback();
-    return serverError(res, "Something went wrong during premium module delete.");
+    return serverError(res, "Something went wrong during premium delete.");
   }
 });
 

@@ -8,6 +8,7 @@ import {
 } from "sequelize";
 import { hashPassword, checkPassword } from "../../../services/password-service";
 import { User } from "../../../routes/api-webapp/authentication/user/user-model";
+import { Clients } from "../../../routes/api-webapp/superAdmin/agency/clients/clients-model";
 
 export class Otp extends Model<
     InferAttributes<Otp>,
@@ -15,6 +16,7 @@ export class Otp extends Model<
 > {
     declare id: CreationOptional<number>;
     declare userId: number | null;
+    declare clientId: number | null;
     declare email: string | null;
     declare contact: string; // Number → String
     declare otp: string | null; // OTP for email
@@ -23,6 +25,7 @@ export class Otp extends Model<
     declare otpVerify: boolean;
     declare otpExpiresAt: Date | null; // Expiry time for email otp
     declare mbOTPExpiresAt: Date | null; // Expiry time for mobile otp
+     declare tempUserData: any | null;
     declare isDeleted: boolean;
     declare deletedAt: CreationOptional<Date>;
     declare isEmailVerified: boolean;
@@ -32,11 +35,11 @@ export class Otp extends Model<
     declare updatedAt: CreationOptional<Date>;
 
 
-       //validate password
+    //validate password
     validatePassword(this: User, userPass: string) {
         return checkPassword(userPass, this.password);
     }
-    
+
     static initModel(sequelize: Sequelize): typeof Otp {
         Otp.init(
             {
@@ -49,12 +52,22 @@ export class Otp extends Model<
                 },
                 userId: {
                     type: DataTypes.INTEGER,
-                    allowNull: false,
-                    references: {
-                        model: User, // Reference the User model
-                        key: "id",
-                    },
+                    allowNull: true,
+                  
                 },
+                clientId: {
+                    type: DataTypes.INTEGER,
+                    allowNull: true,
+                 
+                },
+                // userId: {
+                //     type: DataTypes.INTEGER,
+                //     allowNull: true,
+                // },
+                // clientId: {
+                //     type: DataTypes.INTEGER,
+                //     allowNull: true,
+                // },
                 contact: {
                     type: DataTypes.STRING(15),
                     allowNull: true,
@@ -117,6 +130,10 @@ export class Otp extends Model<
                     allowNull: true,
                 },
 
+                tempUserData: {
+                    type: DataTypes.JSON,
+                    allowNull: true,
+                },
                 isDeleted: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: false,

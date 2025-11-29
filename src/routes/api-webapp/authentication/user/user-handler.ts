@@ -1,7 +1,7 @@
 
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model"; // Ensure correct import
 import { Op, Transaction } from "sequelize";
-const { MakeQuery } =require ("../../../../services/model-service");
+const { MakeQuery } = require("../../../../services/model-service");
 // const { MakeQuery } = require("../../../services/model-service");
 import axios from "axios";
 
@@ -48,7 +48,7 @@ export async function generateUniqueSecretCode(): Promise<string> {
 
 // Define the user payload interface
 interface UserPayload {
-    referId?: string | null;
+  referId?: string | null;
   companyId?: number | null;        // Required for step 5
   firstName?: string | null;
   lastName?: string | null;
@@ -56,7 +56,7 @@ interface UserPayload {
   contact?: string;
   userType?: userType | "organization" | "freelancer";
   secretCode?: string;
-  isthemedark?: boolean;
+  isThemeDark?: boolean;
   categories?: any[] | null;        // (JSON array of categories)
   isEmailVerified?: boolean;
   isMobileVerified?: boolean;
@@ -64,19 +64,7 @@ interface UserPayload {
   registrationStep?: number;
   isActive?: boolean;
   [key: string]: any;
-  // referId?: string;
-  //   companyId?: number | null;        
-  // firstName?: string;
-  // lastName?: string;
-  // email?: string;
-  // contact?: string;
-  // userType?: userType;
-  // secretCode?: string;
-  //   categories?: any[] | null;
-  // isthemedark?: boolean;
-  // isEmailVerified?: boolean;
-  // isMobileVerified?: boolean;
-  // [key: string]: any;
+
 }
 
 // Function to add user to DB
@@ -246,6 +234,7 @@ export const getUserByMbMo = (data: any) => {
 
 };
 
+//check user is Active or not 
 export const checkUserActive = async (email: string) => {
   const user = await User.findOne({
     where: {

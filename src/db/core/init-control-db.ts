@@ -7,6 +7,7 @@ import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/compa
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
 import { Category, initCategoryModel } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
 import { PremiumModule ,initPremiumModuleModel } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
+import { Clients } from "../../routes/api-webapp/superAdmin/agency/clients/clients-model"
 
 export {
   User,
@@ -14,7 +15,8 @@ export {
   UserCompany,
   Otp,
   Category,
-  PremiumModule
+  PremiumModule,
+  Clients
   // LoginHistory,
 };
 export function initControlDB(sequelize: Sequelize) {
@@ -24,10 +26,12 @@ export function initControlDB(sequelize: Sequelize) {
   Company.initModel(sequelize);
   PremiumModule.initModel(sequelize);
   Category.initModel(sequelize);
- initUserCompanyModel(sequelize);
+  Clients.initModel(sequelize);  
+  Otp.initModel(sequelize);  
+  initUserCompanyModel(sequelize);
+ 
 //  initCategoryModel(sequelize);
 //  initPremiumModuleModel(sequelize);
-  Otp.initModel(sequelize);
 // LoginHistory.initModel(sequelize);
 
 
@@ -56,14 +60,35 @@ export function initControlDB(sequelize: Sequelize) {
   });
 
   /***user <-> otp */
-  User.hasMany(Otp, {
-    foreignKey: "userId",
-    as: "otps",
-  });
-  Otp.belongsTo(User, {
-    foreignKey: "userId",
-    as : "user"
-  });
+//   User.hasMany(Otp, {
+//     foreignKey: "userId",
+//     as: "otps",
+//   });
+//   Otp.belongsTo(User, {
+//     foreignKey: "userId",
+//     as : "user"
+//   });
+ 
+// /*** clients <-> otp */
+Clients.hasMany(Otp, {
+  foreignKey: "clientId",
+  as: "Otps",
+  constraints: false,
+});
+Otp.belongsTo(Clients, {
+  foreignKey: "clientId",
+  as: "client",
+  constraints: false,
+});
+
+
+// User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
+// Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+// Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
+// Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
+// Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
+// Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
 
   return {
     User,
@@ -71,7 +96,8 @@ export function initControlDB(sequelize: Sequelize) {
     Otp,  
     UserCompany,
     Category,
-    PremiumModule
+    PremiumModule,
+    Clients
 ,    // LoginHistory
   };
 }

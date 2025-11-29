@@ -1,5 +1,5 @@
 export const GLOBAL_CONSTANTS = {
-  token: "rideit_jwt_secret_2025",
+  token: "zarklyx_jwt_secret_2025",
   feesType: {
     rent: 100,
     spare: 50,

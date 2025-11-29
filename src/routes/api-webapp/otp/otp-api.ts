@@ -24,6 +24,7 @@ import { generateToken } from "../../../services/jwtToken-service";
 import { tokenMiddleWare } from "../../../services/jwtToken-service";
 import { Otp } from "../../api-webapp/otp/otp-model";
 import { User } from "../../../routes/api-webapp/authentication/user/user-model";
+import { Clients } from "../../../routes/api-webapp/superAdmin/agency/clients/clients-model";
 import { sendOTP } from "../../../services/otp-service";
 // import OtpTempStore  from "./otp-temp-store";
 
@@ -172,7 +173,7 @@ router.post("/send-otp", async (req: Request, res: Response): Promise<any>=> {
 
     const email: string | undefined = bodyData.email;
     const contact: string | undefined = bodyData.contact || bodyData.mobile_number;
-    const otpFlow: OtpFlow = bodyData.otpFlow || "login"; // 🔁 default login
+    const otpFlow: OtpFlow = bodyData.otpFlow || "login"; 
 
     // Email or Mobile required
     if (!email && !contact) {
@@ -199,7 +200,7 @@ router.post("/send-otp", async (req: Request, res: Response): Promise<any>=> {
 
     // Find or create OTP record for this user
     let otpRecord = await Otp.findOne({
-      where: { userId: user.id }, // 🔁 use number, not String
+      where: { userId: user.id }, 
     });
 
     if (!otpRecord) {

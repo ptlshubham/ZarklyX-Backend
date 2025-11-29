@@ -23,7 +23,7 @@ export const getPremiumModuleByID = (params: any) => {
 export const getAllPremiumModules = async () => {
   return await PremiumModule.findAll({
     where: {
-      isActive: true,
+      isDeleted: false,
     },
     raw: true,
   });
@@ -32,7 +32,10 @@ export const getAllPremiumModules = async () => {
 // Soft delete premium module (set isActive = false)
 export const deletePremiumModule = async (id: number, t: any) => {
   return await PremiumModule.update(
-    { isActive: false },
+    { 
+      isDeleted: true,
+      isActive: false
+    },
     { where: { id }, transaction: t }
   );
 };

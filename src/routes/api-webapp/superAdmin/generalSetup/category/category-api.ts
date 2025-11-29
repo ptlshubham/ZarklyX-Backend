@@ -21,7 +21,7 @@ router.post("/addCategory", async (req, res): Promise<any> => {
     await t.commit();
     return res.status(200).json({
       success: true,
-      message: "Category module added successfully.",
+      message: "Category added successfully.",
       data: moduleData,
     });
   } catch (error: any) {
@@ -33,13 +33,13 @@ router.post("/addCategory", async (req, res): Promise<any> => {
     ) {
       return res.status(409).json({
         success: false,
-        message: "This Category module name is already registered.",
+        message: "This Category is already registered.",
         field: "name",
       });
     }
 
     console.error("Category add Error:", error);
-    return serverError(res, "Something went wrong during Category module creation.");
+    return serverError(res, "Something went wrong during Category creation.");
   }
 });
 
@@ -49,12 +49,12 @@ router.get("/getAllCategory", async (req, res): Promise<any> => {
     const modules = await getAllCategorys();
     return res.status(200).json({
       success: true,
-      message: "Category modules retrieved successfully.",
+      message: "Category retrieved successfully.",
       data: modules,
     });
   } catch (error) {
     console.error("Category getAll Error:", error);
-    return serverError(res, "Something went wrong during Category modules retrieval.");
+    return serverError(res, "Something went wrong during Category retrieval.");
   }
 });
 
@@ -64,12 +64,12 @@ router.get("/getByCategoryId/:id", async (req, res): Promise<any> => {
     const moduleData = await getCategoryByID(req.params);
     return res.status(200).json({
       success: true,
-      message: "Category module retrieved successfully.",
+      message: "Category retrieved successfully.",
       data: moduleData,
     });
   } catch (error) {
     console.error("Category getById Error:", error);
-    return serverError(res, "Something went wrong during Category module retrieval.");
+    return serverError(res, "Something went wrong during Category retrieval.");
   }
 });
 
@@ -111,7 +111,7 @@ router.post("/updateCategoryById", async (req, res): Promise<any> => {
 
     return res.status(200).json({
       success: true,
-      message: "Category module updated successfully.",
+      message: "Category updated successfully.",
       data: moduleData,
     });
   } catch (error: any) {
@@ -125,12 +125,12 @@ router.post("/updateCategoryById", async (req, res): Promise<any> => {
     ) {
       return res.status(409).json({
         success: false,
-        message: "This Category module name is already registered.",
+        message: "This Category is already registered.",
         field: "name",
       });
     }
 
-    return serverError(res, "Something went wrong during Category module update.");
+    return serverError(res, "Something went wrong during Category update.");
   }
 });
 
@@ -175,13 +175,13 @@ router.get("/removeById/:id", async (req, res): Promise<any> => {
     await t.commit();
     return res.status(200).json({
       success: true,
-      message: "Category module deleted successfully.",
+      message: "Category deleted successfully.",
       data: moduleData,
     });
   } catch (error) {
     console.error("Category delete Error:", error);
     await t.rollback();
-    return serverError(res, "Something went wrong during Category module delete.");
+    return serverError(res, "Something went wrong during Category delete.");
   }
 });
 

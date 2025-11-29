@@ -21,7 +21,7 @@ export class User extends Model<
     declare contact: string; // Number → String
     declare userType: string | null;
     declare secretCode: string | null;
-    declare isthemedark: boolean;
+    declare isThemeDark: boolean;
     declare password: string;
     declare countryCode: string | null;
     // declare categories: "food" | "healthCare" | "NGos";
@@ -102,7 +102,7 @@ export class User extends Model<
                         msg: "secret Code must be unique",
                     }
                 },
-                isthemedark: {
+                isThemeDark: {
                     type: DataTypes.BOOLEAN,
                     allowNull: true,
                     defaultValue: false,
