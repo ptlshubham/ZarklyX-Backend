@@ -10,21 +10,12 @@ import routes from "./routes/route-index";
 
 const config = (configs as { [key: string]: any })[environment];
 const app = express();
-// const settingsRoutes = require('./routes/api-app/settings/settings-api');
-
-const userRoutes = require('./routes/api-webapp/user/user-api');
-const companyRoutes = require('./routes/api-webapp/company/company-api');
-const otpRoutes = require('./routes/api-webapp/otp/otp-api');
-// const loginHistoryRoutes = require('./routes/api-webapp/loginHistory/loginHistory-api');
 
 import path from "path";
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cors());
-
-app.use("/user", userRoutes);
-app.use("/company", companyRoutes);
-app.use("/otp", otpRoutes);
-// app.use("/loginHistory", loginHistoryRoutes);
+(routes as any)(app);
 
 //global error handler
 app.use(errorHandler);
@@ -60,6 +51,5 @@ function hydrateUser(query: any) {
   delete query.userData;
   return query
 }
-
 
 
