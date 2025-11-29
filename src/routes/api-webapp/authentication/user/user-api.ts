@@ -301,7 +301,23 @@ router.post("/register/verify-otp",
         return;
       }
 
-      const tempUserData: any = otpRecord.tempUserData;
+        let tempUserData: any = otpRecord.tempUserData;
+
+      if (typeof tempUserData === "string") {
+        try {
+          tempUserData = JSON.parse(tempUserData);
+        } catch (e) {
+          tempUserData = null;
+        }
+      }
+
+      if (!tempUserData) {
+        await t.rollback();
+        serverError(res, "Registration data not found for this OTP.");
+        return;
+      }
+
+      console.log("[register/verify-otp] tempUserData:", tempUserData);
 
       //  Double-check no user already exists
       const duplicateUser = await User.findOne({
@@ -349,6 +365,7 @@ router.post("/register/verify-otp",
           userId: user.id,
           secretCode: user.secretCode,
           countryCode: user.countryCode,
+          email: user.email,
         },
       });
     } catch (error: any) {
