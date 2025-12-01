@@ -36,7 +36,9 @@ const LoginType_fields = [
 interface ClientsPayload {
 //   referId?: string | null;
 //   companyId?: number | null;        // Required for step 5
-  ownerName?: string | null;
+  // ownerName?: string | null;
+  clientfisrtName?: string;
+  clientLastName?: string;
   businessName?: string | null;
   businessBase?: businessBase | "product" | "service"; 
   businessType?: businessType | "advertising" | "technology" | "healthcare" | "other";
@@ -54,7 +56,7 @@ interface ClientsPayload {
   postcode?: string;
   address?: string;
   isVip?: boolean;
-  BusinessSubCategory?: any[] | null; 
+  businessSubCategory?: any[] | null; 
   isEmailVerified?: boolean;
   isMobileVerified?: boolean;
   isRegistering?: boolean;
