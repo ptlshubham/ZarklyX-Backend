@@ -7,7 +7,7 @@ import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/compa
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
 import { Category, initCategoryModel } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
 import { PremiumModule ,initPremiumModuleModel } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
-import { Clients } from "../../routes/api-webapp/superAdmin/agency/clients/clients-model";
+import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 

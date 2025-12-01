@@ -24,7 +24,7 @@ import { generateToken } from "../../../services/jwtToken-service";
 import { tokenMiddleWare } from "../../../services/jwtToken-service";
 import { Otp } from "../../api-webapp/otp/otp-model";
 import { User } from "../../../routes/api-webapp/authentication/user/user-model";
-import { Clients } from "../../../routes/api-webapp/superAdmin/agency/clients/clients-model";
+import { Clients } from "../../../routes/api-webapp/agency/clients/clients-model";
 import { sendOTP } from "../../../services/otp-service";
 // import OtpTempStore  from "./otp-temp-store";
 

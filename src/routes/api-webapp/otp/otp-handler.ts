@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Otp } from "../../api-webapp/otp/otp-model"; // Ensure correct import
 import { User } from "../../../routes/api-webapp/authentication/user/user-model";
-import { Clients } from "../../../routes/api-webapp/superAdmin/agency/clients/clients-model"
+import { Clients } from "../../../routes/api-webapp/agency/clients/clients-model";
 import { Op ,Transaction} from "sequelize";
 const { MakeQuery } = require("../../../services/model-service");
 import axios from "axios";
