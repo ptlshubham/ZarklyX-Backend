@@ -15,34 +15,52 @@ export class Clients extends Model<
   declare id: CreationOptional<number>;
   //   declare icon: string | null;
   // Basic business info
-  declare ownerName: string;
+  // declare ownerName: string;
+  declare userId: number | null;
+  declare companyId: number | null;
+  declare clientfisrtName: string;
+  declare clientLastName: string;
   declare businessName: string;
   declare businessBase: string;
   declare businessType: string | null;
   declare businessWebsite: string | null;
   declare businessEmail: string | null;
   declare businessContact: string | null;
-
+  declare businessDescription: string | null;
   // Login / contact info
   declare email: string;
   declare contact: string;
   declare countryCode: string | null;
-
   // Address info
   declare country: string;
   declare state: string;
   declare city: string;
   declare postcode: string;
   declare address: string;
-
   // Auth
   declare password: string;
+  // Account details
+  declare accounteHolderName: string | null;
+  declare accountNumber: string | null;
+  declare bankName: string | null;
+  declare branchName: string | null;
+  declare ifscCode: string | null;
+  declare swiftCode: string | null;
+  declare accountType: string | null;
+  declare currency: string | null;
+  declare taxVatId: string | null;
 
   // Flags
   declare isVip: boolean;
-  declare BusinessSubCategory: string[] | null;
+  declare businessSubCategory: string[] | null;
   declare isActive: boolean;
   declare isDeleted: boolean;
+  declare isStatus: boolean;
+  declare isApprove: boolean;
+  declare isCredential: boolean;
+  declare profileStatus: boolean;
+  declare logo: string | null;
+  declare payment: string | null;
   declare isEmailVerified: boolean;
   declare isRegistering: boolean;
   declare registrationStep: number;
@@ -67,6 +85,17 @@ export class Clients extends Model<
           allowNull: false,
           unique: true,
         },
+        userId: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+
+        },
+        companyId: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+
+        },
+        // Basic business info
         businessName: {
           type: DataTypes.STRING(255),
           allowNull: false,
@@ -75,7 +104,11 @@ export class Clients extends Model<
             msg: "Clients name must be unique",
           },
         },
-        ownerName: {
+        clientfisrtName: {
+          type: DataTypes.STRING(255),
+          allowNull: false,
+        },
+        clientLastName: {
           type: DataTypes.STRING(255),
           allowNull: false,
         },
@@ -99,6 +132,12 @@ export class Clients extends Model<
           type: DataTypes.STRING(20),
           allowNull: true,
         },
+        businessDescription: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+
+        // Login / contact info
         email: {
           type: DataTypes.STRING(255),
           allowNull: false,
@@ -130,6 +169,8 @@ export class Clients extends Model<
           allowNull: true,
           defaultValue: null,
         },
+
+        // Address
         country: {
           type: DataTypes.STRING(100),
           allowNull: false,
@@ -150,6 +191,8 @@ export class Clients extends Model<
           type: DataTypes.TEXT,
           allowNull: false,
         },
+
+        // Auth
         password: {
           type: DataTypes.STRING(255),
           allowNull: false,
@@ -159,14 +202,64 @@ export class Clients extends Model<
             this.setDataValue("password", hash);
           },
         },
+
+        // Bank / account details
+        accounteHolderName: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+        accountNumber: {
+          type: DataTypes.STRING(50),
+          allowNull: true,
+          defaultValue: null,
+        },
+        bankName: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+        branchName: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+        ifscCode: {
+          type: DataTypes.STRING(50),
+          allowNull: true,
+          defaultValue: null,
+        },
+        swiftCode: {
+          type: DataTypes.STRING(50),
+          allowNull: true,
+          defaultValue: null,
+        },
+        accountType: {
+          type: DataTypes.STRING(50),
+          allowNull: true,
+          defaultValue: null,
+        },
+        currency: {
+          type: DataTypes.STRING(10),
+          allowNull: true,
+          defaultValue: null,
+        },
+        taxVatId: {
+          type: DataTypes.STRING(100),
+          allowNull: true,
+          defaultValue: null,
+        },
+
+        // Flags / extra info
         isVip: {
           type: DataTypes.BOOLEAN,
           allowNull: false,
           defaultValue: false,
         },
-        BusinessSubCategory: {
+        businessSubCategory: {
           type: DataTypes.JSON,
           allowNull: true,
+          defaultValue: null,
         },
         isActive: {
           type: DataTypes.BOOLEAN,
@@ -177,7 +270,38 @@ export class Clients extends Model<
           type: DataTypes.BOOLEAN,
           allowNull: false,
           defaultValue: false,
-        }, isEmailVerified: {
+        },
+        isStatus: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: true,
+        },
+        isApprove: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        isCredential: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        profileStatus: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        logo: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+        payment: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+        isEmailVerified: {
           type: DataTypes.BOOLEAN,
           defaultValue: false,
         },
@@ -195,6 +319,8 @@ export class Clients extends Model<
           type: DataTypes.BOOLEAN,
           defaultValue: false,
         },
+
+        // timestamps
         createdAt: {
           type: DataTypes.DATE,
           allowNull: false,
