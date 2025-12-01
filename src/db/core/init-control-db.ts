@@ -7,7 +7,9 @@ import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/compa
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
 import { Category, initCategoryModel } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
 import { PremiumModule ,initPremiumModuleModel } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
-import { Clients } from "../../routes/api-webapp/superAdmin/agency/clients/clients-model"
+import { Clients } from "../../routes/api-webapp/superAdmin/agency/clients/clients-model";
+import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
+import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 
 export {
   User,
@@ -16,7 +18,9 @@ export {
   Otp,
   Category,
   PremiumModule,
-  Clients
+  Clients,
+  BusinessType,
+  BusinessSubcategory,
   // LoginHistory,
 };
 export function initControlDB(sequelize: Sequelize) {
@@ -29,7 +33,8 @@ export function initControlDB(sequelize: Sequelize) {
   Clients.initModel(sequelize);  
   Otp.initModel(sequelize);  
   initUserCompanyModel(sequelize);
- 
+  BusinessType.initModel(sequelize);
+  BusinessSubcategory.initModel(sequelize);
 //  initCategoryModel(sequelize);
 //  initPremiumModuleModel(sequelize);
 // LoginHistory.initModel(sequelize);
@@ -82,6 +87,37 @@ Otp.belongsTo(Clients, {
   constraints: false,
 });
 
+ /*** User <-> Clients  */
+  User.hasMany(Clients, {
+    foreignKey: "userId",
+    as: "clients",          // user.getClients()
+  });
+  Clients.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",             // client.getUser()
+  });
+
+  /*** Company <-> Clients  */
+  Company.hasMany(Clients, {
+    foreignKey: "companyId",
+    as: "companyClients",   // company.getCompanyClients()
+  });
+  Clients.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",          // client.getCompany()
+  });
+
+   /*** BusinessType <-> BusinessSubcategory */
+  BusinessType.hasMany(BusinessSubcategory, {
+    foreignKey: "businessTypeId",
+    as: "subcategories",
+  });
+
+  BusinessSubcategory.belongsTo(BusinessType, {
+    foreignKey: "businessTypeId",
+    as: "businessType",
+  });
+
 
 // User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
 // Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -98,7 +134,9 @@ Otp.belongsTo(Clients, {
     UserCompany,
     Category,
     PremiumModule,
-    Clients
+    Clients,
+    BusinessType,
+    BusinessSubcategory
 ,    // LoginHistory
   };
 }
