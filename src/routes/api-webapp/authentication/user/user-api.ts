@@ -736,14 +736,14 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
     }
 
     // complete (OTP + categories + user-type)
-    if (user.registrationStep !== 4) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message:
-          "Company step is only allowed after user type selection.",
-      });
-    }
+    // if (user.registrationStep !== 4) {
+    //   await t.rollback();
+    //   res.status(400).json({
+    //     success: false,
+    //     message:
+    //       "Company step is only allowed after user type selection.",
+    //   });
+    // }
 
     // only organization users can have a company in this flow
     if (user.userType !== "organization") {
@@ -944,15 +944,15 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
 
     console.log("[/register/final] BODY:", req.body);
   
-    if (!ZARKLYX_API_KEY) {
-      await t.rollback();
-      res.status(500).json({
-        success: false,
-        message:
-          "Server API key not configured. Please set API_KEY or CRYPTO_KEY in .env",
-      });
-      return;
-    }
+    // if (!ZARKLYX_API_KEY) {
+    //   await t.rollback();
+    //   res.status(500).json({
+    //     success: false,
+    //     message:
+    //       "Server API key not configured. Please set API_KEY or CRYPTO_KEY in .env",
+    //   });
+    //   return;
+    // }
 
     // 1) Basic validation
     if (!userId || !noOfClientsRange || !Array.isArray(selectedModules) || selectedModules.length === 0) {
@@ -1460,7 +1460,8 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
       message: `Login successful for ${nameData}.`,
       data: {
         userId: user.id,
-        token, 
+          ...(user.isRegistering ? {} : { token }),
+        isRegistering : user.isRegistering
       },
     });
   } catch (error: any) {
