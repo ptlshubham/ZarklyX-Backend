@@ -662,8 +662,280 @@ router.post("/register/user-type", async (req: Request, res: Response): Promise<
     return;
   }
 });
+// signup steps: 5 company creation
+router.post("/register/company", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    const {
+      userId,
+      companyId,
+      companyName,
+      website,
+      country,
+      timezone,
+      description,
+      accountType,
+      businessArea,
+      industryType,
+      email,
+      contact,
+      address,
+      city,
+      state,
+      zipcode,
+      registrationNumber,
+    } = req.body;
 
-// signup steps: 5 final
+    console.log("[/register/company] BODY:", req.body);
+
+    // required fields
+    if (!userId) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "userId is required",
+      });
+    }
+
+    if (!companyName || !website || !country || !timezone) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message:
+          "companyName, website, country and timezone are required for company registration.",
+      });
+    }
+
+    // Load user
+    const user: any = await User.findByPk(userId, { transaction: t });
+
+    console.log("[/register/company] Loaded user:", {
+      userId,
+      companyId: user?.companyId,
+      found: !!user,
+      registrationStep: user?.registrationStep,
+      isRegistering: user?.isRegistering,
+      userType: user?.userType,
+      isEmailVerified: user?.isEmailVerified,
+    });
+
+    if (!user) {
+      await t.rollback();
+      notFound(res, "User not found");
+    }
+
+    // Strict signup-flow validations
+    // user MUST be in signup flow
+    if (!user.isRegistering) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message:
+          "This user is not in registration flow. Company registration is only allowed during signup.",
+      });
+    }
+
+    // complete (OTP + categories + user-type)
+    if (user.registrationStep !== 4) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message:
+          "Company step is only allowed after user type selection.",
+      });
+    }
+
+    // only organization users can have a company in this flow
+    if (user.userType !== "organization") {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message:
+          "Company registration is only allowed for userType = 'organization'.",
+      });
+    }
+
+    // email should be verified by now
+    if (!user.isEmailVerified) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message:
+          "Email not verified. Please complete OTP verification before adding company.",
+      });
+    }
+    // CREATE NEW COMPANY  (no companyId in payload)
+    if (!companyId) {
+      // user must NOT already have a company
+      if (user.companyId) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message:
+            "User is already linked to a company. Multiple companies are not allowed in this signup flow.",
+        });
+        return;
+      }
+
+      // Check duplicate company name
+      const existingCompany = await Company.findOne({
+        where: { name: companyName },
+        transaction: t,
+      });
+
+      if (existingCompany) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "Company name already exists. Please use a different name.",
+        });
+        return;
+      }
+
+      // Create company via handler
+      const company: any = await createCompany(
+        {
+          name: companyName,
+          description: description || null,
+          accountType: accountType || null,
+          businessArea: businessArea || null,
+          industryType: industryType || null,
+          website: website || null,
+          email: email || user.email || null,
+          contact: contact || user.contact || null,
+          address: address || null,
+          city: city || null,
+          state: state || null,
+          zipcode: zipcode || null,
+          country: country || null,
+          logo: null,
+          timezone: timezone || null,
+          registrationNumber: registrationNumber || null,
+          selectedModules: null,
+          no_of_clients: null,
+          isActive: true,
+        },
+        t
+      );
+
+      console.log("[/register/company] Created company:", {
+        companyId: company.id,
+        name: company.name,
+      });
+
+      // Link user <-> company
+      await addUserToCompany(user.id, company.id, "admin", true, t);
+
+      user.companyId = company.id;
+      user.registrationStep = 5; 
+      await user.save({ transaction: t });
+
+      await t.commit();
+
+      res.status(200).json({
+        success: true,
+        message: "Company details saved. Proceed to clients & modules.",
+        data: {
+          mode: "created",
+          userId: user.id,
+          companyId: company.id,
+        },
+      });
+      return;
+    }
+
+    //UPDATE EXISTING COMPANY (companyId provided)
+    // Load company by id
+    const company: any = await Company.findByPk(companyId, { transaction: t });
+
+    if (!company) {
+      await t.rollback();
+      notFound(res, "Company not found");
+      return;
+    }
+
+    // Verify user is allowed to update this company
+    if (user.companyId && user.companyId !== company.id) {
+      await t.rollback();
+      res.status(403).json({
+        success: false,
+        message: "User is not allowed to update this company.",
+      });
+      return;
+    }
+
+    // if user.companyId is null but FE sent companyId,
+    // you can link it here in signup flow:
+    if (!user.companyId) {
+      user.companyId = company.id;
+    }
+
+    // Check duplicate name (if name changed, ensure not clashing with another company)
+    const duplicateName = await Company.findOne({
+      where: {
+        name: companyName,
+        id: { [Op.ne]: company.id }, // name must be unique across *other* companies
+      },
+      transaction: t,
+    });
+
+    if (duplicateName) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Another company already uses this name. Please choose a different name.",
+      });
+      return;
+    }
+
+    // Update company
+    await company.update(
+      {
+        name: companyName,
+        description: description || null,
+        accountType: accountType || null,
+        businessArea: businessArea || null,
+        industryType: industryType || null,
+        website: website || null,
+        email: email || user.email || null,
+        contact: contact || user.contact || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+        zipcode: zipcode || null,
+        country: country || null,
+        timezone: timezone || null,
+        registrationNumber: registrationNumber || null,
+      },
+      { transaction: t }
+    );
+
+    // Make sure step at least 5 after company saved/updated
+    if (user.registrationStep < 5) {
+      user.registrationStep = 5;
+    }
+    await user.save({ transaction: t });
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "Company details updated.",
+      data: {
+        mode: "updated",
+        userId: user.id,
+        companyId: company.id,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[/register/company] ERROR:", error);
+    ErrorLogger.write({ type: "register/company error", error });
+    serverError(res, error.message || "Failed to save company details.");
+    return;
+  }
+});
+// signup steps: 6 final
 router.post("/register/final", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
 
@@ -809,6 +1081,16 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     user.registrationStep = 6;
     await user.save({ transaction: t });
 
+     // -------- Generate Auth Token (Login Activation) --------
+    const token = await generateToken(
+      {
+        userId: user.id,
+        companyId: company.id,
+        role: "user",
+      },
+      "7d"
+    );
+
     await t.commit();
 
     console.log("[/register/final] DONE:", {
@@ -820,11 +1102,12 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
 
     res.status(200).json({
       success: true,
-      message: "Registration successful.",
+      message: "Registration completed. Welcome to dashboard!",
       data: {
         userId: user.id,
         companyId: company.id,
-        apiKey: ZARKLYX_API_KEY,
+        // apiKey: ZARKLYX_API_KEY,
+        token,
       }
 
     });
@@ -836,187 +1119,8 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     return;
   }
 });
-router.post("/register/company", async (req: Request, res: Response): Promise<void> => {
-  const t = await dbInstance.transaction();
-  try {
-    const {
-      userId,
-      companyName,
-      website,
-      country,
-      timezone,
-      description,
-      accountType,
-      businessArea,
-      industryType,
-      email,
-      contact,
-      address,
-      city,
-      state,
-      zipcode,
-      registrationNumber,
-    } = req.body;
 
-    console.log("[/register/company] BODY:", req.body);
 
-    // required fields
-    if (!userId) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message: "userId is required",
-      });
-    }
-
-    if (!companyName || !website || !country || !timezone) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message:
-          "companyName, website, country and timezone are required for company registration.",
-      });
-    }
-
-    // Load user
-    const user: any = await User.findByPk(userId, { transaction: t });
-
-    console.log("[/register/company] Loaded user:", {
-      userId,
-      found: !!user,
-      registrationStep: user?.registrationStep,
-      isRegistering: user?.isRegistering,
-      userType: user?.userType,
-      companyId: user?.companyId,
-      isEmailVerified: user?.isEmailVerified,
-    });
-
-    if (!user) {
-      await t.rollback();
-      notFound(res, "User not found");
-    }
-
-    // Strict signup-flow validations
-    // user MUST be in signup flow
-    if (!user.isRegistering) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message:
-          "This user is not in registration flow. Company registration is only allowed during signup.",
-      });
-    }
-
-    // complete (OTP + categories + user-type)
-    if (user.registrationStep !== 4) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message:
-          "Company step is only allowed after user type selection.",
-      });
-    }
-
-    // only organization users can have a company in this flow
-    if (user.userType !== "organization") {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message:
-          "Company registration is only allowed for userType = 'organization'.",
-      });
-    }
-
-    // email should be verified by now
-    if (!user.isEmailVerified) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message:
-          "Email not verified. Please complete OTP verification before adding company.",
-      });
-    }
-
-    // user must NOT already have a company
-    if (user.companyId) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message:
-          "User is already linked to a company. Multiple companies are not allowed in this signup flow.",
-      });
-    }
-
-    // Check duplicate company name
-    const existingCompany = await Company.findOne({
-      where: { name: companyName },
-      transaction: t,
-    });
-
-    if (existingCompany) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message: "Company name already exists. Please use a different name.",
-      });
-    }
-
-    // Create company via handler
-    const company: any = await createCompany(
-      {
-        name: companyName,
-        description: description || null,
-        accountType: accountType || null,
-        businessArea: businessArea || null,
-        industryType: industryType || null,
-        website: website || null,
-        email: email || user.email || null,
-        contact: contact || user.contact || null,
-        address: address || null,
-        city: city || null,
-        state: state || null,
-        zipcode: zipcode || null,
-        country: country || null,
-        logo: null,
-        timezone: timezone || null,
-        registrationNumber: registrationNumber || null,
-        selectedModules: null,
-        no_of_clients: null,
-        isActive: true,
-      },
-      t
-    );
-
-    console.log("[/register/company] Created company:", {
-      companyId: company.id,
-      name: company.name,
-    });
-
-    //  Link user <-> company
-    await addUserToCompany(user.id, company.id, "admin", true, t);
-
-    user.companyId = company.id;
-    user.registrationStep = 5;
-    await user.save({ transaction: t });
-
-    await t.commit();
-
-    res.status(200).json({
-      success: true,
-      message: "Company details saved. Proceed to clients & modules.",
-      data: {
-        userId: user.id,
-        companyId: company.id,
-      },
-    });
-  } catch (error: any) {
-    await t.rollback();
-    console.error("[/register/company] ERROR:", error);
-    ErrorLogger.write({ type: "register/company error", error });
-    serverError(res, error.message || "Failed to save company details.");
-    return;
-  }
-});
 // Get user by ID
 router.get("/getUserID/:id", async (req: Request, res: Response): Promise<void> => {
   try {

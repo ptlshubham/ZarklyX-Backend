@@ -58,6 +58,7 @@ export function initControlDB(sequelize: Sequelize) {
   UserCompany.belongsTo(Company, {
     foreignKey: "companyId",
   });
+  
 
   /***user <-> otp */
 //   User.hasMany(Otp, {
