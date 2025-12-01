@@ -12,7 +12,7 @@ import companyRoutes from './routes/api-webapp/company/company-api';
 import otpRoutes from './routes/api-webapp/otp/otp-api';
 import Category from './routes/api-webapp/superAdmin/generalSetup/category/category-api';
 import PremiumModule  from './routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api';
-import  ClientsRoutes from './routes/api-webapp/superAdmin/agency/clients/clients-api';
+import  ClientsRoutes from './routes/api-webapp/agency/clients/clients-api';
 import businessTypeRoutes from './routes/api-webapp/superAdmin/generalSetup/businessType/businessType-api';
 
 import path from "path";

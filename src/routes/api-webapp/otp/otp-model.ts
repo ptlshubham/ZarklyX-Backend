@@ -8,7 +8,7 @@ import {
 } from "sequelize";
 import { hashPassword, checkPassword } from "../../../services/password-service";
 import { User } from "../../../routes/api-webapp/authentication/user/user-model";
-import { Clients } from "../../../routes/api-webapp/superAdmin/agency/clients/clients-model";
+import {Clients } from "../../../routes/api-webapp/agency/clients/clients-model";
 
 export class Otp extends Model<
     InferAttributes<Otp>,
