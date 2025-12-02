@@ -62,7 +62,7 @@ router.post("/clientSignup/start",
                 !clientLastName ||
                 !businessName ||
                 !email ||
-                !contact ||
+                !contact || 
                 !password ||
                 !confirmPassword
             ) {
