@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@types/node-cron": "^3.0.11",
+    "apple-signin-auth": "^2.0.0",
     "axios": "^1.7.2",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.3",
@@ -36,6 +37,7 @@
     "sequelize": "^6.37.7",
     "sequelize-cli": "^6.6.2",
     "speakeasy": "^2.0.0",
+    "uuid": "^13.0.0",
     "winston": "^3.8.2",
     "winston-daily-rotate-file": "^4.7.1"
   },
