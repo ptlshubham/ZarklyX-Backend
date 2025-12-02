@@ -72,7 +72,14 @@ export const initControlDBConnection = async (maxAttempts = 6): Promise<boolean>
 const syncControlledDB = async (maxAttempts = 3) => {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      // Disable FK constraint checks before sync to avoid table order issues
+      await db.query("SET FOREIGN_KEY_CHECKS = 0;");
+      
       await db.sync({ alter: true });
+      
+      // Re-enable FK constraint checks after sync
+      await db.query("SET FOREIGN_KEY_CHECKS = 1;");
+      
       try {
         // await runSeeders(db);
       } catch (error) {

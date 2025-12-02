@@ -110,7 +110,7 @@ import {
   Model,
   Sequelize,
 } from "sequelize";
-import { User } from "../../../routes/api-webapp/user/user-model";
+import { User } from "../../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../../routes/api-webapp/company/company-model";
 
 export class UserCompany extends Model<
@@ -118,8 +118,8 @@ export class UserCompany extends Model<
   InferCreationAttributes<UserCompany>
 > {
   declare id: CreationOptional<number>;
-  declare userId: number;
-  declare companyId: number;
+  declare userId: string; // UUID FK to User
+  declare companyId: string; // UUID FK to Company
   declare role: "admin" | "manager" | "employee" | "viewer";
   declare isOwner: boolean;
   declare status: "active" | "inactive";
@@ -138,7 +138,7 @@ export class UserCompany extends Model<
           unique: true,
         },
         userId: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           allowNull: false,
           references: {
             model: User,
@@ -146,7 +146,7 @@ export class UserCompany extends Model<
           },
         },
         companyId: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           allowNull: false,
           references: {
             model: Company,

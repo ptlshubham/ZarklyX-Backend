@@ -24,13 +24,13 @@
 //   SENDER_EMAIL_PASSWORD: "your_secure_pwd", // App password or actual SMTP password
 // };
 
-
 // export default environment;
 
 export const env = {
   development: "development",
   production: "production",
   staging: "staging",
+  
 };
 
 // ZarklyX Configuration

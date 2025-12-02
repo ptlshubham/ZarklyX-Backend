@@ -7,43 +7,49 @@ import {
   Sequelize,
 } from "sequelize";
 
-export class PremiumModule extends Model<
-  InferAttributes<PremiumModule>,
-  InferCreationAttributes<PremiumModule>
+export class BusinessType extends Model<
+  InferAttributes<BusinessType>,
+  InferCreationAttributes<BusinessType>
 > {
   declare id: CreationOptional<number>;
-  declare icon: string | null;
   declare name: string;
+  declare description: string | null;
   declare isActive: boolean;
+  declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
-  static initModel(sequelize: Sequelize): typeof PremiumModule {
-    PremiumModule.init(
+  static initModel(sequelize: Sequelize): typeof BusinessType {
+    BusinessType.init(
       {
         id: {
           type: DataTypes.INTEGER,
           primaryKey: true,
           autoIncrement: true,
           allowNull: false,
-          unique: true,
-        },
-        icon: {
-          type: DataTypes.STRING(255),
-          allowNull: true,
         },
         name: {
           type: DataTypes.STRING(255),
           allowNull: false,
           unique: {
-            name: "premium_module_name",
-            msg: "Premium module name must be unique",
+            name: "business_type_name",
+            msg: "Business type name must be unique",
           },
+        },
+        description: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+          defaultValue: null,
         },
         isActive: {
           type: DataTypes.BOOLEAN,
           allowNull: false,
           defaultValue: true,
+        },
+        isDeleted: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
         },
         createdAt: {
           type: DataTypes.DATE,
@@ -58,15 +64,15 @@ export class PremiumModule extends Model<
       },
       {
         sequelize,
-        modelName: "premiumModule",
-        tableName: "premiumModule",
+        modelName: "businessType",
+        tableName: "business_types",
         timestamps: true,
       }
     );
 
-    return PremiumModule;
+    return BusinessType;
   }
 }
 
-export const initPremiumModuleModel = (sequelize: Sequelize) =>
-  PremiumModule.initModel(sequelize);
+export const initBusinessTypeModel = (sequelize: Sequelize) =>
+  BusinessType.initModel(sequelize);

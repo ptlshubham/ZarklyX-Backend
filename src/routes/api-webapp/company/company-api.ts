@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import { Company } from "../../../routes/api-webapp/company/company-model";
 import { UserCompany } from "../../../routes/api-webapp/company/user-company-model"
-import { User } from "../../../routes/api-webapp/user/user-model";
+import { User } from "../../../routes/api-webapp/authentication/user/user-model";
 import {
   getUserCompanies,
   getCompanyWithUserRole,
@@ -31,7 +31,7 @@ const router = express.Router();
  * Get all companies associated with the logged-in user
  * Returns list of companies with user's role in each
  */
-router.get("/list", tokenMiddleWare, async (req: Request, res: Response) => {
+router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promise<any>=> {
   try {
     const userId: any = (req as any).user?.id;
     if (!userId) {
@@ -86,7 +86,7 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response) => {
  */
 router.get("/:companyId/details",
   tokenMiddleWare,
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any> => {
     try {
       const userId: any = (req as any).user?.id;
       const { companyId } = req.params;
@@ -100,7 +100,7 @@ router.get("/:companyId/details",
       }
 
       // Check if user has access to this company
-      const hasAccess = await isUserInCompany(userId, parseInt(companyId));
+      const hasAccess = await isUserInCompany(userId, companyId);
       if (!hasAccess) {
         return serverError(res, "You do not have access to this company");
       }
@@ -108,7 +108,7 @@ router.get("/:companyId/details",
       // Get company details with user's role
       const companyDetails = await getCompanyWithUserRole(
         userId,
-        parseInt(companyId)
+        companyId
       );
 
       if (!companyDetails) {
@@ -137,7 +137,7 @@ router.get("/:companyId/details",
  */
 router.post("/switch/:companyId",
   tokenMiddleWare,
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     try {
       const userId: any = (req as any).user?.id;
       const { companyId } = req.params;
@@ -151,7 +151,7 @@ router.post("/switch/:companyId",
       }
 
       // Verify user belongs to this company
-      const hasAccess = await isUserInCompany(userId, parseInt(companyId));
+      const hasAccess = await isUserInCompany(userId, companyId);
       if (!hasAccess) {
         return serverError(res, "You cannot switch to this company");
       }
@@ -159,7 +159,7 @@ router.post("/switch/:companyId",
       // Get company details with full information
       const companyData = await getCompanyWithUserRole(
         userId,
-        parseInt(companyId)
+        companyId
       );
 
       if (!companyData) {
@@ -189,7 +189,7 @@ router.post("/switch/:companyId",
  * Create a new company (Admin only)
  */
 router.post("/addCompany",
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -323,7 +323,7 @@ router.post("/addCompany",
  * Update company details (Admin/Owner only)
  */
 router.put("/:companyId/update",
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -351,7 +351,7 @@ router.put("/:companyId/update",
 
       // Update company
       const updatedCompany = await updateCompany(
-        parseInt(companyId),
+        companyId,
         req.body,
         t
       );
@@ -376,7 +376,7 @@ router.put("/:companyId/update",
  * Add a user to a company (Admin/Owner only)
  */
 router.post("/:companyId/add-user",
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -414,7 +414,7 @@ router.post("/:companyId/add-user",
       const existingRelation = await UserCompany.findOne({
         where: {
           userId: targetUserId,
-          companyId: parseInt(companyId),
+          companyId: companyId,
         },
       });
 
@@ -426,7 +426,7 @@ router.post("/:companyId/add-user",
       // Add user to company
       await addUserToCompany(
         targetUserId,
-        parseInt(companyId),
+        companyId,
         role,
         isOwner,
         t
@@ -452,7 +452,7 @@ router.post("/:companyId/add-user",
  * Remove a user from a company (Admin/Owner only)
  */
 router.delete("/:companyId/remove-user/:targetUserId",
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<any>=> {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -480,8 +480,8 @@ router.delete("/:companyId/remove-user/:targetUserId",
 
       // Remove user from company
       await removeUserFromCompany(
-        parseInt(targetUserId),
-        parseInt(companyId),
+        targetUserId,
+        companyId,
         t
       );
 

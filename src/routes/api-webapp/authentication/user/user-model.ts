@@ -6,26 +6,28 @@ import {
     Model,
     Sequelize,
 } from "sequelize";
-import { checkPassword, hashPassword } from "../../../services/password-service";
+import { checkPassword, hashPassword } from "../../../../services/password-service";
 
 export class User extends Model<
     InferAttributes<User>,
     InferCreationAttributes<User>
 > {
-    declare id: CreationOptional<number>;
+    declare id: CreationOptional<string>; // UUID
     declare referId: string;
-    declare companyId: number | null;
+    declare companyId: string | null;
     declare firstName: string;
     declare lastName: string;
     declare email: string | null;
     declare contact: string; // Number → String
     declare userType: string | null;
     declare secretCode: string | null;
-    declare isthemedark: boolean;
+    declare isThemeDark: boolean;
     declare password: string;
     declare countryCode: string | null;
     // declare categories: "food" | "healthCare" | "NGos";
-    declare categories: string[] | null;
+    // categories is stored as JSON; it can be a single category id (string),
+    // an array of category ids, or null.
+    declare categories: string | string[] | null;
     declare isDeleted: boolean;
     declare deletedAt: CreationOptional<Date | null>;
     // declare deletedAt: CreationOptional<Date>;
@@ -34,6 +36,9 @@ export class User extends Model<
     declare registrationStep: number;
     declare isMobileVerified: boolean;
     declare isActive: boolean;
+    declare googleId: string | null;
+    declare appleId: string | null;
+    declare authProvider: string;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -45,14 +50,14 @@ export class User extends Model<
         User.init(
             {
                 id: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.UUID,
+                    defaultValue: DataTypes.UUIDV4,
                     primaryKey: true,
-                    autoIncrement: true,
                     allowNull: false,
                     unique: true,
                 },
                 companyId: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.UUID,
                     allowNull: true,
                     defaultValue: null,
                 },
@@ -102,7 +107,7 @@ export class User extends Model<
                         msg: "secret Code must be unique",
                     }
                 },
-                isthemedark: {
+                isThemeDark: {
                     type: DataTypes.BOOLEAN,
                     allowNull: true,
                     defaultValue: false,
@@ -158,6 +163,21 @@ export class User extends Model<
                 isActive: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: true, // 
+                },
+                googleId: {
+                    type: DataTypes.STRING,
+                    allowNull: true,
+                    unique: true,
+                },
+                appleId: {
+                    type: DataTypes.STRING,
+                    allowNull: true,
+                    unique: true,
+                },
+                authProvider: {
+                    type: DataTypes.ENUM("email", "google", "apple"),
+                    allowNull: false,
+                    defaultValue: "email",
                 },
                 createdAt: {
                     type: DataTypes.DATE,
