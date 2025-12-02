@@ -1,3 +1,18 @@
+
+// import { connectMongoDB } from "./dbMongo";
+// import connectMySQL from "./dbSQL";
+// import dotenv from "dotenv";
+
+// dotenv.config();
+
+// // Connect MySQL & MongoDB both
+// export const connectDatabases = async () => {
+//   await connectMongoDB();
+//   await connectMySQL();
+//   console.log(" All Databases Connected Successfully!");
+// };
+
+
 // import { connectMongoDB  } from "./dbMongo";
 import connectMySQL from "./dbSQL";
 import dotenv from "dotenv";

@@ -1,5 +1,5 @@
 export const GLOBAL_CONSTANTS = {
-  token: "rideit_jwt_secret_2025",
+  token: "zarklyx_jwt_secret_2025",
   feesType: {
     rent: 100,
     spare: 50,
@@ -15,11 +15,17 @@ export const GLOBAL_CONSTANTS = {
     OFFLINE: "offline",
     ONLINE: "online",
   },
-  email: {
-    SENDER_EMAIL_HOST: "smtp.example.com",
-    SENDER_EMAIL_PORT: 587,
-    SENDER_EMAIL_ID: "example@example.com",
-    SENDER_EMAIL_PASSWORD: "password123",
+  // email: {
+  //   SENDER_EMAIL_HOST: "smtp.example.com",
+  //   SENDER_EMAIL_PORT: 587,
+  //   SENDER_EMAIL_ID: "example@example.com",
+  //   SENDER_EMAIL_PASSWORD: "password123",
+  // },
+      email: {
+    SENDER_EMAIL_HOST: "smtp.hostinger.com",
+    SENDER_EMAIL_PORT: 465,
+    SENDER_EMAIL_ID: "br.rinkal1997@gmail.com",
+    SENDER_EMAIL_PASSWORD: "lhbodchvrstpqmhf",
   },
   otpTemplateID: {
     register: '66b607add6fc057c8f61f502',

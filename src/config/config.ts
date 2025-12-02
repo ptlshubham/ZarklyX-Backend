@@ -1,9 +1,44 @@
 // config.ts
+// export = {
+//   development: {
+//     dialect: "mysql",
+//     database: process.env.MYSQL_DB_NAME,
+//     username: process.env.MYSQL_DB_USERNAME,
+//     password: process.env.MYSQL_DB_PASSWORD,
+//     host: process.env.MYSQL_DB_HOST,
+//     logging: false,
+//     timezone: "+05:30",
+
+//     email: {
+//       SENDER_EMAIL_HOST: process.env.SENDER_EMAIL_HOST,
+//       SENDER_EMAIL_PORT: process.env.SENDER_EMAIL_PORT,
+//       SENDER_EMAIL_ID: process.env.SENDER_EMAIL_ID,
+//       SENDER_EMAIL_PASSWORD: process.env.SENDER_EMAIL_PASSWORD,
+//     },
+
+//     ApiUrl: process.env.API_URL,
+//     adminURL: process.env.ADMIN_URL,
+//     templatePath: "src/template",
+//     publicPath: "src/public",
+
+//     // fallback cryptoKey if RESPONSE_ENCRYPTION_KEY not provided
+//     cryptoKey: process.env.CRYPTO_KEY || "fallback_local_key",
+
+//     routesPath: "src/routes",
+//     localUrlAccess: "/../../src/public/",
+//   },
+
+//   staging: {},
+
+//   production: {}
+// };
+
+
 
 export = {
   development: {
     dialect: "mysql",
-    database: process.env.MYSQL_DB_NAME || "zarklyX_dev",
+    database: process.env.MYSQL_DB_NAME || "zarklyx_dev",
     username: process.env.MYSQL_DB_USERNAME || "root",
     password: process.env.MYSQL_DB_PASSWORD || null,
     host: process.env.MYSQL_DB_HOST || "localhost",

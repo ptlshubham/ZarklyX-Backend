@@ -1,7 +1,7 @@
 import { Company } from "../../../routes/api-webapp/company/company-model";
 import { UserCompany } from "./user-company-model";
 import { Op, Transaction, Sequelize } from "sequelize";
-import { User } from "../../../routes/api-webapp/user/user-model";
+import { User } from "../../../routes/api-webapp/authentication/user/user-model";
 // Get all companies
 export const getAllCompanies = async () => {
   return await Company.findAll({
@@ -32,8 +32,8 @@ export const getUserCompanies = async (userId: number) => {
 
 // Get company with user's role/permission info
 export const getCompanyWithUserRole = async (
-  userId: number,
-  companyId: number
+  userId: string,
+  companyId: string
 ) => {
   const company = await Company.findByPk(companyId);
   if (!company) return null;
@@ -62,7 +62,7 @@ export const createCompany = async (
 
 // Update company
 export const updateCompany = async (
-  companyId: number,
+  companyId: string,
   updateData: any,
   transaction?: Transaction
 ) => {
@@ -92,8 +92,8 @@ export const updateCompany = async (
 //   );
 // };
 export const addUserToCompany  = async (
-  userId: number,
-  companyId: number,
+  userId: string,
+  companyId: string,
   role: "admin" | "manager" | "employee" | "viewer" = "employee",
   isOwner: boolean = false,
   transaction?: Transaction
@@ -113,8 +113,8 @@ export const addUserToCompany  = async (
 
 // Remove user from company
 export const removeUserFromCompany = async (
-  userId: number,
-  companyId: number,
+  userId: string,
+  companyId: string,
   transaction?: Transaction
 ) => {
   return await UserCompany.destroy({
@@ -125,8 +125,8 @@ export const removeUserFromCompany = async (
 
 // Update user role in company
 export const updateUserCompanyRole = async (
-  userId: number,
-  companyId: number,
+  userId: string,
+  companyId: string,
   role: "admin" | "manager" | "employee" | "viewer",
   transaction?: Transaction
 ) => {
@@ -163,7 +163,7 @@ export const getUsersByCompanyAndRole = async (
 };
 
 // Check if user belongs to company
-export const isUserInCompany = async (userId: number, companyId: number) => {
+export const isUserInCompany = async (userId: string, companyId: string) => {
   const userCompany = await UserCompany.findOne({
     where: { userId, companyId, status: "active" },
   });

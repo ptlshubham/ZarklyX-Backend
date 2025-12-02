@@ -51,7 +51,6 @@ type emailargs = {
 };
 
 //send mail using nodemailer for both simple text or html file
-//history[hasmukh]
 export const sendEmail = async (mailData: emailargs) => {
   try {
     let res;
@@ -63,7 +62,7 @@ export const sendEmail = async (mailData: emailargs) => {
     let mailOptions: any = {
       from: mailData.from || emailConfig.SENDER_EMAIL_ID,
       to: mailData.to || emailConfig.SENDER_EMAIL_ID,
-      subject: mailData.subject || "Ride It Email",
+      subject: mailData.subject || "ZarklyX  Email",
       attachments: mailData.attachments ? mailData.attachments : null,
     };
 

@@ -1,12 +1,15 @@
 import type { Sequelize } from "sequelize";
 
 // Models for Web -app
-import { User } from "../../routes/api-webapp/user/user-model";
+import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
 import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
-import { Category, initCategoryModel } from "../../routes/api-webapp/category/category-model";
-import { PremiumModule ,initPremiumModuleModel} from "../../routes/api-webapp/premiumModule/premiumModule-model"; 
+import { Category, initCategoryModel } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
+import { PremiumModule ,initPremiumModuleModel } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
+import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
+import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
+import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 
 export {
   User,
@@ -14,17 +17,26 @@ export {
   UserCompany,
   Otp,
   Category,
-  PremiumModule
+  PremiumModule,
+  Clients,
+  BusinessType,
+  BusinessSubcategory,
   // LoginHistory,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
+  // User.initModel(sequelize);
   User.initModel(sequelize);
   Company.initModel(sequelize);
- initUserCompanyModel(sequelize);
- initCategoryModel(sequelize);
- initPremiumModuleModel(sequelize);
-  Otp.initModel(sequelize);
+  PremiumModule.initModel(sequelize);
+  Category.initModel(sequelize);
+  Clients.initModel(sequelize);  
+  Otp.initModel(sequelize);  
+  initUserCompanyModel(sequelize);
+  BusinessType.initModel(sequelize);
+  BusinessSubcategory.initModel(sequelize);
+//  initCategoryModel(sequelize);
+//  initPremiumModuleModel(sequelize);
 // LoginHistory.initModel(sequelize);
 
 
@@ -51,16 +63,69 @@ export function initControlDB(sequelize: Sequelize) {
   UserCompany.belongsTo(Company, {
     foreignKey: "companyId",
   });
+  
 
   /***user <-> otp */
-  User.hasMany(Otp, {
+//   User.hasMany(Otp, {
+//     foreignKey: "userId",
+//     as: "otps",
+//   });
+//   Otp.belongsTo(User, {
+//     foreignKey: "userId",
+//     as : "user"
+//   });
+ 
+// /*** clients <-> otp */
+Clients.hasMany(Otp, {
+  foreignKey: "clientId",
+  as: "Otps",
+  constraints: false,
+});
+Otp.belongsTo(Clients, {
+  foreignKey: "clientId",
+  as: "client",
+  constraints: false,
+});
+
+ /*** User <-> Clients  */
+  User.hasMany(Clients, {
     foreignKey: "userId",
-    as: "otps",
+    as: "clients",          // user.getClients()
   });
-  Otp.belongsTo(User, {
+  Clients.belongsTo(User, {
     foreignKey: "userId",
-    as : "user"
+    as: "user",             // client.getUser()
   });
+
+  /*** Company <-> Clients  */
+  Company.hasMany(Clients, {
+    foreignKey: "companyId",
+    as: "companyClients",   // company.getCompanyClients()
+  });
+  Clients.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",          // client.getCompany()
+  });
+
+   /*** BusinessType <-> BusinessSubcategory */
+  BusinessType.hasMany(BusinessSubcategory, {
+    foreignKey: "businessTypeId",
+    as: "subcategories",
+  });
+
+  BusinessSubcategory.belongsTo(BusinessType, {
+    foreignKey: "businessTypeId",
+    as: "businessType",
+  });
+
+
+// User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
+// Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+// Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
+// Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
+// Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
+// Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
 
   return {
     User,
@@ -68,7 +133,10 @@ export function initControlDB(sequelize: Sequelize) {
     Otp,  
     UserCompany,
     Category,
-    PremiumModule
+    PremiumModule,
+    Clients,
+    BusinessType,
+    BusinessSubcategory
 ,    // LoginHistory
   };
 }

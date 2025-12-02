@@ -11,10 +11,11 @@ export class Category extends Model<
   InferAttributes<Category>,
   InferCreationAttributes<Category>
 > {
-  declare id: CreationOptional<number>;
+  declare id: CreationOptional<string>;
   declare icon: string | null;
   declare name: string;
   declare isActive: boolean;
+  declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
@@ -22,11 +23,11 @@ export class Category extends Model<
     Category.init(
       {
         id: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           primaryKey: true,
-          autoIncrement: true,
           allowNull: false,
           unique: true,
+          defaultValue: DataTypes.UUIDV4,
         },
         icon: {
           type: DataTypes.STRING(255),
@@ -44,6 +45,11 @@ export class Category extends Model<
           type: DataTypes.BOOLEAN,
           allowNull: false,
           defaultValue: true,
+        },
+        isDeleted: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
         },
         createdAt: {
           type: DataTypes.DATE,
