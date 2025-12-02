@@ -15,8 +15,8 @@ export class Otp extends Model<
     InferCreationAttributes<Otp>
 > {
     declare id: CreationOptional<number>;
-    declare userId: number | null;
-    declare clientId: number | null;
+    declare userId: string | null; // UUID FK to User
+    declare clientId: string | null; // UUID FK to Clients
     declare email: string | null;
     declare contact: string; // Number → String
     declare otp: string | null; // OTP for email
@@ -51,12 +51,12 @@ export class Otp extends Model<
                     unique: true,
                 },
                 userId: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.UUID,
                     allowNull: true,
                   
                 },
                 clientId: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.UUID,
                     allowNull: true,
                  
                 },

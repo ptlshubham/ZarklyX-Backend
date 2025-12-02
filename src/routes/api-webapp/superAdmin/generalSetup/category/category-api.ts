@@ -171,7 +171,7 @@ router.post("/updateCategoryById", async (req, res): Promise<any> => {
 router.get("/removeById/:id", async (req, res): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const moduleData = await deleteCategory(Number(req.params.id), t);
+    const moduleData = await deleteCategory(req.params.id, t);
     await t.commit();
     return res.status(200).json({
       success: true,

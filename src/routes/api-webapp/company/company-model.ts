@@ -11,7 +11,7 @@ export class Company extends Model<
   InferAttributes<Company>,
   InferCreationAttributes<Company>
 > {
-  declare id: CreationOptional<number>;
+  declare id: CreationOptional<string>;
   declare name: string;
   declare description: string | null;
   declare accountType: string | null;
@@ -38,9 +38,9 @@ export class Company extends Model<
     Company.init(
       {
         id: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           primaryKey: true,
-          autoIncrement: true,
+          defaultValue: DataTypes.UUIDV4,
           allowNull: false,
           unique: true,
         },
