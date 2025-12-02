@@ -31,7 +31,7 @@ import { User } from "../../../../routes/api-webapp/authentication/user/user-mod
 import { detectCountryCode, } from "../../../../services/phone-service";
 import { BusinessType } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
-
+import { Company } from "../../../../routes/api-webapp/company/company-model";
 
 const router = express.Router();
 
@@ -171,7 +171,8 @@ router.post("/clientSignup/start",
 );
 
 // signup for client - verify-otp
-router.post("/clientSignup/verify-otp",
+router.post(
+    "/clientSignup/verify-otp",
     async (req: Request, res: Response): Promise<void> => {
         const t = await dbInstance.transaction();
 
@@ -186,7 +187,7 @@ router.post("/clientSignup/verify-otp",
                 return;
             }
 
-            // Find valid OTP record
+            // 1) Find valid OTP record
             const otpRecord = await Otp.findOne({
                 where: {
                     email,
@@ -205,9 +206,9 @@ router.post("/clientSignup/verify-otp",
                 return;
             }
 
+            // 2) Read + parse tempUserData safely
             let temp: any = (otpRecord as any).tempUserData;
 
-            // tempUserData stored as string JSON in DB → parse it
             if (typeof temp === "string") {
                 try {
                     temp = JSON.parse(temp);
@@ -216,7 +217,6 @@ router.post("/clientSignup/verify-otp",
                 }
             }
 
-            // validate temp data
             if (
                 !temp ||
                 !temp.email ||
@@ -228,17 +228,48 @@ router.post("/clientSignup/verify-otp",
                 await t.rollback();
                 res.status(400).json({
                     success: false,
-                    message: "Signup data missing or invalid. Please restart signup.",
+                    message:
+                        "Signup data missing or invalid. Please restart signup.",
                 });
                 return;
             }
 
             const tempUserId = temp.userId || null;
             const tempCompanyId = temp.companyId || null;
+            // 3) Validate parent User & Company (FK safety)
+            let parentUser: User | null = null;
+            if (tempUserId) {
+                parentUser = await User.findByPk(tempUserId, { transaction: t });
+                if (!parentUser) {
+                    await t.rollback();
+                    res.status(400).json({
+                        success: false,
+                        message: "Invalid userId in signup data. Please login again.",
+                    });
+                    return;
+                }
+            }
 
-            //  Re-check if client already exists
+            let parentCompany: Company | null = null;
+            if (tempCompanyId) {
+                parentCompany = await Company.findByPk(tempCompanyId, {
+                    transaction: t,
+                });
+                if (!parentCompany) {
+                    await t.rollback();
+                    res.status(400).json({
+                        success: false,
+                        message: "Invalid companyId in signup data.",
+                    });
+                    return;
+                }
+            }
+
+            // 4) Re-check if client already exists
             const existsByEmail = await getClientsByEmail({ email: temp.email });
-            const existsByContact = await getClientsByMbMo({ contact: temp.contact });
+            const existsByContact = await getClientsByMbMo({
+                contact: temp.contact,
+            });
 
             if (existsByEmail || existsByContact) {
                 await t.rollback();
@@ -249,24 +280,34 @@ router.post("/clientSignup/verify-otp",
                 return;
             }
 
-            //  Create client (after OTP success)
+            // 5) Create client (after OTP success)
             const client: any = await Clients.create(
                 {
-                    userId: tempUserId,
-                    companyId: tempCompanyId,
+                    // FKs — only if valid
+                    userId: parentUser ? parentUser.id : null,
+                    companyId: parentCompany ? parentCompany.id : null,
+                    userName:temp.userName,
                     businessName: temp.businessName,
                     clientfirstName: temp.clientfirstName,
                     clientLastName: temp.clientLastName,
+
                     email: temp.email,
                     contact: temp.contact,
                     countryCode: temp.countryCode,
-                    password: temp.password, // hashed by Clients model
-                    businessBase: "",
-                    country: "",
-                    state: "",
-                    city: "",
-                    postcode: "",
-                    address: "",
+                    password: temp.password, // hashed by Clients model setter
+
+                    // minimum required fields
+                    businessBase: temp.businessBase || "",
+                    country: temp.country || "",
+                    state: temp.state || "",
+                    city: temp.city || "",
+                    postcode: temp.postcode || "",
+                    address: temp.address || "",
+
+                    isEmailVerified: true,
+                    isMobileVerified: false,
+                    isActive: true,
+                    isDeleted: false,
                     isVip: false,
                     isRegistering: false,
                     registrationStep: 0,
@@ -274,15 +315,11 @@ router.post("/clientSignup/verify-otp",
                     isApprove: false,
                     isCredential: false,
                     profileStatus: false,
-                    isEmailVerified: true,
-                    isMobileVerified: false,
-                    isActive: true,
-                    isDeleted: false,
                 },
                 { transaction: t }
             );
 
-            //Mark OTP as used & clear temp data
+            // 6) Mark OTP as used & clear temp data
             otpRecord.set({
                 otpVerify: true,
                 isEmailVerified: true,
@@ -293,14 +330,14 @@ router.post("/clientSignup/verify-otp",
             });
             await otpRecord.save({ transaction: t });
 
-            //JWT token payload
+            // 7) Build token payload
             const tokenPayload: any = {
                 clientId: client.id,
                 email: client.email,
                 role: "client",
             };
-            if (tempUserId) tokenPayload.userId = tempUserId;
-            if (tempCompanyId) tokenPayload.companyId = tempCompanyId;
+            if (parentUser) tokenPayload.userId = parentUser.id;
+            if (parentCompany) tokenPayload.companyId = parentCompany.id;
 
             const token = await generateToken(tokenPayload, "7d");
 
@@ -311,21 +348,22 @@ router.post("/clientSignup/verify-otp",
                 message: "Client signup successful!",
                 data: {
                     id: client.id,
-                    userId: tempUserId,
-                    companyId: tempCompanyId,
                     businessName: client.businessName,
                     clientfirstName: client.clientfirstName,
                     clientLastName: client.clientLastName,
                     email: client.email,
                     contact: client.contact,
                     countryCode: client.countryCode,
+                    userId: parentUser ? parentUser.id : null,
+                    companyId: parentCompany ? parentCompany.id : null,
                     token,
                 },
             });
-        } catch (err) {
+        } catch (err: any) {
             await t.rollback();
             console.error("[clients/signup/verify] ERROR:", err);
-            res.status(500).json({ success: false, message: "Server error" });
+            ErrorLogger.write({ type: "clients/signup/verify error", error: err });
+            res.status(500).json({ success: false, message: err.message || "Server error" });
         }
     }
 );

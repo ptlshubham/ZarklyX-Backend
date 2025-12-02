@@ -14,7 +14,7 @@ export class User extends Model<
 > {
     declare id: CreationOptional<number>;
     declare referId: string;
-    declare companyId: number | null;
+    declare companyId: string | null;
     declare firstName: string;
     declare lastName: string;
     declare email: string | null;
@@ -34,6 +34,9 @@ export class User extends Model<
     declare registrationStep: number;
     declare isMobileVerified: boolean;
     declare isActive: boolean;
+    declare googleId: string | null;
+    declare appleId: string | null;
+    declare authProvider: string;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -45,14 +48,14 @@ export class User extends Model<
         User.init(
             {
                 id: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.UUID,
+                    defaultValue: DataTypes.UUIDV4,
                     primaryKey: true,
-                    autoIncrement: true,
                     allowNull: false,
                     unique: true,
                 },
                 companyId: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.UUID,
                     allowNull: true,
                     defaultValue: null,
                 },
@@ -158,6 +161,21 @@ export class User extends Model<
                 isActive: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: true, // 
+                },
+                googleId: {
+                    type: DataTypes.STRING,
+                    allowNull: true,
+                    unique: true,
+                },
+                appleId: {
+                    type: DataTypes.STRING,
+                    allowNull: true,
+                    unique: true,
+                },
+                authProvider: {
+                    type: DataTypes.ENUM("email", "google", "apple"),
+                    allowNull: false,
+                    defaultValue: "email",
                 },
                 createdAt: {
                     type: DataTypes.DATE,

@@ -18,6 +18,7 @@ export class Clients extends Model<
   // declare ownerName: string;
   declare userId: number | null;
   declare companyId: number | null;
+  declare userName: string
   declare clientfirstName: string;
   declare clientLastName: string;
   declare businessName: string;
@@ -94,6 +95,10 @@ export class Clients extends Model<
           type: DataTypes.INTEGER,
           allowNull: true,
 
+        },
+        userName: {
+          type: DataTypes.STRING(255),
+          allowNull: false,
         },
         // Basic business info
         businessName: {

@@ -23,6 +23,7 @@ import {
   updateTheme,
   UserData,
   generateUniqueSecretCode,
+  socialLoginHandler
 } from "../../authentication/user/user-handler";
 import { sendEmail } from "../../../../services/mailService";
 import { createCompany, addUserToCompany } from "../../company/company-handler";
@@ -301,7 +302,7 @@ router.post("/register/verify-otp",
         return;
       }
 
-        let tempUserData: any = otpRecord.tempUserData;
+      let tempUserData: any = otpRecord.tempUserData;
 
       if (typeof tempUserData === "string") {
         try {
@@ -569,7 +570,7 @@ router.post("/register/categories",
       }
 
       // single value store in user.categories
-      user.categories = categoryId; 
+      user.categories = categoryId;
       user.registrationStep = 3;
 
       console.log("Saving user with new category:", {
@@ -645,7 +646,7 @@ router.post("/register/user-type", async (req: Request, res: Response): Promise<
     }
 
     // Set user type 
-    user.userType = userType;   
+    user.userType = userType;
     user.registrationStep = 4;
     await user.save({ transaction: t });
 
@@ -827,7 +828,7 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
       await addUserToCompany(user.id, company.id, "admin", true, t);
 
       user.companyId = company.id;
-      user.registrationStep = 5; 
+      user.registrationStep = 5;
       await user.save({ transaction: t });
 
       await t.commit();
@@ -943,7 +944,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     const { userId, noOfClientsRange, selectedModules } = req.body;
 
     console.log("[/register/final] BODY:", req.body);
-  
+
     // if (!ZARKLYX_API_KEY) {
     //   await t.rollback();
     //   res.status(500).json({
@@ -1081,7 +1082,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     user.registrationStep = 6;
     await user.save({ transaction: t });
 
-     // -------- Generate Auth Token (Login Activation) --------
+    // -------- Generate Auth Token (Login Activation) --------
     const token = await generateToken(
       {
         userId: user.id,
@@ -1451,7 +1452,7 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
       companyId: user.companyId || null,
     };
 
-    const token = await generateToken(tokenPayload, "30d"); 
+    const token = await generateToken(tokenPayload, "30d");
 
     const nameData = user.email || user.contact || `User ID ${user.id}`;
 
@@ -1460,8 +1461,8 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
       message: `Login successful for ${nameData}.`,
       data: {
         userId: user.id,
-          ...(user.isRegistering ? {} : { token }),
-        isRegistering : user.isRegistering
+        ...(user.isRegistering ? {} : { token }),
+        isRegistering: user.isRegistering
       },
     });
   } catch (error: any) {
@@ -1654,7 +1655,7 @@ router.post("/forgotPassword",
         html: `<p>Your new password is <strong>${newPWD}</strong></p>.`,
       };
 
- 
+
       await sendEmail(mailData);
 
       //  Update user password (model setter will hash) 
@@ -1767,6 +1768,32 @@ router.post("/forgotPassword",
 //   }
 // });
 
+router.post("/social-login", async (req, res): Promise<void> => {
+  try {
+    const { provider, idToken } = req.body;
+
+    if (!provider || !idToken) {
+      res.status(400).json({
+        success: false,
+        message: "provider & idToken are required",
+      });
+    }
+
+    const result = await socialLoginHandler(req.body);
+    const message = result.isNew ? "Signup successful" : "Signin successful";
+
+    res.status(200).json({
+      success: true,
+      message: "Google login successful",
+      data: {
+      },
+    });
+  } catch (err: any) {
+    console.error("[/user/social-login] ERROR:", err);
+    serverError(res, err.message || "Social login failed");
+    return;
+  }
+});
 // Google auth api for signin
 // router.post("/auth/google",async (req: Request, res: Response): Promise<void> => {
 //     const t = await dbInstance.transaction();
