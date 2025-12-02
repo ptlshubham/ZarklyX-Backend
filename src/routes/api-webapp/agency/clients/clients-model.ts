@@ -16,8 +16,8 @@ export class Clients extends Model<
   //   declare icon: string | null;
   // Basic business info
   // declare ownerName: string;
-  declare userId: number | null;
-  declare companyId: number | null;
+  declare userId: string | null; // UUID FK to User
+  declare companyId: string | null; // UUID FK to Company
   declare userName: string
   declare clientfirstName: string;
   declare clientLastName: string;
@@ -87,12 +87,12 @@ export class Clients extends Model<
           unique: true,
         },
         userId: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           allowNull: true,
 
         },
         companyId: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           allowNull: true,
 
         },

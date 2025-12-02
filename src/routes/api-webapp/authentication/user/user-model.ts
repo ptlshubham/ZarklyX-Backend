@@ -12,7 +12,7 @@ export class User extends Model<
     InferAttributes<User>,
     InferCreationAttributes<User>
 > {
-    declare id: CreationOptional<number>;
+    declare id: CreationOptional<string>; // UUID
     declare referId: string;
     declare companyId: string | null;
     declare firstName: string;
@@ -25,7 +25,9 @@ export class User extends Model<
     declare password: string;
     declare countryCode: string | null;
     // declare categories: "food" | "healthCare" | "NGos";
-    declare categories: string[] | null;
+    // categories is stored as JSON; it can be a single category id (string),
+    // an array of category ids, or null.
+    declare categories: string | string[] | null;
     declare isDeleted: boolean;
     declare deletedAt: CreationOptional<Date | null>;
     // declare deletedAt: CreationOptional<Date>;

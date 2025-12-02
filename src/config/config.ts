@@ -38,7 +38,7 @@
 export = {
   development: {
     dialect: "mysql",
-    database: process.env.MYSQL_DB_NAME || "zarklyX_dev",
+    database: process.env.MYSQL_DB_NAME || "zarklyx_dev",
     username: process.env.MYSQL_DB_USERNAME || "root",
     password: process.env.MYSQL_DB_PASSWORD || null,
     host: process.env.MYSQL_DB_HOST || "localhost",
