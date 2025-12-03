@@ -15,7 +15,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "super-secret";
 
 // user type
 export enum userType {
-  ORGANIZATION = "organization",
+  agency = "agency",
   FREELANCER = "freelancer",
 }
 
@@ -57,7 +57,7 @@ interface UserPayload {
   lastName?: string | null;
   email?: string;
   contact?: string;
-  userType?: userType | "organization" | "freelancer";
+  userType?: userType | "agency" | "freelancer";
   secretCode?: string;
   isThemeDark?: boolean;
   categories?: any[] | null;        // (JSON array of categories)

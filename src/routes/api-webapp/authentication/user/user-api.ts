@@ -624,12 +624,12 @@ router.post("/register/user-type", async (req: Request, res: Response): Promise<
     }
 
     // Only these two are allowed
-    const allowedTypes = ["freelancer", "organization"];
+    const allowedTypes = ["freelancer", "agency"];
     if (!allowedTypes.includes(userType)) {
       await t.rollback();
       res.status(400).json({
         success: false,
-        message: "Invalid userType. Use 'freelancer' or 'organization'.",
+        message: "Invalid userType. Use 'freelancer' or 'agency'.",
       });
     }
 
@@ -749,13 +749,13 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
     //   });
     // }
 
-    // only organization users can have a company in this flow
-    if (user.userType !== "organization") {
+    // only agency users can have a company in this flow
+    if (user.userType !== "agency") {
       await t.rollback();
       res.status(400).json({
         success: false,
         message:
-          "Company registration is only allowed for userType = 'organization'.",
+          "Company registration is only allowed for userType = 'agency'.",
       });
     }
 
@@ -1289,63 +1289,74 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
     //  password correct, OTP NOT yet provided 
     if (!otp) {
-      const loginOTP = generateOTP();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      // const loginOTP = generateOTP();
+      // const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      // Find or create OTP row for this user
-      let otpRecord: any = await Otp.findOne({
-        where: { userId: user.id },
-      });
+      // // Find or create OTP row for this user
+      // let otpRecord: any = await Otp.findOne({
+      //   where: { userId: user.id },
+      // });
 
-      if (!otpRecord) {
-        otpRecord = await Otp.create({
-          userId: user.id,
-          email: user.email,
-          contact: user.contact,
-          otp: null,
-          mbOTP: null,
-          loginOTP: String(loginOTP),
-          otpVerify: false,
-          otpExpiresAt: expiresAt,
-          mbOTPExpiresAt: null,
-          isDeleted: false,
-          isEmailVerified: user.isEmailVerified,
-          isMobileVerified: user.isMobileVerified,
-          isActive: true,
-        } as any);
-      } else {
-        otpRecord.loginOTP = String(loginOTP);
-        otpRecord.otpExpiresAt = expiresAt;
-        otpRecord.otpVerify = false;
-        otpRecord.isDeleted = false;
-        await otpRecord.save();
-      }
+      // if (!otpRecord) {
+      //   otpRecord = await Otp.create({
+      //     userId: user.id,
+      //     email: user.email,
+      //     contact: user.contact,
+      //     otp: null,
+      //     mbOTP: null,
+      //     loginOTP: String(loginOTP),
+      //     otpVerify: false,
+      //     otpExpiresAt: expiresAt,
+      //     mbOTPExpiresAt: null,
+      //     isDeleted: false,
+      //     isEmailVerified: user.isEmailVerified,
+      //     isMobileVerified: user.isMobileVerified,
+      //     isActive: true,
+      //   } as any);
+      // } else {
+      //   otpRecord.loginOTP = String(loginOTP);
+      //   otpRecord.otpExpiresAt = expiresAt;
+      //   otpRecord.otpVerify = false;
+      //   otpRecord.isDeleted = false;
+      //   await otpRecord.save();
+      // }
 
-      // Send OTP – prefer email, 
-      let sendResult: any;
-      if (user.email) {
-        sendResult = await sendOTP({ email: user.email, otp: loginOTP }, "login");
-      } else if (user.contact) {
-        sendResult = await sendOTP(
-          { contact: user.contact, mbOTP: loginOTP },
-          "login"
-        );
-      }
+      // // Send OTP – prefer email, 
+      // let sendResult: any;
+      // if (user.email) {
+      //   sendResult = await sendOTP({ email: user.email, otp: loginOTP }, "login");
+      // } else if (user.contact) {
+      //   sendResult = await sendOTP(
+      //     { contact: user.contact, mbOTP: loginOTP },
+      //     "login"
+      //   );
+      // }
 
-      if (!sendResult || !sendResult.success) {
-        serverError(
-          res,
-          sendResult?.message || "Failed to send login OTP."
-        );
-        return;
-      }
+      // if (!sendResult || !sendResult.success) {
+      //   serverError(
+      //     res,
+      //     sendResult?.message || "Failed to send login OTP."
+      //   );
+      //   return;
+      // }
 
+      const tokenPayload = {
+        id: user.id,
+        email: user.email,
+        contact: user.contact,
+        companyId: user.companyId || null,
+      };
+
+      const token = await generateToken(tokenPayload, "30d");
       const nameData = user.email || user.contact || `User ID ${user.id}`;
       res.status(200).json({
         success: true,
         userId: user.id,
-        step: "otp",
-        message: `Password verified. Login OTP sent to ${nameData}.`,
+        companyId: user.companyId || null,
+        ...(user.isRegistering ? {} : { token }),
+        isRegistering: user.isRegistering,
+        // step: "otp",
+        message: `Password verified. ${nameData}.`,
       });
     }
 
@@ -1427,8 +1438,9 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
     const otpRecord: any = await Otp.findOne({
       where: {
         userId: user.id,
-        loginOTP: String(otp),
+        // loginOTP: String(otp),
         isDeleted: false,
+        [Op.or]: [{ otp : String(otp)}, { loginOTP: String(otp) }]
       },
     });
 
@@ -1464,6 +1476,7 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
       message: `Login successful for ${nameData}.`,
       data: {
         userId: user.id,
+        companyId: user.companyId || null,
         ...(user.isRegistering ? {} : { token }),
         isRegistering: user.isRegistering
       },
