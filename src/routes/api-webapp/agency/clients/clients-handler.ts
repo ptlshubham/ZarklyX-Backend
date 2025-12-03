@@ -36,6 +36,7 @@ interface ClientsPayload {
   //   referId?: string | null;
   //   companyId?: number | null;        // Required for step 5
   // ownerName?: string | null;
+  userName?: string | null;
   clientfirstName?: string;
   clientLastName?: string;
   businessName?: string | null;
@@ -49,7 +50,7 @@ interface ClientsPayload {
   contact?: string;
   businessContact: string;
   countryCode: string | null;
-  password?: string;
+  password?: string | null;
   confirmPassword?: string;
   country?: string;
   state?: string;
@@ -109,7 +110,8 @@ export const getAllAgencyClient = (query: any) => {
 
 // for get AgencyClient by ID
 export const getagencyClientByid = async (id: string) => {
-  return await Clients.findByPk(id); // returns null if not found
+  return await Clients.findByPk(id); 
+    // returns null if not found
 };
 
 // Update AgencyClient details
@@ -156,4 +158,5 @@ export const checkUserActive = async (email: string) => {
   });
   return !!clients;
 };
+
 
