@@ -1,5 +1,8 @@
 import express from "express";
 import { Request, Response } from "express";
+import { OAuth2Client } from "google-auth-library";
+import { google } from "googleapis";
+import jwt from "jsonwebtoken";
 import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
 import {
@@ -1794,79 +1797,303 @@ router.post("/social-login", async (req, res): Promise<void> => {
     return;
   }
 });
-// Google auth api for signin
-// router.post("/auth/google",async (req: Request, res: Response): Promise<void> => {
-//     const t = await dbInstance.transaction();
-//     try {
-//       const { idToken } = req.body; // from FE
-//       console.log("Received idToken:", idToken);
-//       if (!idToken) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "idToken is required",
-//         });
-//         return;
-//       }
+router.post("/auth/google", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const body = req.body || {};
+    const { code, credential } = body;
 
-//       // Verify with Google
-//       const profile = await verifyGoogleIdToken(idToken);
-//       console.log(idToken, profile);
+    // Support both authorization code and credential token
+    if (code) {
+      // Handle authorization code flow (NEW)
+      await handleAuthorizationCode(code, req, res);
+    } else if (credential) {
+      // Handle ID token flow (OLD - still supported)
+      await handleCredentialToken(credential, req, res);
+    } else {
+      res.status(400).json({
+        success: false,
+        message: "Google code or credential is required",
+      });
+      return;
+    }
+  } catch (error: any) {
+    console.error("[/user/auth/google] ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Google authentication failed",
+    });
+    return;
+  }
+});
 
-//       if (!profile.email) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "Google account has no email.",
-//         });
-//         return;
-//       }
+// NEW: Handle Authorization Code
+async function handleAuthorizationCode(code: string, req: Request, res: Response): Promise<void> {
+  try {
+    // Create OAuth2 client
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      'postmessage' // Use 'postmessage' for popup flow
+    );
 
-//       // Find or create user
-//       let user: any = await User.findOne({
-//         where: { email: profile.email },
-//         transaction: t,
-//       });
+    // Exchange authorization code for tokens
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
 
-//       if (!user) {
-//         user = await User.create(
-//           {
-//             firstName: profile.firstName || "Google",
-//             lastName: profile.lastName || "",
-//             email: profile.email as string,
-//             contact: null,
-//             isEmailVerified: profile.emailVerified,
-//             loginProvider: "google",
-//             isActive: true,
-//           } as any,
-//           { transaction: t }
-//         );
-//       }
+    // Get user info using access token
+    const oauth2 = google.oauth2({
+      auth: oauth2Client,
+      version: 'v2'
+    });
 
-//       // issue JWT
-//       const jwtPayload = {
-//         userId: user.id,
-//         role: (user as any).role || "user",
-//       };
-//       const token = await generateToken(jwtPayload, "1d");
+    const userInfo = await oauth2.userinfo.get();
+    const userData = userInfo.data;
 
-//       await t.commit();
+    if (!userData || !userData.email) {
+      res.status(401).json({
+        success: false,
+        message: "Failed to get user information from Google",
+      });
+      return;
+    }
 
-//       res.status(200).json({
-//         success: true,
-//         message: "Google login successful",
-//         data: {
-//           user,
-//           token,
-//         },
-//       });
-//       return;
-//     } catch (error: any) {
-//       await t.rollback();
-//       console.error("[/user/auth/google] ERROR:", error);
-//       serverError(res, error.message || "Google login failed.");
-//       return;
-//     }
-//   }
-// );
+    // Extract user information
+    const googleId = userData.id || '';
+    const email = userData.email;
+    const firstName = userData.given_name || '';
+    const lastName = userData.family_name || '';
+    const picture = userData.picture || '';
+    const emailVerified = userData.verified_email || false;
+
+    // Process user (create or login)
+    await processGoogleUser({
+      googleId,
+      email,
+      firstName,
+      lastName,
+      picture,
+      emailVerified
+    }, res);
+
+  } catch (error: any) {
+    console.error("[handleAuthorizationCode] ERROR:", error);
+    res.status(401).json({
+      success: false,
+      message: error.message || "Failed to exchange authorization code",
+    });
+  }
+}
+
+// OLD: Handle Credential Token (for backward compatibility)
+async function handleCredentialToken(credential: string, req: Request, res: Response): Promise<void> {
+  try {
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid Google token",
+      });
+      return;
+    }
+
+    // Extract user information
+    const googleId = payload.sub;
+    const email = payload.email || '';
+    const firstName = payload.given_name || '';
+    const lastName = payload.family_name || '';
+    const picture = payload.picture || '';
+    const emailVerified = payload.email_verified || false;
+
+    // Process user (create or login)
+    await processGoogleUser({
+      googleId,
+      email,
+      firstName,
+      lastName,
+      picture,
+      emailVerified
+    }, res);
+
+  } catch (error: any) {
+    console.error("[handleCredentialToken] ERROR:", error);
+    res.status(401).json({
+      success: false,
+      message: error.message || "Token verification failed",
+    });
+  }
+}
+
+// Common user processing logic
+async function processGoogleUser(userData: {
+  googleId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  picture: string;
+  emailVerified: boolean;
+}, res: Response): Promise<void> {
+  try {
+    const { googleId, email, firstName, lastName, picture, emailVerified } = userData;
+
+    if (!email) {
+      res.status(401).json({
+        success: false,
+        message: "Email is required from Google account",
+      });
+      return;
+    }
+
+    // Check if user exists by email or googleId
+    let user: any = await User.findOne({
+      where: {
+        [Op.or]: [
+          { email: email },
+          { googleId: googleId }
+        ]
+      }
+    });
+
+    let isNew = false;
+    let token = "";
+
+    // Create new user if doesn't exist
+    if (!user) {
+      isNew = true;
+      user = await User.create({
+        email: email,
+        googleId: googleId,
+        firstName: firstName || "",
+        lastName: lastName || "",
+        contact: null as any,
+        userType: null as any,
+        secretCode: await generateUniqueSecretCode(),
+        isThemeDark: false,
+        password: null as any, // No password for Google sign-in users
+        countryCode: null as any,
+        categories: null as any,
+        isDeleted: false,
+        deletedAt: null as any,
+        isEmailVerified: emailVerified,
+        isMobileVerified: false,
+        isRegistering: false,
+        registrationStep: 1,
+        isActive: true,
+        companyId: null as any,
+        referId: null as any,
+        authProvider: "google",
+      });
+
+      console.log(`[Google Auth] New user created: ${email}`);
+    } else {
+      // Update existing user with Google info if missing
+      let needsUpdate = false;
+
+      if (!user.googleId) {
+        user.googleId = googleId;
+        needsUpdate = true;
+      }
+
+      if (!user.isEmailVerified && emailVerified) {
+        user.isEmailVerified = emailVerified;
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        await user.save();
+      }
+
+      console.log(`[Google Auth] Existing user logged in: ${email}`);
+    }
+
+    // Generate JWT token
+    token = await generateToken(
+      {
+        userId: user.id,
+        companyId: user.companyId || null,
+        role: "user",
+      },
+      "7d"
+    ) as string;
+
+    const message = isNew ? "Account created successfully" : "Login successful";
+
+    res.status(200).json({
+      success: true,
+      message: message,
+      data: {
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        token: token,
+        isNew: isNew,
+      },
+    });
+  } catch (error: any) {
+    console.error("[processGoogleUser] ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to process Google user",
+    });
+  }
+}
+// Verify Google Token (utility endpoint)
+router.post("/auth/verify-google", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      res.status(400).json({
+        success: false,
+        message: "Google credential (idToken) is required",
+      });
+      return;
+    }
+
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid Google token",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Token verified successfully",
+      data: {
+        googleId: payload.sub,
+        email: payload.email,
+        emailVerified: payload.email_verified,
+        firstName: payload.given_name,
+        lastName: payload.family_name,
+        picture: payload.picture,
+      },
+    });
+    return;
+  } catch (error: any) {
+    console.error("[/user/auth/verify-google] ERROR:", error);
+    res.status(401).json({
+      success: false,
+      message: error.message || "Token verification failed",
+    });
+    return;
+  }
+});
+
 export default router;
