@@ -100,7 +100,7 @@ router.get("/:companyId/details",
       }
 
       // Check if user has access to this company
-      const hasAccess = await isUserInCompany(userId, parseInt(companyId));
+      const hasAccess = await isUserInCompany(userId, companyId);
       if (!hasAccess) {
         return serverError(res, "You do not have access to this company");
       }
@@ -108,7 +108,7 @@ router.get("/:companyId/details",
       // Get company details with user's role
       const companyDetails = await getCompanyWithUserRole(
         userId,
-        parseInt(companyId)
+        companyId
       );
 
       if (!companyDetails) {
@@ -151,7 +151,7 @@ router.post("/switch/:companyId",
       }
 
       // Verify user belongs to this company
-      const hasAccess = await isUserInCompany(userId, parseInt(companyId));
+      const hasAccess = await isUserInCompany(userId, companyId);
       if (!hasAccess) {
         return serverError(res, "You cannot switch to this company");
       }
@@ -159,7 +159,7 @@ router.post("/switch/:companyId",
       // Get company details with full information
       const companyData = await getCompanyWithUserRole(
         userId,
-        parseInt(companyId)
+        companyId
       );
 
       if (!companyData) {
@@ -351,7 +351,7 @@ router.put("/:companyId/update",
 
       // Update company
       const updatedCompany = await updateCompany(
-        parseInt(companyId),
+        companyId,
         req.body,
         t
       );
@@ -414,7 +414,7 @@ router.post("/:companyId/add-user",
       const existingRelation = await UserCompany.findOne({
         where: {
           userId: targetUserId,
-          companyId: parseInt(companyId),
+          companyId: companyId,
         },
       });
 
@@ -426,7 +426,7 @@ router.post("/:companyId/add-user",
       // Add user to company
       await addUserToCompany(
         targetUserId,
-        parseInt(companyId),
+        companyId,
         role,
         isOwner,
         t
@@ -480,8 +480,8 @@ router.delete("/:companyId/remove-user/:targetUserId",
 
       // Remove user from company
       await removeUserFromCompany(
-        parseInt(targetUserId),
-        parseInt(companyId),
+        targetUserId,
+        companyId,
         t
       );
 

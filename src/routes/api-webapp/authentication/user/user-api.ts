@@ -442,7 +442,7 @@ router.post("/register/categories",
         return;
       }
 
-      let categoryId: number | null = null;
+      let categoryId: string | null = null;
 
       //  numeric ID directly
       if (typeof input === "number") {

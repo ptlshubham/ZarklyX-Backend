@@ -31,7 +31,7 @@ export const getAllCategorys = async () => {
 };
 
 // Soft delete Category module (set isActive = false)
-export const deleteCategory = async (id: number, t: any) => {
+export const deleteCategory = async (id: string, t: any) => {
   return await Category.update(
     { isActive: false, isDeleted: true },
     { where: { id }, transaction: t }
@@ -39,7 +39,7 @@ export const deleteCategory = async (id: number, t: any) => {
 };
 
 // Update Category module details
-export const updateCategory = async (id: number, body: any, t: any) => {
+export const updateCategory = async (id: string, body: any, t: any) => {
   return await Category.update(body, {
     where: { id },
     transaction: t,
