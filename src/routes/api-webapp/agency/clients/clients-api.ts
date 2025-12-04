@@ -32,6 +32,7 @@ import { detectCountryCode, } from "../../../../services/phone-service";
 import { BusinessType } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
+import { sendMobileOTP } from "../../../../services/otp-service";
 
 const router = express.Router();
 
@@ -185,7 +186,8 @@ router.post("/clientSignup/start",
         clientLastName,
         email,
         contact,
-        countryCode,
+        isdCode,
+        isoCode,
         password,
         confirmPassword,
         userName: userNameFromFE, // optional from FE
@@ -285,9 +287,10 @@ router.post("/clientSignup/start",
       }
 
       const autoCountryCode = detectCountryCode(detectionNumber);
-      const finalCountryCode = autoCountryCode || countryCode || null;
+      const finalIsdCode = isdCode || autoCountryCode || null;
+      const finalIsoCode = isoCode || null;
 
-      if (!finalCountryCode) {
+      if (!finalIsdCode) {
         await t.rollback();
         res.status(400).json({
           success: false,
@@ -310,38 +313,70 @@ router.post("/clientSignup/start",
       }
 
       //  Remove any previous OTP for this email
-      await Otp.destroy({ where: { email }, transaction: t });
+      await Otp.destroy({
+        where: { [Op.or]: [{ email }, { contact }] },
+        transaction: t,
+      });
+      // await Otp.destroy({ where: { email }, transaction: t });
 
       // Generate OTP + save tempUserData (with safe userName + userId + companyId)
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const emailOtp = generateOTP().toString();
+      const mobileOtp = generateOTP().toString();
+      const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+      // const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
       await Otp.create(
         {
           userId: parentUser.id, // parent user link
           email,
           contact,
-          otp,
+          // otp,
+          otp: emailOtp,
+          mbOTP: mobileOtp,
           otpVerify: false,
-          otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 min
+          // otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 min
+          otpExpiresAt: expiry,
+          mbOTPExpiresAt: expiry,
           tempUserData: {
             userId: parentUser.id,
             companyId: parentCompany.id,
             userName: actualUserName, // validated userName store
-
             businessName,
             clientLastName,
             clientfirstName,
             email,
             contact,
-            countryCode: finalCountryCode,
+            isdCode: finalIsdCode,
+            isoCode: finalIsoCode,
             password, // in hashed Clients model 
           },
         } as any,
         { transaction: t }
       );
 
+      // Send OTP to Email
+      const emailResult = await sendOTP({ email, otp: emailOtp }, "client-signup");
+      if (!emailResult || !emailResult.success) {
+        await t.rollback();
+        res.status(500).json({
+          success: false,
+          message: emailResult?.message || "Failed to send Email OTP.",
+        });
+        return;
+      }
+
+      // Send OTP to Mobile
+      const mobileResult = await sendOTP({ contact, mbOTP: mobileOtp }, "client-signup");
+      if (!mobileResult || !mobileResult.success) {
+        await t.rollback();
+        res.status(500).json({
+          success: false,
+          message: mobileResult?.message || "Failed to send Mobile OTP.",
+        });
+        return;
+      }
       // Send OTP
-      await sendOTP({ email, otp }, "register");
+      // await sendOTP({ email, otp }, "register");
 
       await t.commit();
       res.status(200).json({
@@ -352,6 +387,7 @@ router.post("/clientSignup/start",
           companyId: parentCompany.id,
           userName: actualUserName,
           email,
+          contact
         },
       });
     } catch (err) {
@@ -368,13 +404,13 @@ router.post("/clientSignup/verify-otp",
     const t = await dbInstance.transaction();
 
     try {
-      const { email, otp } = req.body;
+      const { email, contact, otp, mbOTP } = req.body;
 
-      if (!email || !otp) {
+      if (!email || !contact || !otp || !mbOTP) {
         await t.rollback();
         res
           .status(400)
-          .json({ success: false, message: "Email & OTP required." });
+          .json({ success: false, message: "Email, Contact, Email OTP and Mobile OTP are required." });
         return;
       }
 
@@ -382,7 +418,9 @@ router.post("/clientSignup/verify-otp",
       const otpRecord = await Otp.findOne({
         where: {
           email,
-          otp,
+          contact,
+          otp: String(otp),
+          mbOTP: String(mbOTP),
           otpVerify: false,
           otpExpiresAt: { [Op.gt]: new Date() },
         },
@@ -393,7 +431,7 @@ router.post("/clientSignup/verify-otp",
         await t.rollback();
         res
           .status(400)
-          .json({ success: false, message: "Invalid / expired OTP." });
+          .json({ success: false, message: "Invalid / expired OTP (email or mobile)." });
         return;
       }
 
@@ -484,7 +522,8 @@ router.post("/clientSignup/verify-otp",
 
           email: temp.email,
           contact: temp.contact,
-          countryCode: temp.countryCode,
+          isdCode: temp.isdCode,
+          isoCode: temp.isoCode,
           // password: temp.password, // hashed by Clients model setter
           password: temp.password || null,
           // minimum required fields
@@ -501,7 +540,7 @@ router.post("/clientSignup/verify-otp",
           address: temp.address || "",
 
           isEmailVerified: true,
-          isMobileVerified: false,
+          isMobileVerified: true,
           isActive: true,
           isDeleted: false,
           isVip: false,
@@ -511,6 +550,11 @@ router.post("/clientSignup/verify-otp",
           isApprove: false,
           isCredential: false,
           profileStatus: false,
+          isFirstLogin: true,
+          twofactorEnabled: false,
+          twofactorSecret: null,
+          twofactorVerified: false,
+          twofactorBackupCodes: null,
         },
         { transaction: t }
       );
@@ -521,6 +565,7 @@ router.post("/clientSignup/verify-otp",
         isEmailVerified: true,
         isActive: false,
         otp: null,
+        mbOTP: null,
         otpExpiresAt: null,
         tempUserData: null,
       });
@@ -549,7 +594,8 @@ router.post("/clientSignup/verify-otp",
           clientLastName: client.clientLastName,
           email: client.email,
           contact: client.contact,
-          countryCode: client.countryCode,
+          isdCode: client.isdCode,
+          isoCode: client.isoCode,
           userId: parentUser ? parentUser.id : null,
           companyId: parentCompany ? parentCompany.id : null,
           token,
@@ -773,12 +819,329 @@ router.post("/clientSignup/verify-otp",
 // });
 
 //latest api - 2-12-25 - add client
+// router.post("/clients/add", async (req: Request, res: Response): Promise<void> => {
+//   const t = await dbInstance.transaction();
+
+//   try {
+//     const {
+//       userId,              // agency user (creator) – optional
+//       companyId,
+//       businessTypeId,
+//       businessSubCategoryIds,
+//       clientfirstName,
+//       clientLastName,
+//       email,
+//       contact,
+//       businessName,
+//       businessBase,
+//       businessWebsite,
+//       businessEmail,
+//       businessContact,
+//       businessExecutive,
+//       businessDescription,
+//       isoBusinessCode,
+//       isdBusinessCode,
+//       isoCode,
+//       isdCode,
+//       isVip,
+//       country,
+//       state,
+//       city,
+//       postcode,
+//       address,
+//       accounteHolderName,
+//       accountNumber,
+//       bankName,
+//       branchName,
+//       ifscCode,
+//       swiftCode,
+//       accountType,
+//       currency,
+//       taxVatId,
+//       // emailOtpRefId,       //(verify API )
+//     } = req.body;
+
+//     // 1) Required fields
+//     if (
+//       !clientfirstName ||
+//       !clientLastName ||
+//       !email ||
+//       !contact ||
+//       !businessName ||
+//       //   !country ||
+//       //   !state ||
+//       //   !city ||
+//       //   !postcode ||
+//       !address
+//     ) {
+//       await t.rollback();
+//       res.status(400).json({
+//         success: false,
+//         message: "Required fields are missing.",
+//       });
+//       return;
+//     }
+
+//     // 2) OTP verification is optional for agency-added clients
+//     // The agency is trusted to add clients directly without OTP verification
+//     // OTP verification is only required during client self-signup flow
+
+//     // 3) Auto countryCode from contact
+//     const rawContact: string = String(contact).trim();
+//     const digitsOnly = rawContact.replace(/\D/g, "");
+//     let detectionNumber = rawContact;
+
+//     if (!rawContact.startsWith("+")) {
+//       if (digitsOnly.length === 10) {
+//         detectionNumber = `+91${digitsOnly}`;
+//       } else {
+//         detectionNumber = `+${digitsOnly}`;
+//       }
+//     }
+
+//     const autoCountryCode = detectCountryCode(detectionNumber);
+//     const finalIsdCode = isdCode || autoCountryCode || null;
+//     const finalIsoCode = isoCode || null;
+
+//     // Auto-detect business contact codes if businessContact is provided
+//     let finalIsdBusinessCode = isdBusinessCode || null;
+//     let finalIsoBusinessCode = isoBusinessCode || null;
+
+//     if (businessContact) {
+//       const rawBusinessContact: string = String(businessContact).trim();
+//       const digitsOnlyBusiness = rawBusinessContact.replace(/\D/g, "");
+//       let detectionNumberBusiness = rawBusinessContact;
+
+//       if (!rawBusinessContact.startsWith("+")) {
+//         if (digitsOnlyBusiness.length === 10) {
+//           detectionNumberBusiness = `+91${digitsOnlyBusiness}`;
+//         } else {
+//           detectionNumberBusiness = `+${digitsOnlyBusiness}`;
+//         }
+//       }
+
+//       const autoBusinessCountryCode = detectCountryCode(detectionNumberBusiness);
+//       finalIsdBusinessCode = isdBusinessCode || autoBusinessCountryCode || null;
+//       finalIsoBusinessCode = isoBusinessCode || null;
+//     }
+
+//     // 4) Duplicate check (client)
+//     // const existsByEmail = await getClientsByEmail({ email });
+//     // const existsByContact = await getClientsByMbMo({ contact });
+
+//     // if (existsByEmail || existsByContact) {
+//     //   await t.rollback();
+//     //   res.status(409).json({
+//     //     success: false,
+//     //     message: "Email or Contact already exists.",
+//     //   });
+//     //   return;
+//     // }
+
+//     // 5) USER TABLE: find or create for this email
+//     let clientUser: any = await User.findOne({
+//       where: { email },
+//       transaction: t,
+//     });
+
+//     // 6) BusinessType + Subcategory validation
+//     let finalBusinessTypeId: number | null = null;
+//     let finalBusinessSubCategoryIds: number[] | null = null;
+
+//     if (businessTypeId) {
+//       const bt = await BusinessType.findByPk(businessTypeId, { transaction: t });
+//       if (!bt) {
+//         await t.rollback();
+//         res.status(400).json({
+//           success: false,
+//           message: "Invalid businessTypeId.",
+//         });
+//         return;
+//       }
+//       finalBusinessTypeId = bt.id;
+//     }
+
+//     if (Array.isArray(businessSubCategoryIds) && businessSubCategoryIds.length > 0) {
+//       const subcats = await BusinessSubcategory.findAll({
+//         where: { id: businessSubCategoryIds },
+//         transaction: t,
+//       });
+
+//       if (subcats.length !== businessSubCategoryIds.length) {
+//         await t.rollback();
+//         res.status(400).json({
+//           success: false,
+//           message: "One or more businessSubCategoryIds are invalid.",
+//         });
+//         return;
+//       }
+
+//       if (finalBusinessTypeId) {
+//         const mismatch = subcats.some(
+//           (s: any) => s.businessTypeId !== finalBusinessTypeId
+//         );
+//         if (mismatch) {
+//           await t.rollback();
+//           res.status(400).json({
+//             success: false,
+//             message: "Subcategories do not belong to the given businessTypeId.",
+//           });
+//           return;
+//         }
+//       }
+
+//       finalBusinessSubCategoryIds = businessSubCategoryIds;
+//     }
+
+//     // Generate password once for both User and Client
+//     const plainPassword = generateRandomPassword();
+
+//     // Create or update User with generated password
+//     if (!clientUser) {
+//       clientUser = await User.create(
+//         {
+//           firstName: clientfirstName,
+//           lastName: clientLastName,
+//           email,
+//           contact,
+//           isdCode: finalIsdCode,
+//           isoCode: finalIsoCode,
+//           password: plainPassword,
+//           userType: "client",
+//           secretCode: null,
+//           isThemeDark: false,
+//           categories: null,
+//           isDeleted: false,
+//           isEmailVerified: true,   // OTP verified
+//           isMobileVerified: false,
+//           isRegistering: false,
+//           registrationStep: 0,
+//           isActive: true,
+//           googleId: null,
+//           appleId: null,
+//           authProvider: "email",
+//           companyId: companyId || null,
+//         } as any,
+//         { transaction: t }
+//       );
+//     } else {
+//       await clientUser.update(
+//         {
+//           firstName: clientfirstName || clientUser.firstName,
+//           lastName: clientLastName || clientUser.lastName,
+//           contact,
+//           isdCode: finalIsdCode,
+//           isoCode: finalIsoCode,
+//           password: plainPassword,
+//           userType: "client",
+//           isEmailVerified: true,
+//           isActive: true,
+//           companyId: clientUser.companyId ?? companyId ?? null,
+//         },
+//         { transaction: t }
+//       );
+//     }
+
+//     // 7) Payload for CLIENTS
+//     const payload = {
+//       userId: clientUser.id,        //link with user table
+//       companyId: companyId || clientUser.companyId || null,
+//       userName: null,
+//       clientfirstName,
+//       clientLastName,
+//       email,
+//       contact,
+//       isdCode: finalIsdCode,
+//       isoCode: finalIsoCode,
+//       password: plainPassword,
+//       businessName,
+//       businessBase: businessBase || "service",
+//       businessTypeId: finalBusinessTypeId,
+//       businessSubCategory: finalBusinessSubCategoryIds,
+//       businessWebsite: businessWebsite || null,
+//       businessEmail: businessEmail || null,
+//       businessContact: businessContact || null,
+//       businessExecutive: businessExecutive || null,
+//       businessDescription: businessDescription || null,
+//       isoBusinessCode: finalIsoBusinessCode,
+//       isdBusinessCode: finalIsdBusinessCode,
+//       isVip: !!isVip,
+//       country,
+//       state,
+//       city,
+//       postcode,
+//       address: address || null,
+//       accounteHolderName: accounteHolderName || null,
+//       accountNumber: accountNumber || null,
+//       bankName: bankName || null,
+//       branchName: branchName || null,
+//       ifscCode: ifscCode || null,
+//       swiftCode: swiftCode || null,
+//       accountType: accountType || null,
+//       currency: currency || null,
+//       taxVatId: taxVatId || null,
+//       isActive: true,
+//       isDeleted: false,
+//       isStatus: true,
+//       isApprove: false,
+//       isCredential: false,
+//       profileStatus: false,
+//       isEmailVerified: true,   // verified otp in client record 
+//       isMobileVerified: false,
+//       isRegistering: false,
+//       registrationStep: 0,
+//       isFirstLogin: true,
+//       twofactorEnabled: false,
+//       twofactorSecret: null,
+//       twofactorVerified: false,
+//       twofactorBackupCodes: null,
+//     };
+
+//     const client = await addAgencyClient(payload, t);
+//     const mailData: any = {
+//       to: email,
+//       subject: "Your ZarklyX Client Account Details",
+//       html: `
+//         <p>Hi ${clientfirstName},</p>
+//         <p>Your client account has been created on <b>ZarklyX</b>.</p>
+//         <p>You can login using:</p>
+//         <ul>
+//           <li>Email: <b>${email}</b></li>
+//           <li>Password: <b>${plainPassword}</b></li>
+//         </ul>
+//         <p>For security, please login and change your password from your profile settings.</p>
+//       `,
+//     };
+//     await sendEmail(mailData);
+//     await t.commit();
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Client created successfully.",
+//       data: {
+//         id: client.id,
+//         userId: client.userId,       // user table id
+//         companyId: client.companyId,
+//         clientfirstName: client.clientfirstName,
+//         clientLastName: client.clientLastName,
+//         email: client.email,
+//         contact: client.contact,
+//       },
+//     });
+//   } catch (error: any) {
+//     await t.rollback();
+//     console.error("[clients/add] ERROR:", error);
+//     ErrorLogger.write({ type: "clients/add error", error });
+//     serverError(res, error.message || "Failed to create client.");
+//   }
+// });
+
+
 router.post("/clients/add", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
 
   try {
     const {
-      userId,              // agency user (creator) – optional
       companyId,
       businessTypeId,
       businessSubCategoryIds,
@@ -791,7 +1154,12 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       businessWebsite,
       businessEmail,
       businessContact,
+      businessExecutive,
       businessDescription,
+      isoBusinessCode,
+      isdBusinessCode,
+      isoCode,
+      isdCode,
       isVip,
       country,
       state,
@@ -807,22 +1175,10 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       accountType,
       currency,
       taxVatId,
-      emailOtpRefId,       //(verify API )
     } = req.body;
 
-    // 1) Required fields
-    if (
-      !clientfirstName ||
-      !clientLastName ||
-      !email ||
-      !contact ||
-      !businessName ||
-      //   !country ||
-      //   !state ||
-      //   !city ||
-      //   !postcode ||
-      !address
-    ) {
+    //  Required fields
+    if (!clientfirstName || !clientLastName || !email || !contact || !businessName || !address) {
       await t.rollback();
       res.status(400).json({
         success: false,
@@ -831,113 +1187,18 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // 2) Email OTP must be verified
-    if (!emailOtpRefId) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message: "Please verify email with OTP before saving client.",
-      });
-      return;
-    }
+    //  Detect country codes for contact
+    const finalIsdCode = detectCountryCode("+" + contact.replace(/\D/g, "")) || isdCode || null;
+    const finalIsoCode = isoCode || null;
 
-    const otpRecord: any = await Otp.findOne({
-      where: {
-        id: emailOtpRefId,
-        email,
-        otpVerify: true,
-        isEmailVerified: true,
-        isDeleted: false,
-      },
-      transaction: t,
-    });
+    //  Detect codes for business contact
+    const finalIsdBusinessCode = businessContact
+      ? detectCountryCode("+" + businessContact.replace(/\D/g, "")) || isdBusinessCode || null
+      : isdBusinessCode || null;
 
-    if (!otpRecord) {
-      await t.rollback();
-      res.status(400).json({
-        success: false,
-        message: "Email is not verified via OTP or OTP session expired.",
-      });
-      return;
-    }
+    const finalIsoBusinessCode = isoBusinessCode || null;
 
-    // 3) Auto countryCode from contact
-    const rawContact: string = String(contact).trim();
-    const digitsOnly = rawContact.replace(/\D/g, "");
-    let detectionNumber = rawContact;
-
-    if (!rawContact.startsWith("+")) {
-      if (digitsOnly.length === 10) {
-        detectionNumber = `+91${digitsOnly}`;
-      } else {
-        detectionNumber = `+${digitsOnly}`;
-      }
-    }
-
-    const autoCountryCode = detectCountryCode(detectionNumber);
-    const finalCountryCode = autoCountryCode || null;
-
-    // 4) Duplicate check (client)
-    const existsByEmail = await getClientsByEmail({ email });
-    const existsByContact = await getClientsByMbMo({ contact });
-
-    if (existsByEmail || existsByContact) {
-      await t.rollback();
-      res.status(409).json({
-        success: false,
-        message: "Email or Contact already exists.",
-      });
-      return;
-    }
-
-    // 5) USER TABLE: create/update for this email
-    let clientUser: any = await User.findOne({
-      where: { email },
-      transaction: t,
-    });
-
-    if (!clientUser) {
-      clientUser = await User.create(
-        {
-          firstName: clientfirstName,
-          lastName: clientLastName,
-          email,
-          contact,
-          countryCode: finalCountryCode,
-          password: null,          // no login yet
-          userType: null,
-          secretCode: null,
-          isThemeDark: false,
-          categories: null,
-          isDeleted: false,
-          isEmailVerified: true,   // OTP verified
-          isMobileVerified: false,
-          isRegistering: false,
-          registrationStep: 0,
-          isActive: true,
-          googleId: null,
-          appleId: null,
-          authProvider: "email",
-          companyId: companyId || null,
-        } as any,
-        { transaction: t }
-      );
-    } else {
-      await clientUser.update(
-        {
-          firstName: clientfirstName || clientUser.firstName,
-          lastName: clientLastName || clientUser.lastName,
-          contact,
-          countryCode: finalCountryCode,
-          isEmailVerified: true,
-          isActive: true,
-          companyId: clientUser.companyId ?? companyId ?? null,
-        },
-        { transaction: t }
-      );
-    }
-
-    // 6) BusinessType + Subcategory validation
+    // Validate BusinessType + Subcategories
     let finalBusinessTypeId: number | null = null;
     let finalBusinessSubCategoryIds: number[] | null = null;
 
@@ -945,10 +1206,7 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       const bt = await BusinessType.findByPk(businessTypeId, { transaction: t });
       if (!bt) {
         await t.rollback();
-        res.status(400).json({
-          success: false,
-          message: "Invalid businessTypeId.",
-        });
+        res.status(400).json({ success: false, message: "Invalid businessTypeId." });
         return;
       }
       finalBusinessTypeId = bt.id;
@@ -962,17 +1220,12 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
 
       if (subcats.length !== businessSubCategoryIds.length) {
         await t.rollback();
-        res.status(400).json({
-          success: false,
-          message: "One or more businessSubCategoryIds are invalid.",
-        });
+        res.status(400).json({ success: false, message: "Invalid businessSubCategoryIds." });
         return;
       }
 
       if (finalBusinessTypeId) {
-        const mismatch = subcats.some(
-          (s: any) => s.businessTypeId !== finalBusinessTypeId
-        );
+        const mismatch = subcats.some((s: any) => s.businessTypeId !== finalBusinessTypeId);
         if (mismatch) {
           await t.rollback();
           res.status(400).json({
@@ -982,96 +1235,134 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
           return;
         }
       }
-
       finalBusinessSubCategoryIds = businessSubCategoryIds;
     }
 
-    const plainPassword = generateRandomPassword();
+    // USER TABLE = ONLY CREATE IF NOT EXISTS (NO UPDATE)
+    let clientUser: any = await User.findOne({ where: { email }, transaction: t });
 
-    // 7) Payload for CLIENTS
+    let plainPassword: string | null = null;
+
+    if (!clientUser) {
+      plainPassword = generateRandomPassword();
+
+      clientUser = await User.create(
+        {
+          firstName: clientfirstName,
+          lastName: clientLastName,
+          email,
+          contact,
+          isdCode: finalIsdCode,
+          isoCode: finalIsoCode,
+          password: plainPassword,
+          userType: "client",
+          isEmailVerified: true,
+          isDeleted: false,
+          isActive: true,
+          authProvider: "email",
+          companyId: companyId || null,
+        } as any,
+        { transaction: t }
+      );
+    }
+    //  If user already exists → DO NOTHING (no update)
+
+    // Create CLIENT record
     const payload = {
-      userId: clientUser.id,        //link with user table
+      userId: clientUser.id,
       companyId: companyId || clientUser.companyId || null,
       userName: null,
       clientfirstName,
       clientLastName,
       email,
       contact,
-      countryCode: finalCountryCode,
-      password: plainPassword,
+      isdCode: finalIsdCode,
+      isoCode: finalIsoCode,
+      password: plainPassword, // only useful when new user created
       businessName,
       businessBase: businessBase || "service",
       businessTypeId: finalBusinessTypeId,
       businessSubCategory: finalBusinessSubCategoryIds,
-      businessWebsite: businessWebsite || null,
-      businessEmail: businessEmail || null,
-      businessContact: businessContact || null,
-      businessDescription: businessDescription || null,
+      businessWebsite,
+      businessEmail,
+      businessContact,
+      businessExecutive,
+      businessDescription,
+      isoBusinessCode: finalIsoBusinessCode,
+      isdBusinessCode: finalIsdBusinessCode,
       isVip: !!isVip,
       country,
       state,
       city,
       postcode,
       address,
-      accounteHolderName: accounteHolderName || null,
-      accountNumber: accountNumber || null,
-      bankName: bankName || null,
-      branchName: branchName || null,
-      ifscCode: ifscCode || null,
-      swiftCode: swiftCode || null,
-      accountType: accountType || null,
-      currency: currency || null,
-      taxVatId: taxVatId || null,
+      accounteHolderName,
+      accountNumber,
+      bankName,
+      branchName,
+      ifscCode,
+      swiftCode,
+      accountType,
+      currency,
+      taxVatId,
       isActive: true,
       isDeleted: false,
-      isStatus: true,
       isApprove: false,
       isCredential: false,
       profileStatus: false,
-      isEmailVerified: true,   // verified otp in client record 
-      isMobileVerified: false,
-      isRegistering: false,
-      registrationStep: 0,
+      isEmailVerified: true,
+      isFirstLogin: true,
     };
 
     const client = await addAgencyClient(payload, t);
-    const mailData: any = {
-      to: email,
-      subject: "Your ZarklyX Client Account Details",
-      html: `
-        <p>Hi ${clientfirstName},</p>
-        <p>Your client account has been created on <b>ZarklyX</b>.</p>
-        <p>You can login using:</p>
-        <ul>
-          <li>Email: <b>${email}</b></li>
-          <li>Password: <b>${plainPassword}</b></li>
-        </ul>
-        <p>For security, please login and change your password from your profile settings.</p>
-      `,
-    };
-    await sendEmail(mailData);
+
+    //  Send mail only when new user is created
+    if (plainPassword) {
+      await sendEmail({
+        to: email,
+        subject: "Your ZarklyX Account Details",
+        html: `
+          <p>Hi ${clientfirstName},</p>
+          <p>Your account has been created on <b>ZarklyX</b>.</p>
+          <ul>
+            <li>Email: <b>${email}</b></li>
+            <li>Password: <b>${plainPassword}</b></li>
+          </ul>
+          <p>Please login & change your password from profile settings.</p>
+        `,
+        from: "" as any,
+        text: "" as any,
+        replacements: null,
+        htmlFile: "" as any,
+        attachments: null,
+        cc: null,
+        replyTo: null,
+      });
+    }
+
     await t.commit();
 
     res.status(201).json({
       success: true,
-      message: "Client created successfully.",
+      message: "Client added successfully.",
       data: {
         id: client.id,
-        userId: client.userId,       // user table id
+        userId: client.userId,
         companyId: client.companyId,
-        clientfirstName: client.clientfirstName,
-        clientLastName: client.clientLastName,
-        email: client.email,
-        contact: client.contact,
+        clientfirstName,
+        clientLastName,
+        email,
+        contact,
       },
     });
   } catch (error: any) {
     await t.rollback();
-    console.error("[clients/add] ERROR:", error);
-    ErrorLogger.write({ type: "clients/add error", error });
+    console.error("[clients/add ERROR]", error);
     serverError(res, error.message || "Failed to create client.");
   }
 });
+
+
 
 // VERIFY OTP on Add Client email
 // router.post(
@@ -1337,6 +1628,8 @@ router.put("/clients/updateById/:id", async (req: Request, res: Response): Promi
       clientLastName,
       email,
       contact,
+      isdCode,
+      isoCode,
 
       // Business
       businessName,
@@ -1347,6 +1640,8 @@ router.put("/clients/updateById/:id", async (req: Request, res: Response): Promi
       businessWebsite,
       businessEmail,
       businessContact,
+      isoBusinessCode,
+      isdBusinessCode,
       businessDescription,
       isVip,
 
@@ -1404,42 +1699,65 @@ router.put("/clients/updateById/:id", async (req: Request, res: Response): Promi
     }
 
     const autoCountryCode = detectCountryCode(detectionNumber);
-    const finalCountryCode = autoCountryCode || existing.countryCode || null;
+    const finalIsdCode = isdCode || autoCountryCode || existing.isdCode || null;
+    const finalIsoCode = isoCode || existing.isoCode || null;
+
+    // Auto-detect business contact codes if businessContact is provided
+    let finalIsdBusinessCode = existing.isdBusinessCode || null;
+    let finalIsoBusinessCode = existing.isoBusinessCode || null;
+
+    if (businessContact) {
+      const rawBusinessContact: string = String(businessContact).trim();
+      const digitsOnlyBusiness = rawBusinessContact.replace(/\D/g, "");
+      let detectionNumberBusiness = rawBusinessContact;
+
+      if (!rawBusinessContact.startsWith("+")) {
+        if (digitsOnlyBusiness.length === 10) {
+          detectionNumberBusiness = `+91${digitsOnlyBusiness}`;
+        } else {
+          detectionNumberBusiness = `+${digitsOnlyBusiness}`;
+        }
+      }
+
+      const autoBusinessCountryCode = detectCountryCode(detectionNumberBusiness);
+      finalIsdBusinessCode = isdBusinessCode || autoBusinessCountryCode || existing.isdBusinessCode || null;
+      finalIsoBusinessCode = isoBusinessCode || existing.isoBusinessCode || null;
+    }
 
     // Duplicate check for email/contact excluding self
-    const emailDup = await Clients.findOne({
-      where: {
-        email,
-        id: { [Op.ne]: id },
-      },
-      transaction: t,
-    });
+    // const emailDup = await Clients.findOne({
+    //   where: {
+    //     email,
+    //     id: { [Op.ne]: id },
+    //   },
+    //   transaction: t,
+    // });
 
-    if (emailDup) {
-      await t.rollback();
-      res.status(409).json({
-        success: false,
-        message: "Email already used by another client.",
-      });
-      return;
-    }
+    // if (emailDup) {
+    //   await t.rollback();
+    //   res.status(409).json({
+    //     success: false,
+    //     message: "Email already used by another client.",
+    //   });
+    //   return;
+    // }
 
-    const contactDup = await Clients.findOne({
-      where: {
-        contact,
-        id: { [Op.ne]: id },
-      },
-      transaction: t,
-    });
+    // const contactDup = await Clients.findOne({
+    //   where: {
+    //     contact,
+    //     id: { [Op.ne]: id },
+    //   },
+    //   transaction: t,
+    // });
 
-    if (contactDup) {
-      await t.rollback();
-      res.status(409).json({
-        success: false,
-        message: "Contact number already used by another client.",
-      });
-      return;
-    }
+    // if (contactDup) {
+    //   await t.rollback();
+    //   res.status(409).json({
+    //     success: false,
+    //     message: "Contact number already used by another client.",
+    //   });
+    //   return;
+    // }
 
     //  BusinessType + Subcategory Logic
     let finalBusinessTypeId: number | null = existing.businessTypeId;
@@ -1498,7 +1816,8 @@ router.put("/clients/updateById/:id", async (req: Request, res: Response): Promi
       clientLastName,
       email,
       contact,
-      countryCode: finalCountryCode,
+      isdCode: finalIsdCode,
+      isoCode: finalIsoCode,
       businessName,
       businessBase: businessBase ?? existing.businessBase,
       businessTypeId: finalBusinessTypeId,
@@ -1506,6 +1825,8 @@ router.put("/clients/updateById/:id", async (req: Request, res: Response): Promi
       businessWebsite: businessWebsite ?? existing.businessWebsite,
       businessEmail: businessEmail ?? existing.businessEmail,
       businessContact: businessContact ?? existing.businessContact,
+      isoBusinessCode: finalIsoBusinessCode,
+      isdBusinessCode: finalIsdBusinessCode,
       businessDescription: businessDescription ?? existing.businessDescription,
       isVip: typeof isVip === "boolean" ? isVip : existing.isVip,
       country,
@@ -1585,130 +1906,85 @@ router.delete("/clients/deleteById/:id",
   }
 );
 
-// PATCH /clients/:id/status
-// Update isActive / isVip flags
-router.patch("/clients/statusToggle/:id",
-  async (req: Request, res: Response): Promise<void> => {
-    const t = await dbInstance.transaction();
+router.get("/clients/by-company/:companyId", async (req: Request, res: Response) : Promise<void>=> {
     try {
-      const id = Number(req.params.id);
-      if (Number.isNaN(id)) {
-        await t.rollback();
-        res.status(400).json({
-          success: false,
-          message: "Invalid client id.",
-        });
-        return;
-      }
+        const { companyId } = req.params;
+        const { search, ...restQuery } = req.query as {
+            [key: string]: any;
+            search?: string;
+        };
 
-      const { isActive, isVip } = req.body as {
-        isActive?: boolean;
-        isVip?: boolean;
-      };
+        if (!companyId) {
+            res.status(400).json({
+                success: false,
+                message: "Company ID is required.",
+            });
+            return;
+        }
 
-      if (
-        typeof isActive !== "boolean" &&
-        typeof isVip !== "boolean"
-      ) {
-        await t.rollback();
-        res.status(400).json({
-          success: false,
-          message: "At least one of isActive or isVip must be boolean.",
-        });
-        return;
-      }
+        const limit = Number(req.query.limit) || 10;
+        const offset = Number(req.query.offset) || 0;
 
-      const client: any = await Clients.findByPk(id, { transaction: t });
+        // Pass companyId to your handler
+        const queryForHandler = {
+            ...restQuery,
+            companyId,
+        };
 
-      if (!client) {
-        await t.rollback();
-        notFound(res, "Client not found.");
-        return;
-      }
+        // Fetch from DB using your handler
+        const result: any = await getAllAgencyClient(queryForHandler);
 
-      const updatePayload: any = {};
-      if (typeof isActive === "boolean") updatePayload.isActive = isActive;
-      if (typeof isVip === "boolean") updatePayload.isVip = isVip;
+        let rows = result.rows || result;    // Might be (rows + count) or only rows
+        let count = result.count ?? rows.length;
 
-      await client.update(updatePayload, { transaction: t });
-      await t.commit();
+        // ---------- SEARCH FILTER ----------
+    if (search) {
+      const s = search.toString().toLowerCase();
 
-      res.status(200).json({
-        success: true,
-        message: "Client status updated successfully.",
-        data: {
-          id: client.id,
-          isActive: client.isActive,
-          isVip: client.isVip,
-        },
+      rows = rows.filter((r: any) => {
+        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
+          .trim()
+          .toLowerCase();
+
+        const email = (r.email || "").toLowerCase();
+        const businessName = (r.businessName || "").toLowerCase();
+
+        return (
+          fullName.includes(s) ||
+          email.includes(s) ||
+          businessName.includes(s)
+        );
       });
-    } catch (error: any) {
-      await t.rollback();
-      console.error("[PATCH /clients/:id/status] ERROR:", error);
-      ErrorLogger.write({ type: "update client status error", error });
-      serverError(res, error.message || "Failed to update client status.");
+
+      count = rows.length; // update count after search
     }
-  }
-);
 
-router.get("/clients/by-company/:companyId",
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { companyId } = req.params;
-      const { search, ...restQuery } = req.query as {
-        [key: string]: any;
-        search?: string;
-      };
+        // ---------- PAGINATION ----------
+        const paginatedRows = rows.slice(offset, offset + limit);
 
-      if (!companyId) {
-        res.status(400).json({
-          success: false,
-          message: "Company ID is required.",
+        // ---------- RESPONSE ----------
+        res.status(200).json({
+            success: true,
+            message: "Clients fetched successfully for the company.",
+            data: paginatedRows,
+            pagination: {
+                total: count,
+                limit,
+                offset,
+            },
         });
-        return;
-      }
-
-      // Add companyId to the query for the handler
-      const queryForHandler = { ...restQuery, companyId };
-
-      // Use the existing handler to fetch clients
-      const result: any = await getAllAgencyClient(queryForHandler);
-
-      let rows = result.rows || result; // Handler might return rows+count or just rows
-      const count = result.count ?? rows.length;
-
-      // Apply optional "search" filter on name/email/businessName
-      if (search) {
-        const s = String(search).toLowerCase();
-        rows = rows.filter((r: any) => {
-          const fullName =
-            `${r.clientfirstName || ""} ${r.clientLastName || ""}`.toLowerCase();
-          const email = (r.email || "").toLowerCase();
-          const businessName = (r.businessName || "").toLowerCase();
-          return (
-            fullName.includes(s) || email.includes(s) || businessName.includes(s)
-          );
-        });
-      }
-
-      const limit = Number(req.query.limit) || 10;
-      const offset = Number(req.query.offset) || 0;
-
-      res.status(200).json({
-        success: true,
-        message: "Clients fetched successfully for the company.",
-        data: rows,
-        pagination: {
-          total: count,
-          limit,
-          offset,
-        },
-      });
     } catch (error: any) {
-      console.error("[GET /clients/by-company/:companyId] ERROR:", error);
-      ErrorLogger.write({ type: "get clients by company error", error });
-      serverError(res, error.message || "Failed to fetch clients.");
+        console.error("[GET /clients/by-company/:companyId] ERROR:", error);
+
+        ErrorLogger.write({
+            type: "get clients by company error",
+            error,
+        });
+
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to fetch clients.",
+        });
     }
-  }
-);
+});
 export default router;

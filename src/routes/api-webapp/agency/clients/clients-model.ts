@@ -28,6 +28,7 @@ export class Clients extends Model<
     declare businessWebsite: string | null;
     declare businessEmail: string | null;
     declare businessContact: string | null;
+    declare businessExecutive: string | null;   
     declare isoBusinessCode: string | null;
     declare isdBusinessCode: string | null;
     declare businessDescription: string | null;
@@ -70,6 +71,13 @@ export class Clients extends Model<
     declare isRegistering: boolean;
     declare registrationStep: number;
     declare isMobileVerified: boolean;
+    declare isFirstLogin: boolean;
+    
+    // Two-factor authentication
+    declare twofactorEnabled: boolean;
+    declare twofactorSecret: string | null;
+    declare twofactorVerified: boolean;
+    declare twofactorBackupCodes: string[] | null;
 
     // Timestamps
     declare createdAt: CreationOptional<Date>;
@@ -152,6 +160,10 @@ export class Clients extends Model<
                     type: DataTypes.STRING(20),
                     allowNull: true,
                 },
+                businessExecutive: {
+                    type: DataTypes.STRING(255),    
+                    allowNull: true,
+                },
                 isoBusinessCode: {
                     type: DataTypes.STRING(255),
                     allowNull: true,
@@ -169,28 +181,28 @@ export class Clients extends Model<
                 email: {
                     type: DataTypes.STRING(255),
                     allowNull: false,
-                    unique: {
-                        name: "email",
-                        msg: "Email must be unique",
-                    },
-                    validate: {
-                        isEmail: {
-                            msg: "Invalid email format",
-                        },
-                    },
+                    // unique: {
+                    //     name: "email",
+                    //     msg: "Email must be unique",
+                    // },
+                    // validate: {
+                    //     isEmail: {
+                    //         msg: "Invalid email format",
+                    //     },
+                    // },
                 },
                 contact: {
                     type: DataTypes.STRING(15),
                     allowNull: false,
-                    unique: {
-                        name: "contact",
-                        msg: "Contact number must be unique",
-                    },
-                    validate: {
-                        notEmpty: {
-                            msg: "Contact number cannot be empty",
-                        },
-                    },
+                    // unique: {
+                    //     name: "contact",
+                    //     msg: "Contact number must be unique",
+                    // },
+                    // validate: {
+                    //     notEmpty: {
+                    //         msg: "Contact number cannot be empty",
+                    //     },
+                    // },
                 },
                 countryCode: {
                     type: DataTypes.STRING(10),
@@ -207,23 +219,23 @@ export class Clients extends Model<
                 // Address
                 country: {
                     type: DataTypes.STRING(100),
-                    allowNull: false,
+                    allowNull: true,
                 },
                 state: {
                     type: DataTypes.STRING(100),
-                    allowNull: false,
+                    allowNull: true,
                 },
                 city: {
                     type: DataTypes.STRING(100),
-                    allowNull: false,
+                    allowNull: true,
                 },
                 postcode: {
                     type: DataTypes.STRING(20),
-                    allowNull: false,
+                    allowNull: true,
                 },
                 address: {
                     type: DataTypes.TEXT,
-                    allowNull: false,
+                    allowNull: true,
                 },
 
                 // Auth
@@ -351,6 +363,33 @@ export class Clients extends Model<
                 isMobileVerified: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: false,
+                },
+                isFirstLogin: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: true,
+                },
+                
+                // Two-factor authentication
+                twofactorEnabled: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
+                },
+                twofactorSecret: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                twofactorVerified: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
+                },
+                twofactorBackupCodes: {
+                    type: DataTypes.JSON,
+                    allowNull: true,
+                    defaultValue: null,
                 },
 
                 // timestamps
