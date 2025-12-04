@@ -24,15 +24,13 @@ export const GLOBAL_CONSTANTS = {
       email: {
     SENDER_EMAIL_HOST: "smtp.hostinger.com",
     SENDER_EMAIL_PORT: 465,
-    SENDER_EMAIL_ID: "br.rinkal1997@gmail.com",
-    SENDER_EMAIL_PASSWORD: "lhbodchvrstpqmhf",
+    SENDER_EMAIL_ID: "zarklyxconnection@gmail.com",
+    SENDER_EMAIL_PASSWORD: "iysmcygimxwwxreq",
   },
   otpTemplateID: {
     register: '66b607add6fc057c8f61f502',
     changeMbNo: '66b607add6fc057c8f61f502',
     login: '67650614d6fc052df9378922',
-    returnEV: '6765065dd6fc0508a04410b3',
-    replaceEV: '676506b1d6fc057ec91206c2',
   },
   // other properties...
 };

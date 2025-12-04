@@ -1,5 +1,7 @@
 import express from "express";
 import { Request, Response } from "express";
+import { OAuth2Client } from "google-auth-library";
+import { google } from "googleapis";
 import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
 import {
@@ -9,19 +11,16 @@ import {
   sendEncryptedResponse,
   other,
 } from "../../../../utils/responseHandler";
-import {
-  generateOTP
-} from "../../../../services/password-service";
+import { generateOTP } from "../../../../services/password-service";
 import { sendOTP } from "../../../../services/otp-service";
-import { generateToken, tokenMiddleWare } from "../../../../services/jwtToken-service";
-import { hashPassword, checkPassword, generateRandomPassword } from "../../../../services/password-service";
+import { generateToken } from "../../../../services/jwtToken-service";
+import { checkPassword, generateRandomPassword } from "../../../../services/password-service";
 import {
   updateUser,
   deleteUser,
   getUserByid,
   getAllUser,
   updateTheme,
-  UserData,
   generateUniqueSecretCode,
   socialLoginHandler
 } from "../../authentication/user/user-handler";
@@ -35,14 +34,21 @@ import { PremiumModule } from "../../../../routes/api-webapp/superAdmin/generalS
 import { Op } from "sequelize";
 import ErrorLogger from "../../../../db/core/logger/error-logger";
 import { detectCountryCode } from "../../../../services/phone-service";
-// import { responseEncoding } from "axios";
-// import { verifyGoogleIdToken } from "../../../../services/google-auth-service";
+import { createLoginHistory, recordFailedLogin } from "../../../../services/loginHistory-service";
+
 
 const ZARKLYX_API_KEY =
   process.env.RESPONSE_ENCRYPTION_KEY || process.env.CRYPTO_KEY || "";
 
 const router = express.Router();
 // type Params = { id: string };
+
+// Helper function to safely rollback transaction
+async function safeRollback(t: any) {
+  if (t && !t.finished) {
+    await t.rollback();
+  }
+}
 
 //signup steps:1 Start Registration
 router.post("/register/start",
@@ -74,7 +80,7 @@ router.post("/register/start",
 
       // Basic field validation 
       if (!firstName || !lastName || !email || !contact) {
-        await t.rollback();
+        await safeRollback(t);
         res.status(400).json({
           success: false,
           message: "firstName, lastName, email, contact are required",
@@ -84,7 +90,7 @@ router.post("/register/start",
 
       //  Password validations 
       if (!password || !confirmPassword) {
-        await t.rollback();
+        await safeRollback(t);
         res.status(400).json({
           success: false,
           message: "password and confirmPassword are required",
@@ -93,7 +99,7 @@ router.post("/register/start",
       }
 
       if (password !== confirmPassword) {
-        await t.rollback();
+        await safeRollback(t);
         res.status(400).json({
           success: false,
           message: "password and confirmPassword must match",
@@ -102,7 +108,7 @@ router.post("/register/start",
       }
 
       if (password.length < 6) {
-        await t.rollback();
+        await safeRollback(t);
         res.status(400).json({
           success: false,
           message: "Password must be at least 6 characters.",
@@ -115,7 +121,7 @@ router.post("/register/start",
       const digitsOnly = rawContact.replace(/\D/g, "");
 
       if (digitsOnly.length < 10) {
-        await t.rollback();
+        await safeRollback(t);
         res.status(400).json({
           success: false,
           message: "Invalid contact number.",
@@ -133,7 +139,7 @@ router.post("/register/start",
         (countryCode && String(countryCode).trim()) || autoCountryCode || null;
 
       if (!finalCountryCode) {
-        await t.rollback();
+        await safeRollback(t);
         res.status(400).json({
           success: false,
           message: "Could not detect country code for given contact.",
@@ -142,10 +148,6 @@ router.post("/register/start",
       }
 
       const localNumber = digitsOnly;
-
-      // if (countryCode) {
-      //   finalCountryCode = String(countryCode).trim();
-      // }
 
       console.log("[register/start] Parsed contact:", {
         rawContact,
@@ -162,7 +164,7 @@ router.post("/register/start",
       });
 
       if (existingUser) {
-        await t.rollback();
+        await safeRollback(t);
         alreadyExist(res, "Email or contact already exists");
         return;
       }
@@ -228,7 +230,7 @@ router.post("/register/start",
       // / Send OTP on email 
       const sendResult = await sendOTP({ email, otp: otpCode }, "register");
       if (!sendResult || !sendResult.success) {
-        await t.rollback();
+        await safeRollback(t);
         serverError(res, sendResult?.message || "Failed to send OTP.");
         return;
       }
@@ -247,7 +249,7 @@ router.post("/register/start",
       });
       return;
     } catch (error: any) {
-      await t.rollback();
+      await safeRollback(t);
       ErrorLogger.write({ type: "register/start error", error });
       serverError(res, error?.message || "Failed to start registration.");
       return;
@@ -357,6 +359,16 @@ router.post("/register/verify-otp",
       otpRecord.tempUserData = null;
       await otpRecord.save({ transaction: t });
 
+      // Create login history record for registration
+      const loginHistoryResult = await createLoginHistory(
+        user.id,
+        "OTP",
+        req,
+        undefined, // No token at registration step
+        "SUCCESS",
+        undefined
+      );
+
       await t.commit();
 
       res.status(200).json({
@@ -367,6 +379,7 @@ router.post("/register/verify-otp",
           secretCode: user.secretCode,
           countryCode: user.countryCode,
           email: user.email,
+          sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
         },
       });
     } catch (error: any) {
@@ -621,12 +634,12 @@ router.post("/register/user-type", async (req: Request, res: Response): Promise<
     }
 
     // Only these two are allowed
-    const allowedTypes = ["freelancer", "organization"];
+    const allowedTypes = ["freelancer", "agency"];
     if (!allowedTypes.includes(userType)) {
       await t.rollback();
       res.status(400).json({
         success: false,
-        message: "Invalid userType. Use 'freelancer' or 'organization'.",
+        message: "Invalid userType. Use 'freelancer' or 'agency'.",
       });
     }
 
@@ -663,6 +676,7 @@ router.post("/register/user-type", async (req: Request, res: Response): Promise<
     return;
   }
 });
+
 // signup steps: 5 company creation
 router.post("/register/company", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
@@ -746,13 +760,13 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
     //   });
     // }
 
-    // only organization users can have a company in this flow
-    if (user.userType !== "organization") {
+    // only agency users can have a company in this flow
+    if (user.userType !== "agency") {
       await t.rollback();
       res.status(400).json({
         success: false,
         message:
-          "Company registration is only allowed for userType = 'organization'.",
+          "Company registration is only allowed for userType = 'agency'.",
       });
     }
 
@@ -936,6 +950,7 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
     return;
   }
 });
+
 // signup steps: 6 final
 router.post("/register/final", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
@@ -1271,6 +1286,8 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     //Check password 
     const isPasswordValid = await checkPassword(password, user.password);
     if (!isPasswordValid) {
+      // Record failed login attempt
+      await recordFailedLogin(user?.id || null, "PASSWORD", req, "Invalid password");
       unauthorized(res, "Invalid email/contact or password.");
       return;
     }
@@ -1286,64 +1303,86 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
     //  password correct, OTP NOT yet provided 
     if (!otp) {
-      const loginOTP = generateOTP();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      // const loginOTP = generateOTP();
+      // const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      // Find or create OTP row for this user
-      let otpRecord: any = await Otp.findOne({
-        where: { userId: user.id },
-      });
+      // // Find or create OTP row for this user
+      // let otpRecord: any = await Otp.findOne({
+      //   where: { userId: user.id },
+      // });
 
-      if (!otpRecord) {
-        otpRecord = await Otp.create({
-          userId: user.id,
-          email: user.email,
-          contact: user.contact,
-          otp: null,
-          mbOTP: null,
-          loginOTP: String(loginOTP),
-          otpVerify: false,
-          otpExpiresAt: expiresAt,
-          mbOTPExpiresAt: null,
-          isDeleted: false,
-          isEmailVerified: user.isEmailVerified,
-          isMobileVerified: user.isMobileVerified,
-          isActive: true,
-        } as any);
-      } else {
-        otpRecord.loginOTP = String(loginOTP);
-        otpRecord.otpExpiresAt = expiresAt;
-        otpRecord.otpVerify = false;
-        otpRecord.isDeleted = false;
-        await otpRecord.save();
-      }
+      // if (!otpRecord) {
+      //   otpRecord = await Otp.create({
+      //     userId: user.id,
+      //     email: user.email,
+      //     contact: user.contact,
+      //     otp: null,
+      //     mbOTP: null,
+      //     loginOTP: String(loginOTP),
+      //     otpVerify: false,
+      //     otpExpiresAt: expiresAt,
+      //     mbOTPExpiresAt: null,
+      //     isDeleted: false,
+      //     isEmailVerified: user.isEmailVerified,
+      //     isMobileVerified: user.isMobileVerified,
+      //     isActive: true,
+      //   } as any);
+      // } else {
+      //   otpRecord.loginOTP = String(loginOTP);
+      //   otpRecord.otpExpiresAt = expiresAt;
+      //   otpRecord.otpVerify = false;
+      //   otpRecord.isDeleted = false;
+      //   await otpRecord.save();
+      // }
 
-      // Send OTP – prefer email, 
-      let sendResult: any;
-      if (user.email) {
-        sendResult = await sendOTP({ email: user.email, otp: loginOTP }, "login");
-      } else if (user.contact) {
-        sendResult = await sendOTP(
-          { contact: user.contact, mbOTP: loginOTP },
-          "login"
-        );
-      }
+      // // Send OTP – prefer email, 
+      // let sendResult: any;
+      // if (user.email) {
+      //   sendResult = await sendOTP({ email: user.email, otp: loginOTP }, "login");
+      // } else if (user.contact) {
+      //   sendResult = await sendOTP(
+      //     { contact: user.contact, mbOTP: loginOTP },
+      //     "login"
+      //   );
+      // }
 
-      if (!sendResult || !sendResult.success) {
-        serverError(
-          res,
-          sendResult?.message || "Failed to send login OTP."
-        );
-        return;
-      }
+      // if (!sendResult || !sendResult.success) {
+      //   serverError(
+      //     res,
+      //     sendResult?.message || "Failed to send login OTP."
+      //   );
+      //   return;
+      // }
+
+      const tokenPayload = {
+        id: user.id,
+        email: user.email,
+        contact: user.contact,
+        companyId: user.companyId || null,
+      };
+
+      const token = await generateToken(tokenPayload, "30d");
+
+      // Create login history for successful password verification
+      const loginHistoryResult = await createLoginHistory(
+        user.id,
+        "PASSWORD",
+        req,
+        token,
+        "SUCCESS"
+      );
 
       const nameData = user.email || user.contact || `User ID ${user.id}`;
       res.status(200).json({
         success: true,
         userId: user.id,
-        step: "otp",
-        message: `Password verified. Login OTP sent to ${nameData}.`,
+        companyId: user.companyId || null,
+        ...(user.isRegistering ? {} : { token }),
+        isRegistering: user.isRegistering,
+        sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
+        message: `Password verified. ${nameData}.`,
       });
+      return;
     }
 
     // password + OTP verify
@@ -1356,12 +1395,16 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     });
 
     if (!otpRecord) {
+      // Record failed login attempt
+      await recordFailedLogin(user?.id || null, "OTP", req, "Invalid login OTP");
       unauthorized(res, "Invalid login OTP.");
       return;
     }
 
     const now = new Date();
     if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
+      // Record failed login attempt
+      await recordFailedLogin(user?.id || null, "OTP", req, "Login OTP has expired");
       unauthorized(res, "Login OTP has expired. Please try again.");
       return;
     }
@@ -1372,28 +1415,32 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     otpRecord.otpVerify = true;
     await otpRecord.save();
 
-    // Optional: save FCM token
-    // if (fcmToken) {
-    //   await user.update({ fcmToken });
-    // }
+    // Generate JWT token (FINAL login)
+    const tokenPayload = {
+      id: user.id,
+      email: user.email,
+      contact: user.contact,
+      companyId: user.companyId || null,
+    };
 
-    // ------- Generate JWT token (FINAL login) -------
-    // const tokenPayload = {
-    //   id: user.id,
-    //   email: user.email,
-    //   contact: user.contact,
-    //   companyId: user.companyId || null,
-    //   // roleId: user.roleId, // if you add this later
-    // };
+    const token = await generateToken(tokenPayload, "30d");
 
-    // const token = await generateToken(tokenPayload, "30d");
+    // Create login history for successful OTP verification
+    const loginHistoryResult = await createLoginHistory(
+      user.id,
+      "OTP",
+      req,
+      token,
+      "SUCCESS"
+    );
 
     const nameData = user.email || user.contact || `User ID ${user.id}`;
     sendEncryptedResponse(
       res,
       {
         userId: user.id,
-        // token,
+        token,
+        sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
       },
       `Login successful for ${nameData}.`
     );
@@ -1424,8 +1471,9 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
     const otpRecord: any = await Otp.findOne({
       where: {
         userId: user.id,
-        loginOTP: String(otp),
+        // loginOTP: String(otp),
         isDeleted: false,
+        [Op.or]: [{ otp: String(otp) }, { loginOTP: String(otp) }]
       },
     });
 
@@ -1461,6 +1509,7 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
       message: `Login successful for ${nameData}.`,
       data: {
         userId: user.id,
+        companyId: user.companyId || null,
         ...(user.isRegistering ? {} : { token }),
         isRegistering: user.isRegistering
       },
@@ -1678,6 +1727,7 @@ router.post("/forgotPassword",
     }
   }
 );
+
 // router.post("/forgotPassword", async (req, res) => {
 //   let t = await dbInstance.transaction();
 //   try {
@@ -1777,15 +1827,21 @@ router.post("/social-login", async (req, res): Promise<void> => {
         success: false,
         message: "provider & idToken are required",
       });
+      return;
     }
 
     const result = await socialLoginHandler(req.body);
+
     const message = result.isNew ? "Signup successful" : "Signin successful";
 
     res.status(200).json({
       success: true,
-      message: "Google login successful",
+      message: message,
       data: {
+        isNew: result.isNew,
+        isRegistering: result.user?.isRegistering || false,
+        user: result.user,
+        token: result.token,
       },
     });
   } catch (err: any) {
@@ -1794,79 +1850,572 @@ router.post("/social-login", async (req, res): Promise<void> => {
     return;
   }
 });
-// Google auth api for signin
-// router.post("/auth/google",async (req: Request, res: Response): Promise<void> => {
-//     const t = await dbInstance.transaction();
-//     try {
-//       const { idToken } = req.body; // from FE
-//       console.log("Received idToken:", idToken);
-//       if (!idToken) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "idToken is required",
-//         });
-//         return;
-//       }
 
-//       // Verify with Google
-//       const profile = await verifyGoogleIdToken(idToken);
-//       console.log(idToken, profile);
+// LOGIN with Google - checks if user exists
+router.post("/auth/google-login", async (req: Request, res: Response): Promise<void> => {
+  res.setHeader('Content-Type', 'application/json');
+  try {
+    const body = req.body || {};
+    const { code, credential } = body;
 
-//       if (!profile.email) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "Google account has no email.",
-//         });
-//         return;
-//       }
+    if (code) {
+      await handleAuthorizationCodeLogin(code, req, res);
+    } else if (credential) {
+      await handleCredentialTokenLogin(credential, req, res);
+    } else {
+      res.status(400).json({
+        success: false,
+        message: "Google code or credential is required",
+      });
+      return;
+    }
+  } catch (error: any) {
+    console.error("[/user/auth/google-login] ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Google login failed",
+    });
+    return;
+  }
+});
 
-//       // Find or create user
-//       let user: any = await User.findOne({
-//         where: { email: profile.email },
-//         transaction: t,
-//       });
+// SIGNUP with Google - creates new account
+router.post("/auth/google-signup", async (req: Request, res: Response): Promise<void> => {
+  res.setHeader('Content-Type', 'application/json');
+  try {
+    const body = req.body || {};
+    const { code, credential } = body;
 
-//       if (!user) {
-//         user = await User.create(
-//           {
-//             firstName: profile.firstName || "Google",
-//             lastName: profile.lastName || "",
-//             email: profile.email as string,
-//             contact: null,
-//             isEmailVerified: profile.emailVerified,
-//             loginProvider: "google",
-//             isActive: true,
-//           } as any,
-//           { transaction: t }
-//         );
-//       }
+    if (code) {
+      await handleAuthorizationCodeSignup(code, req, res);
+    } else if (credential) {
+      await handleCredentialTokenSignup(credential, req, res);
+    } else {
+      res.status(400).json({
+        success: false,
+        message: "Google code or credential is required",
+      });
+      return;
+    }
+  } catch (error: any) {
+    console.error("[/user/auth/google-signup] ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Google signup failed",
+    });
+    return;
+  }
+});
 
-//       // issue JWT
-//       const jwtPayload = {
-//         userId: user.id,
-//         role: (user as any).role || "user",
-//       };
-//       const token = await generateToken(jwtPayload, "1d");
+// LOGIN: Handle Authorization Code
+async function handleAuthorizationCodeLogin(code: string, req: Request, res: Response): Promise<void> {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      'postmessage'
+    );
 
-//       await t.commit();
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
 
-//       res.status(200).json({
-//         success: true,
-//         message: "Google login successful",
-//         data: {
-//           user,
-//           token,
-//         },
-//       });
-//       return;
-//     } catch (error: any) {
-//       await t.rollback();
-//       console.error("[/user/auth/google] ERROR:", error);
-//       serverError(res, error.message || "Google login failed.");
-//       return;
-//     }
-//   }
-// );
+    const oauth2 = google.oauth2({
+      auth: oauth2Client,
+      version: 'v2'
+    });
+
+    const userInfo = await oauth2.userinfo.get();
+    const userData = userInfo.data;
+
+    if (!userData || !userData.email) {
+      res.setHeader('Content-Type', 'application/json');
+      res.status(401).json({
+        success: false,
+        message: "Failed to get user information from Google",
+      });
+      return;
+    }
+
+    const googleId = userData.id || '';
+    const email = userData.email;
+    const firstName = userData.given_name || '';
+    const lastName = userData.family_name || '';
+    const picture = userData.picture || '';
+    const emailVerified = userData.verified_email || false;
+
+    await processGoogleUserLogin({
+      googleId,
+      email,
+      firstName,
+      lastName,
+      picture,
+      emailVerified
+    }, res);
+
+  } catch (error: any) {
+    console.error("[handleAuthorizationCodeLogin] ERROR:", error);
+    res.setHeader('Content-Type', 'application/json');
+    res.status(401).json({
+      success: false,
+      message: error.message || "Failed to exchange authorization code",
+    });
+  }
+}
+
+// LOGIN: Handle Credential Token
+async function handleCredentialTokenLogin(credential: string, req: Request, res: Response): Promise<void> {
+  try {
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      res.setHeader('Content-Type', 'application/json');
+      res.status(401).json({
+        success: false,
+        message: "Invalid Google token",
+      });
+      return;
+    }
+
+    const googleId = payload.sub;
+    const email = payload.email || '';
+    const firstName = payload.given_name || '';
+    const lastName = payload.family_name || '';
+    const picture = payload.picture || '';
+    const emailVerified = payload.email_verified || false;
+
+    await processGoogleUserLogin({
+      googleId,
+      email,
+      firstName,
+      lastName,
+      picture,
+      emailVerified
+    }, res);
+
+  } catch (error: any) {
+    console.error("[handleCredentialTokenLogin] ERROR:", error);
+    res.setHeader('Content-Type', 'application/json');
+    res.status(401).json({
+      success: false,
+      message: error.message || "Token verification failed",
+    });
+  }
+}
+
+// SIGNUP: Handle Authorization Code
+async function handleAuthorizationCodeSignup(code: string, req: Request, res: Response): Promise<void> {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      'postmessage'
+    );
+
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+
+    const oauth2 = google.oauth2({
+      auth: oauth2Client,
+      version: 'v2'
+    });
+
+    const userInfo = await oauth2.userinfo.get();
+    const userData = userInfo.data;
+
+    if (!userData || !userData.email) {
+      res.status(401).json({
+        success: false,
+        message: "Failed to get user information from Google",
+      });
+      return;
+    }
+
+    const googleId = userData.id || '';
+    const email = userData.email;
+    const firstName = userData.given_name || '';
+    const lastName = userData.family_name || '';
+    const picture = userData.picture || '';
+    const emailVerified = userData.verified_email || false;
+
+    await processGoogleUserSignup({
+      googleId,
+      email,
+      firstName,
+      lastName,
+      picture,
+      emailVerified
+    }, res);
+
+  } catch (error: any) {
+    console.error("[handleAuthorizationCodeSignup] ERROR:", error);
+    res.setHeader('Content-Type', 'application/json');
+    res.status(401).json({
+      success: false,
+      message: error.message || "Failed to exchange authorization code",
+    });
+  }
+}
+
+// SIGNUP: Handle Credential Token
+async function handleCredentialTokenSignup(credential: string, req: Request, res: Response): Promise<void> {
+  try {
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      res.setHeader('Content-Type', 'application/json');
+      res.status(401).json({
+        success: false,
+        message: "Invalid Google token",
+      });
+      return;
+    }
+
+    const googleId = payload.sub;
+    const email = payload.email || '';
+    const firstName = payload.given_name || '';
+    const lastName = payload.family_name || '';
+    const picture = payload.picture || '';
+    const emailVerified = payload.email_verified || false;
+
+    await processGoogleUserSignup({
+      googleId,
+      email,
+      firstName,
+      lastName,
+      picture,
+      emailVerified
+    }, res);
+
+  } catch (error: any) {
+    console.error("[handleCredentialTokenSignup] ERROR:", error);
+    res.setHeader('Content-Type', 'application/json');
+    res.status(401).json({
+      success: false,
+      message: error.message || "Token verification failed",
+    });
+  }
+}
+
+// LOGIN: Only logs in existing users
+async function processGoogleUserLogin(userData: {
+  googleId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  picture: string;
+  emailVerified: boolean;
+}, res: Response): Promise<void> {
+  try {
+    const { googleId, email, firstName, lastName, picture, emailVerified } = userData;
+
+    if (!email) {
+      res.setHeader('Content-Type', 'application/json');
+      res.status(401).json({
+        success: false,
+        message: "Email is required from Google account",
+      });
+      return;
+    }
+
+    // Check if user exists
+    let user: any = await User.findOne({
+      where: {
+        [Op.or]: [
+          { email: email },
+          { googleId: googleId }
+        ]
+      }
+    });
+
+    // User must exist for login
+    if (!user) {
+      res.setHeader('Content-Type', 'application/json');
+      res.status(400).json({
+        success: false,
+        message: "User not registered. Please sign up first.",
+        data: {
+          isNew: true,
+          needsSignup: true,
+        },
+      });
+      return;
+    }
+
+    // Update Google info if missing
+    let needsUpdate = false;
+    if (!user.googleId) {
+      user.googleId = googleId;
+      needsUpdate = true;
+    }
+    if (!user.isEmailVerified && emailVerified) {
+      user.isEmailVerified = emailVerified;
+      needsUpdate = true;
+    }
+    if (needsUpdate) {
+      await user.save();
+    }
+
+    // Generate JWT token
+    const token = await generateToken(
+      {
+        userId: user.id,
+        companyId: user.companyId || null,
+        role: "user",
+      },
+      "7d"
+    ) as string;
+
+    res.setHeader('Content-Type', 'application/json');
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: {
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        token: token,
+        isNew: false,
+        isRegistering: user.isRegistering,
+      },
+    });
+  } catch (error: any) {
+    console.error("[processGoogleUserLogin] ERROR:", error);
+    res.setHeader('Content-Type', 'application/json');
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to process Google login",
+    });
+  }
+}
+
+// SIGNUP: Creates new user account
+async function processGoogleUserSignup(userData: {
+  googleId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  picture: string;
+  emailVerified: boolean;
+}, res: Response): Promise<void> {
+  try {
+    const { googleId, email, firstName, lastName, picture, emailVerified } = userData;
+
+    if (!email) {
+      res.setHeader('Content-Type', 'application/json');
+      res.status(401).json({
+        success: false,
+        message: "Email is required from Google account",
+      });
+      return;
+    }
+
+    // Check if user already exists
+    let user: any = await User.findOne({
+      where: {
+        [Op.or]: [
+          { email: email },
+          { googleId: googleId }
+        ]
+      }
+    });
+
+    let isNew = false;
+
+    // If user exists, just login them
+    if (user) {
+      // Update Google info if missing
+      let needsUpdate = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        needsUpdate = true;
+      }
+      if (!user.isEmailVerified && emailVerified) {
+        user.isEmailVerified = emailVerified;
+        needsUpdate = true;
+      }
+      if (needsUpdate) {
+        await user.save();
+      }
+    } else {
+      // Create new user
+      isNew = true;
+      user = await User.create({
+        email: email,
+        googleId: googleId,
+        firstName: firstName || "",
+        lastName: lastName || "",
+        contact: null as any,
+        userType: null as any,
+        secretCode: await generateUniqueSecretCode(),
+        isThemeDark: false,
+        password: null as any,
+        countryCode: null as any,
+        categories: null as any,
+        isDeleted: false,
+        deletedAt: null as any,
+        isEmailVerified: emailVerified,
+        isMobileVerified: false,
+        isRegistering: true,  // Mark as incomplete registration
+        registrationStep: 1,
+        isActive: true,
+        companyId: null as any,
+        referId: null as any,
+        authProvider: "google",
+      });
+
+      console.log(`[Google Signup] New user created: ${email}`);
+    }
+
+    // Generate JWT token
+    const token = await generateToken(
+      {
+        userId: user.id,
+        companyId: user.companyId || null,
+        role: "user",
+      },
+      "7d"
+    ) as string;
+
+    const message = isNew ? "Account created successfully" : "Signup successful";
+
+    res.setHeader('Content-Type', 'application/json');
+    res.status(200).json({
+      success: true,
+      message: message,
+      data: {
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        token: token,
+        isNew: isNew,
+        isRegistering: user.isRegistering,
+      },
+    });
+  } catch (error: any) {
+    console.error("[processGoogleUserSignup] ERROR:", error);
+    res.setHeader('Content-Type', 'application/json');
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to process Google signup",
+    });
+  }
+}
+// Verify Google Token (utility endpoint)
+router.post("/auth/verify-google", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      res.status(400).json({
+        success: false,
+        message: "Google credential (idToken) is required",
+      });
+      return;
+    }
+
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid Google token",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Token verified successfully",
+      data: {
+        googleId: payload.sub,
+        email: payload.email,
+        emailVerified: payload.email_verified,
+        firstName: payload.given_name,
+        lastName: payload.family_name,
+        picture: payload.picture,
+      },
+    });
+    return;
+  } catch (error: any) {
+    console.error("[/user/auth/verify-google] ERROR:", error);
+    res.status(401).json({
+      success: false,
+      message: error.message || "Token verification failed",
+    });
+    return;
+  }
+});
+
+// Check if user exists (for signup/signin flow)
+router.post("/check-user-exists", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, contact } = req.body;
+
+    // Validation
+    if (!email && !contact) {
+      serverError(res, "Email or contact is required");
+      return;
+    }
+
+    // Build search condition
+    const whereCondition: any = {
+      [Op.or]: [],
+    };
+
+    if (email) {
+      whereCondition[Op.or].push({ email });
+    }
+    if (contact) {
+      whereCondition[Op.or].push({ contact });
+    }
+
+    // Check if user exists
+    const user = await User.findOne({
+      where: whereCondition,
+      attributes: ["id", "email", "contact", "isEmailVerified"],
+      raw: true,
+    });
+
+    if (user) {
+      // User exists
+      res.status(200).json({
+        success: true,
+        exists: true,
+        isEmailVerified: user.isEmailVerified,
+        message: "User already registered. Please sign in.",
+      });
+    } else {
+      // User does not exist
+      res.status(200).json({
+        success: true,
+        exists: false,
+        message: "User not registered. Please sign up first.",
+      });
+    }
+  } catch (error: any) {
+    console.error("Error in /check-user-exists:", error);
+    serverError(res, "Error checking user existence");
+  }
+});
+
 export default router;

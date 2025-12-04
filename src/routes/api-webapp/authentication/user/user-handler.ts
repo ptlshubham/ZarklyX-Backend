@@ -15,7 +15,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "super-secret";
 
 // user type
 export enum userType {
-  ORGANIZATION = "organization",
+  agency = "agency",
   FREELANCER = "freelancer",
 }
 
@@ -57,7 +57,7 @@ interface UserPayload {
   lastName?: string | null;
   email?: string;
   contact?: string;
-  userType?: userType | "organization" | "freelancer";
+  userType?: userType | "agency" | "freelancer";
   secretCode?: string;
   isThemeDark?: boolean;
   categories?: any[] | null;        // (JSON array of categories)
@@ -397,8 +397,8 @@ export const socialLoginHandler = async (body: any) => {
       isDeleted: false,
       deletedAt: null,
       isEmailVerified: true,   // ✅ social login → email considered verified
-      isRegistering: false,
-      registrationStep: 0,
+      isRegistering: true,     // ✅ FIXED: Mark as registering to complete profile
+      registrationStep: 1,     // ✅ FIXED: Step 1 = Email verified, now need mobile/profile
       isMobileVerified: false,
       isActive: true,
       googleId: provider === "google" ? socialId : null,
@@ -466,6 +466,7 @@ export const socialLoginHandler = async (body: any) => {
       lastName: user.lastName,
       fullName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
       authProvider: (user as any).authProvider,
+      isRegistering: user.isRegistering,  // ✅ Added: registration status
     },
     token,
   };
