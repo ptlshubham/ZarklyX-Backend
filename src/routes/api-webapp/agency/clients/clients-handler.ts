@@ -49,7 +49,11 @@ interface ClientsPayload {
   businessEmail?: string;
   contact?: string;
   businessContact: string;
-  countryCode: string | null;
+  businessExecutive: string;
+  isdCode?: string | null;
+  isoCode?: string | null;
+  isoBusinessCode?: string | null;
+  isdBusinessCode?: string | null;
   password?: string | null;
   confirmPassword?: string;
   country?: string;
@@ -99,6 +103,10 @@ export const getAllAgencyClient = (query: any) => {
     // include, // You can uncomment this if needed
   };
 
+  if (query.companyId) {
+    modalParam.where.push({ companyId: query.companyId });
+  }
+
   // Add pagination only if not for Excel
   if (!forExcel) {
     modalParam.limit = limit;
@@ -127,21 +135,23 @@ export const deleteAgencyClient = async (id: number, t: any) => {
   );
 };
 
-//to get Clients by email
+//to get Clients by email (excluding soft-deleted)
 export const getClientsByEmail = (data: any) => {
   return Clients.findOne({
     where: {
       email: data.email,
+      isDeleted: false, // Only check active clients
     },
     raw: true,
   });
 };
 
-//to get Clients by mobile no
+//to get Clients by mobile no (excluding soft-deleted)
 export const getClientsByMbMo = (data: any) => {
   return Clients.findOne({
     where: {
       contact: data.contact,
+      isDeleted: false, // Only check active clients
     },
     raw: true,
   });
