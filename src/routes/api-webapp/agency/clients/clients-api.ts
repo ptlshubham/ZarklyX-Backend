@@ -33,146 +33,428 @@ import { BusinessType } from "../../../../routes/api-webapp/superAdmin/generalSe
 import { BusinessSubcategory } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { sendMobileOTP } from "../../../../services/otp-service";
+import { OAuth2Client } from "google-auth-library";
 
 const router = express.Router();
 
-// signup for client (Agency) - working api 
-// router.post("/clientSignup/start",
-//     async (req: Request, res: Response): Promise<void> => {
-//         const t = await dbInstance.transaction();
+// Initialize Google OAuth2 Client
+const googleClient = new OAuth2Client(
+  process.env.GOOGLE_CLIENT_ID || ""
+);
 
-//         try {
-//             const {
-//                 userId,
-//                 companyId,
-//                 businessName,
-//                 clientfirstName,
-//                 clientLastName,
-//                 email,
-//                 contact,
-//                 countryCode,
-//                 password,
-//                 confirmPassword, 
-//                 userName: userNameFromFE,
-//             } = req.body;
+// Google Client Signup - Creates new client account
+router.post("/auth/google-signup", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
 
-//             // Validate required fields
-//             if (
-//                 !userId ||
-//                 !companyId ||
-//                 !clientfirstName ||
-//                 !clientLastName ||
-//                 !businessName ||
-//                 !email ||
-//                 !contact ||
-//                 !password ||
-//                 !confirmPassword
-//             ) {
-//                 await t.rollback();
-//                 res
-//                     .status(400)
-//                     .json({ success: false, message: "All fields required." });
-//                 return;
-//             }
+  try {
+    const { token } = req.body;
 
-//             if (password !== confirmPassword) {
-//                 await t.rollback();
-//                 res
-//                     .status(400)
-//                     .json({ success: false, message: "Passwords do not match." });
-//                 return;
-//             }
+    if (!token) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Google token is required.",
+      });
+      return;
+    }
 
-//             //  Auto-detect countryCode from contact
-//             const rawContact: string = String(contact).trim();
-//             const digitsOnly = rawContact.replace(/\D/g, "");
+    // Verify Google Token
+    let ticket;
+    try {
+      ticket = await googleClient.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+    } catch (err) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid or expired Google token.",
+      });
+      return;
+    }
 
-//             // create detection string 
-//             let detectionNumber = rawContact;
+    const payload = ticket.getPayload();
+    if (!payload) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Failed to extract Google user data.",
+      });
+      return;
+    }
 
-//             if (!rawContact.startsWith("+")) {
-//                 // if only digits
-//                 if (digitsOnly.length === 10) {
-//                     // India 10-digit number
-//                     detectionNumber = `+91${digitsOnly}`;
-//                 } else {
-//                     // fallback: just add + and try
-//                     detectionNumber = `+${digitsOnly}`;
-//                 }
-//             }
+    const googleId = payload.sub;
+    const googleEmail = payload.email;
+    const firstName = payload.given_name || "User";
+    const lastName = payload.family_name || "";
+    const emailVerified = payload.email_verified || false;
 
-//             const autoCountryCode = detectCountryCode(detectionNumber);
-//             const finalCountryCode = autoCountryCode || countryCode || null;
+    if (!googleId || !googleEmail) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Google email or ID missing.",
+      });
+      return;
+    }
 
-//             if (!finalCountryCode) {
-//                 await t.rollback();
-//                 res.status(400).json({
-//                     success: false,
-//                     message: "Invalid contact. Could not detect country code.",
-//                 });
-//                 return;
-//             }
+    // Check if client already exists
+    const existingClient = await Clients.findOne({
+      where: { email: googleEmail },
+      transaction: t,
+    });
 
-//             //  Check if client already exists
-//             const existsByEmail = await getClientsByEmail({ email });
-//             const existsByContact = await getClientsByMbMo({ contact });
+    if (existingClient) {
+      await t.rollback();
+      res.status(409).json({
+        success: false,
+        message: "Client already exists with this email. Please use signin instead.",
+        data: {
+          email: googleEmail,
+          needsSignin: true,
+        },
+      });
+      return;
+    }
 
-//             if (existsByEmail || existsByContact) {
-//                 await t.rollback();
-//                 res.status(409).json({
-//                     success: false,
-//                     message: "Email or Contact already registered.",
-//                 });
-//                 return;
-//             }
+    // Create new user
+    const user = await User.create(
+      {
+        firstName,
+        lastName,
+        email: googleEmail,
+        contact: null,
+        isdCode: null,
+        isoCode: null,
+        password: generateRandomPassword(),
+        userType: "client",
+        isEmailVerified: emailVerified,
+        isMobileVerified: false,
+        isDeleted: false,
+        isActive: true,
+        authProvider: "google",
+        googleId,
+        companyId: null,
+      } as any,
+      { transaction: t }
+    );
 
-//             //  Remove any previous OTP for this email (unique constraint)
-//             await Otp.destroy({ where: { email } });
+    // Create client record with comprehensive field mapping
+    const client = await Clients.create(
+      {
+        userId: user.id,
+        companyId: null,
+        userName: `${firstName} ${lastName}`.trim(),
+        clientfirstName: firstName,
+        clientLastName: lastName,
+        email: googleEmail,
+        contact: null,
+        businessName: `${firstName} ${lastName}`.trim(),
+        businessBase: "service",
+        businessTypeId: null,
+        businessSubCategory: null,
+        businessWebsite: null,
+        businessEmail: null,
+        businessContact: null,
+        businessExecutive: null,
+        isoBusinessCode: null,
+        isdBusinessCode: null,
+        businessDescription: null,
+        countryCode: null,
+        isoCode: null,
+        isdCode: null,
+        country: null,
+        state: null,
+        city: null,
+        postcode: null,
+        address: "",
+        password: null,
+        accounteHolderName: null,
+        accountNumber: null,
+        bankName: null,
+        branchName: null,
+        ifscCode: null,
+        swiftCode: null,
+        accountType: null,
+        currency: null,
+        taxVatId: null,
+        isVip: false,
+        isActive: true,
+        isDeleted: false,
+        isStatus: true,
+        isApprove: false,
+        isCredential: false,
+        profileStatus: false,
+        logo: null,
+        payment: null,
+        isEmailVerified: emailVerified,
+        isRegistering: false,
+        registrationStep: 1,
+        isMobileVerified: false,
+        isFirstLogin: true,
+        twofactorEnabled: false,
+        twofactorSecret: null,
+        twofactorVerified: false,
+        twofactorBackupCodes: null,
+        authProvider: "google",
+        googleId,
+      } as any,
+      { transaction: t }
+    );
 
-//             // 4. Generate OTP and create OTP record with temp data
-//             const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Send welcome email
+    const welcomeEmailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; }
+          .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          .header { background-color: #4CAF50; color: white; padding: 30px; text-align: center; }
+          .header h1 { margin: 0; font-size: 28px; }
+          .content { padding: 30px; }
+          .content h2 { color: #4CAF50; margin-top: 0; }
+          .content p { margin: 10px 0; }
+          .footer { text-align: center; padding: 20px; background-color: #f4f4f4; color: #666; font-size: 12px; border-top: 1px solid #ddd; }
+          .footer p { margin: 5px 0; }
+          .highlight { color: #4CAF50; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Welcome to ZarklyX!</h1>
+          </div>
+          <div class="content">
+            <h2>Hi ${firstName} ${lastName},</h2>
+            <p>Welcome to <strong>ZarklyX</strong>! Your client account has been successfully created via Google authentication.</p>
+            <p><span class="highlight">✓</span> Your email is verified and ready to use.</p>
+            <p>You can now access all the features and services available on our platform.</p>
+            <p><strong>Need help?</strong> If you have any questions or need assistance, feel free to reach out to our support team.</p>
+            <p>Best regards,<br><strong>The ZarklyX Team</strong></p>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} ZarklyX. All rights reserved.</p>
+            <p>This is an automated message, please do not reply to this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
 
-//             await Otp.create(
-//                 {
-//                     userId: null,
-//                     //   clientId:null,
-//                     email,
-//                     contact,
-//                     otp,
-//                     otpVerify: false,
-//                     otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 min
-//                     tempUserData: {
-//                         companyId: companyId || null,
-//                         userId: userId || null,
-//                         businessName,
-//                         clientLastName,
-//                         clientfirstName,
-//                         email,
-//                         contact,
-//                         countryCode: finalCountryCode,
-//                         password, // will be hashed by Clients model
-//                     },
-//                 } as any,
-//                 { transaction: t }
-//             );
+    await sendEmail({
+      to: googleEmail,
+      subject: "Welcome to ZarklyX - Account Created!",
+      html: welcomeEmailHtml,
+      text: `Hi ${firstName} ${lastName}, Welcome to ZarklyX! Your account has been created via Google. You're all set to get started!`,
+      from: "" as any,
+      replacements: null,
+      htmlFile: "" as any,
+      attachments: null,
+      cc: null,
+      replyTo: null,
+    });
 
-//             //  Send OTP email using your otp-service
-//             await sendOTP({ email, otp }, "register");
+    // Generate JWT token
+    const tokenPayload: any = {
+      clientId: client.id,
+      userId: user.id,
+      email: googleEmail,
+      role: "client",
+    };
 
-//             await t.commit();
-//             res.status(200).json({
-//                 success: true,
-//                 message: "OTP sent to email. Please verify to complete signup.",
-//             });
-//         } catch (err) {
-//             await t.rollback();
-//             console.error("[clients/signup/start] ERROR:", err);
-//             res.status(500).json({ success: false, message: "Server error" });
-//         }
-//     }
-// );
+    const jwtToken = await generateToken(tokenPayload, "7d");
 
-// new change api 
+    await t.commit();
+
+    console.log(`[Google Signup] New client created: ${googleEmail}`);
+
+    res.status(201).json({
+      success: true,
+      message: "Client account created successfully!",
+      data: {
+        id: client.id,
+        userId: user.id,
+        clientfirstName: client.clientfirstName,
+        clientLastName: client.clientLastName,
+        email: client.email,
+        businessName: client.businessName,
+        userName: client.userName,
+        authProvider: "google",
+        token: jwtToken,
+        isFirstLogin: client.isFirstLogin,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[auth/google-signup ERROR]", error);
+    ErrorLogger.write({ type: "google signup error", error });
+    serverError(res, error.message || "Google signup failed.");
+  }
+});
+
+// Google Client Signin - Logs in existing client account
+router.post("/auth/google-signin", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Google token is required.",
+      });
+      return;
+    }
+
+    // Verify Google Token
+    let ticket;
+    try {
+      ticket = await googleClient.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+    } catch (err) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid or expired Google token.",
+      });
+      return;
+    }
+
+    const payload = ticket.getPayload();
+    if (!payload) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Failed to extract Google user data.",
+      });
+      return;
+    }
+
+    const googleId = payload.sub;
+    const googleEmail = payload.email;
+    const firstName = payload.given_name || "User";
+    const lastName = payload.family_name || "";
+    const emailVerified = payload.email_verified || false;
+
+    if (!googleId || !googleEmail) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Google email or ID missing.",
+      });
+      return;
+    }
+
+    // Check if client exists
+    let client: any = await Clients.findOne({
+      where: { email: googleEmail },
+      transaction: t,
+    });
+
+    if (!client) {
+      await t.rollback();
+      res.status(404).json({
+        success: false,
+        message: "Client not found. Please signup first.",
+        data: {
+          email: googleEmail,
+          needsSignup: true,
+        },
+      });
+      return;
+    }
+
+    // Get associated user
+    let user: any = await User.findByPk(client.userId, { transaction: t });
+
+    if (!user) {
+      await t.rollback();
+      res.status(404).json({
+        success: false,
+        message: "User associated with client not found.",
+      });
+      return;
+    }
+
+    // Update User Google info if missing
+    let userNeedsUpdate = false;
+    if (!user.googleId) {
+      user.googleId = googleId;
+      userNeedsUpdate = true;
+    }
+    if (!user.isEmailVerified && emailVerified) {
+      user.isEmailVerified = emailVerified;
+      userNeedsUpdate = true;
+    }
+    if (userNeedsUpdate) {
+      await user.update(
+        { googleId, isEmailVerified: user.isEmailVerified || emailVerified, authProvider: "google" },
+        { transaction: t }
+      );
+    }
+
+    // Update Client Google info if missing
+    let clientNeedsUpdate = false;
+    if (!client.googleId) {
+      client.googleId = googleId;
+      clientNeedsUpdate = true;
+    }
+    if (!client.isEmailVerified && emailVerified) {
+      client.isEmailVerified = emailVerified;
+      clientNeedsUpdate = true;
+    }
+    if (clientNeedsUpdate) {
+      await client.update(
+        { googleId, isEmailVerified: client.isEmailVerified || emailVerified, authProvider: "google" },
+        { transaction: t }
+      );
+    }
+
+    // Generate JWT token
+    const tokenPayload: any = {
+      clientId: client.id,
+      userId: user.id,
+      email: googleEmail,
+      role: "client",
+    };
+
+    const jwtToken = await generateToken(tokenPayload, "7d");
+
+    await t.commit();
+
+    console.log(`[Google Signin] Client logged in: ${googleEmail}`);
+
+    res.status(200).json({
+      success: true,
+      message: "Signin successful!",
+      data: {
+        id: client.id,
+        userId: user.id,
+        clientfirstName: client.clientfirstName,
+        clientLastName: client.clientLastName,
+        email: client.email,
+        businessName: client.businessName,
+        userName: client.userName,
+        authProvider: "google",
+        token: jwtToken,
+        isFirstLogin: client.isFirstLogin,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[auth/google-signin ERROR]", error);
+    ErrorLogger.write({ type: "google signin error", error });
+    serverError(res, error.message || "Google signin failed.");
+  }
+});
+
+// signup for client (Agency)
 router.post("/clientSignup/start",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
@@ -300,17 +582,17 @@ router.post("/clientSignup/start",
       }
 
       //  Duplicate client check
-      const existsByEmail = await getClientsByEmail({ email });
-      const existsByContact = await getClientsByMbMo({ contact });
+      // const existsByEmail = await getClientsByEmail({ email });
+      // const existsByContact = await getClientsByMbMo({ contact });
 
-      if (existsByEmail || existsByContact) {
-        await t.rollback();
-        res.status(409).json({
-          success: false,
-          message: "Email or Contact already registered.",
-        });
-        return;
-      }
+      // if (existsByEmail || existsByContact) {
+      //   await t.rollback();
+      //   res.status(409).json({
+      //     success: false,
+      //     message: "Email or Contact already registered.",
+      //   });
+      //   return;
+      // }
 
       //  Remove any previous OTP for this email
       await Otp.destroy({
@@ -398,31 +680,46 @@ router.post("/clientSignup/start",
   }
 );
 
-// signup for client - verify-otp
+
 router.post("/clientSignup/verify-otp",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
 
     try {
-      const { email, contact, otp, mbOTP } = req.body;
+      const { email, otp, mbOTP } = req.body;
 
-      if (!email || !contact || !otp || !mbOTP) {
+      // Require email and at least one OTP
+      if (!email || (!otp && !mbOTP)) {
         await t.rollback();
         res
           .status(400)
-          .json({ success: false, message: "Email, Contact, Email OTP and Mobile OTP are required." });
+          .json({ success: false, message: "Email and either Email OTP or Mobile OTP are required." });
         return;
       }
 
-      // 1) Find valid OTP record
+      // Build where conditions for EITHER email OTP OR mobile OTP
+      const whereConditions: any[] = [];
+
+      if (otp) {
+        whereConditions.push({
+          otp: String(otp),
+          otpExpiresAt: { [Op.gt]: new Date() },
+        });
+      }
+
+      if (mbOTP) {
+        whereConditions.push({
+          mbOTP: String(mbOTP),
+          mbOTPExpiresAt: { [Op.gt]: new Date() },
+        });
+      }
+
+      // 1) Find valid OTP record (verify with EITHER email or mobile OTP)
       const otpRecord = await Otp.findOne({
         where: {
           email,
-          contact,
-          otp: String(otp),
-          mbOTP: String(mbOTP),
           otpVerify: false,
-          otpExpiresAt: { [Op.gt]: new Date() },
+          [Op.or]: whereConditions,
         },
         transaction: t,
       });
@@ -433,6 +730,18 @@ router.post("/clientSignup/verify-otp",
           .status(400)
           .json({ success: false, message: "Invalid / expired OTP (email or mobile)." });
         return;
+      }
+
+      // Determine which OTP was verified
+      let isEmailVerified = false;
+      let isMobileVerified = false;
+
+      if (otp && otpRecord.otp === String(otp)) {
+        isEmailVerified = true;
+      }
+
+      if (mbOTP && otpRecord.mbOTP === String(mbOTP)) {
+        isMobileVerified = true;
       }
 
       // 2) Read + parse tempUserData safely
@@ -495,25 +804,49 @@ router.post("/clientSignup/verify-otp",
       }
 
       // 4) Re-check if client already exists
-      const existsByEmail = await getClientsByEmail({ email: temp.email });
-      const existsByContact = await getClientsByMbMo({
-        contact: temp.contact,
-      });
+      // const existsByEmail = await getClientsByEmail({ email: temp.email });
+      // const existsByContact = await getClientsByMbMo({
+      //   contact: temp.contact,
+      // });
 
-      if (existsByEmail || existsByContact) {
-        await t.rollback();
-        res.status(409).json({
-          success: false,
-          message: "Email or Contact already registered.",
-        });
-        return;
-      }
+      // if (existsByEmail || existsByContact) {
+      //   await t.rollback();
+      //   res.status(409).json({
+      //     success: false,
+      //     message: "Email or Contact already registered.",
+      //   });
+      //   return;
+      // }
 
-      // 5) Create client (after OTP success)
+      // 5) Create User in user table (OTP verified successfully)
+      // ALWAYS create NEW user with userType: "client" for each client signup
+      const clientUser = await User.create(
+        {
+          firstName: temp.clientfirstName,
+          lastName: temp.clientLastName,
+          email: temp.email,
+          contact: temp.contact,
+          isdCode: temp.isdCode,
+          isoCode: temp.isoCode,
+          password: temp.password,
+          userType: "client", // Always set as client
+          isEmailVerified: isEmailVerified, // true if email OTP was verified
+          isMobileVerified: isMobileVerified, // true if mobile OTP was verified
+          isDeleted: false,
+          isActive: true,
+          authProvider: "email",
+          companyId: tempCompanyId || null,
+        } as any,
+        { transaction: t }
+      );
+
+      console.log(`[OTP Verification] New client user created: ${clientUser.id} with email: ${temp.email}`);
+
+      // 5B) Create client (after OTP success)
       const client: any = await Clients.create(
         {
           // FKs — only if valid
-          userId: parentUser ? parentUser.id : null,
+          userId: clientUser ? clientUser.id : null,
           companyId: parentCompany ? parentCompany.id : null,
           userName: temp.userName || null,
           businessName: temp.businessName,
@@ -539,8 +872,8 @@ router.post("/clientSignup/verify-otp",
           // postcode: temp.postcode || "",
           address: temp.address || "",
 
-          isEmailVerified: true,
-          isMobileVerified: true,
+          isEmailVerified: isEmailVerified, // true if email OTP was verified
+          isMobileVerified: isMobileVerified, // true if mobile OTP was verified
           isActive: true,
           isDeleted: false,
           isVip: false,
@@ -574,10 +907,10 @@ router.post("/clientSignup/verify-otp",
       // 7) Build token payload
       const tokenPayload: any = {
         clientId: client.id,
+        userId: clientUser.id,
         email: client.email,
         role: "client",
       };
-      if (parentUser) tokenPayload.userId = parentUser.id;
       if (parentCompany) tokenPayload.companyId = parentCompany.id;
 
       const token = await generateToken(tokenPayload, "7d");
@@ -589,6 +922,7 @@ router.post("/clientSignup/verify-otp",
         message: "Client signup successful!",
         data: {
           id: client.id,
+          userId: clientUser.id,
           businessName: client.businessName,
           clientfirstName: client.clientfirstName,
           clientLastName: client.clientLastName,
@@ -596,7 +930,6 @@ router.post("/clientSignup/verify-otp",
           contact: client.contact,
           isdCode: client.isdCode,
           isoCode: client.isoCode,
-          userId: parentUser ? parentUser.id : null,
           companyId: parentCompany ? parentCompany.id : null,
           token,
         },
@@ -610,533 +943,7 @@ router.post("/clientSignup/verify-otp",
   }
 );
 
-//Add new client from “Add Client” form  - old one working api
-// router.post("/clients/add", async (req: Request, res: Response): Promise<void> => {
-//     const t = await dbInstance.transaction();
-
-//     try {
-//         const {
-//             userId,
-//             companyId,
-//             businessTypeId,
-//             businessSubCategoryIds,
-//             clientfirstName,
-//             clientLastName,
-//             email,
-//             contact,
-//             businessName,
-//             businessBase,
-//             businessType,
-//             businessSubCategory,
-//             businessWebsite,
-//             businessEmail,
-//             businessContact,
-//             businessDescription,
-//             isVip,
-//             country,
-//             state,
-//             city,
-//             postcode,
-//             address,
-//             accounteHolderName,
-//             accountNumber,
-//             bankName,
-//             branchName,
-//             ifscCode,
-//             swiftCode,
-//             accountType,
-//             currency,
-//             taxVatId,
-//         } = req.body;
-
-//         //  Required fields validate
-//         if (
-//             !clientfirstName ||
-//             !clientLastName ||
-//             !email ||
-//             !contact ||
-//             !businessName ||
-//             // !country ||
-//             // !state ||
-//             // !city ||
-//             // !postcode ||
-//             !address
-//         ) {
-//             await t.rollback();
-//             res.status(400).json({
-//                 success: false,
-//                 message: "Required fields are missing.",
-//             });
-//             return;
-//         }
-
-//         // Auto country code from contact
-//         const rawContact: string = String(contact).trim();
-//         const digitsOnly = rawContact.replace(/\D/g, "");
-//         let detectionNumber = rawContact;
-
-//         if (!rawContact.startsWith("+")) {
-//             if (digitsOnly.length === 10) {
-//                 detectionNumber = `+91${digitsOnly}`;
-//             } else {
-//                 detectionNumber = `+${digitsOnly}`;
-//             }
-//         }
-
-//         const autoCountryCode = detectCountryCode(detectionNumber);
-//         const finalCountryCode = autoCountryCode || null;
-
-//         // Duplicate email/contact check
-//         const existsByEmail = await getClientsByEmail({ email });
-//         const existsByContact = await getClientsByMbMo({ contact });
-
-//         if (existsByEmail || existsByContact) {
-//             await t.rollback();
-//             res.status(409).json({
-//                 success: false,
-//                 message: "Email or Contact already exists.",
-//             });
-//             return;
-//         }
-
-//         // BusinessType + Subcategory validation
-//         let finalBusinessTypeId: number | null = null;
-//         let finalBusinessSubCategoryIds: number[] | null = null;
-
-//         if (businessTypeId) {
-//             const bt = await BusinessType.findByPk(businessTypeId, { transaction: t });
-//             if (!bt) {
-//                 await t.rollback();
-//                 res.status(400).json({
-//                     success: false,
-//                     message: "Invalid businessTypeId.",
-//                 });
-//                 return;
-//             }
-//             finalBusinessTypeId = bt.id;
-//         }
-
-//         if (Array.isArray(businessSubCategoryIds) && businessSubCategoryIds.length > 0) {
-//             const subcats = await BusinessSubcategory.findAll({
-//                 where: { id: businessSubCategoryIds },
-//                 transaction: t,
-//             });
-
-//             if (subcats.length !== businessSubCategoryIds.length) {
-//                 await t.rollback();
-//                 res.status(400).json({
-//                     success: false,
-//                     message: "One or more businessSubCategoryIds are invalid.",
-//                 });
-//                 return;
-//             }
-
-//             if (finalBusinessTypeId) {
-//                 const mismatch = subcats.some(
-//                     (s: any) => s.businessTypeId !== finalBusinessTypeId
-//                 );
-//                 if (mismatch) {
-//                     await t.rollback();
-//                     res.status(400).json({
-//                         success: false,
-//                         message: "Subcategories do not belong to the given businessTypeId.",
-//                     });
-//                     return;
-//                 }
-//             }
-
-//             finalBusinessSubCategoryIds = businessSubCategoryIds;
-//         }
-
-//         // payload for DB
-//         const payload = {
-//             userId: userId || null,
-//             companyId: companyId || null,
-//             clientfirstName,
-//             clientLastName,
-//             email,
-//             contact,
-//             countryCode: finalCountryCode,
-//             businessName,
-//             businessBase: businessBase || "service",
-//             businessTypeId: finalBusinessTypeId,
-//             businessSubCategory: finalBusinessSubCategoryIds,
-//             businessWebsite: businessWebsite || null,
-//             businessEmail: businessEmail || null,
-//             businessContact: businessContact || null,
-//             businessDescription: businessDescription || null,
-//             isVip: !!isVip,
-//             country: country || null,
-//             state: state || null,
-//             city: city || null,
-//             postcode,
-//             address: address || null,
-//             accounteHolderName: accounteHolderName || null,
-//             accountNumber: accountNumber || null,
-//             bankName: bankName || null,
-//             branchName: branchName || null,
-//             ifscCode: ifscCode || null,
-//             swiftCode: swiftCode || null,
-//             accountType: accountType || null,
-//             currency: currency || null,
-//             taxVatId: taxVatId || null,
-//             isActive: true,
-//             isDeleted: false,
-//             isStatus: true,
-//             isApprove: false,
-//             isCredential: false,
-//             profileStatus: false,
-//             isEmailVerified: false,
-//             isMobileVerified: false,
-//             isRegistering: false,
-//             registrationStep: 0,
-//         };
-
-//         // add/create client
-//         const client = await addAgencyClient(payload, t);
-
-//         await t.commit();
-
-//         res.status(201).json({
-//             success: true,
-//             message: "Client created successfully.",
-//             data: {
-//                 id: client.id,
-//                 userId: client.userId,
-//                 companyId: client.companyId,
-//                 clientfirstName: client.clientfirstName,
-//                 clientLastName: client.clientLastName,
-//                 email: client.email,
-//                 contact: client.contact,
-//             },
-//         });
-//     } catch (error: any) {
-//         await t.rollback();
-//         console.error("[clients/add] ERROR:", error);
-//         ErrorLogger.write({ type: "clients/add error", error });
-//         serverError(res, error.message || "Failed to create client.");
-//     }
-// });
-
-//latest api - 2-12-25 - add client
-// router.post("/clients/add", async (req: Request, res: Response): Promise<void> => {
-//   const t = await dbInstance.transaction();
-
-//   try {
-//     const {
-//       userId,              // agency user (creator) – optional
-//       companyId,
-//       businessTypeId,
-//       businessSubCategoryIds,
-//       clientfirstName,
-//       clientLastName,
-//       email,
-//       contact,
-//       businessName,
-//       businessBase,
-//       businessWebsite,
-//       businessEmail,
-//       businessContact,
-//       businessExecutive,
-//       businessDescription,
-//       isoBusinessCode,
-//       isdBusinessCode,
-//       isoCode,
-//       isdCode,
-//       isVip,
-//       country,
-//       state,
-//       city,
-//       postcode,
-//       address,
-//       accounteHolderName,
-//       accountNumber,
-//       bankName,
-//       branchName,
-//       ifscCode,
-//       swiftCode,
-//       accountType,
-//       currency,
-//       taxVatId,
-//       // emailOtpRefId,       //(verify API )
-//     } = req.body;
-
-//     // 1) Required fields
-//     if (
-//       !clientfirstName ||
-//       !clientLastName ||
-//       !email ||
-//       !contact ||
-//       !businessName ||
-//       //   !country ||
-//       //   !state ||
-//       //   !city ||
-//       //   !postcode ||
-//       !address
-//     ) {
-//       await t.rollback();
-//       res.status(400).json({
-//         success: false,
-//         message: "Required fields are missing.",
-//       });
-//       return;
-//     }
-
-//     // 2) OTP verification is optional for agency-added clients
-//     // The agency is trusted to add clients directly without OTP verification
-//     // OTP verification is only required during client self-signup flow
-
-//     // 3) Auto countryCode from contact
-//     const rawContact: string = String(contact).trim();
-//     const digitsOnly = rawContact.replace(/\D/g, "");
-//     let detectionNumber = rawContact;
-
-//     if (!rawContact.startsWith("+")) {
-//       if (digitsOnly.length === 10) {
-//         detectionNumber = `+91${digitsOnly}`;
-//       } else {
-//         detectionNumber = `+${digitsOnly}`;
-//       }
-//     }
-
-//     const autoCountryCode = detectCountryCode(detectionNumber);
-//     const finalIsdCode = isdCode || autoCountryCode || null;
-//     const finalIsoCode = isoCode || null;
-
-//     // Auto-detect business contact codes if businessContact is provided
-//     let finalIsdBusinessCode = isdBusinessCode || null;
-//     let finalIsoBusinessCode = isoBusinessCode || null;
-
-//     if (businessContact) {
-//       const rawBusinessContact: string = String(businessContact).trim();
-//       const digitsOnlyBusiness = rawBusinessContact.replace(/\D/g, "");
-//       let detectionNumberBusiness = rawBusinessContact;
-
-//       if (!rawBusinessContact.startsWith("+")) {
-//         if (digitsOnlyBusiness.length === 10) {
-//           detectionNumberBusiness = `+91${digitsOnlyBusiness}`;
-//         } else {
-//           detectionNumberBusiness = `+${digitsOnlyBusiness}`;
-//         }
-//       }
-
-//       const autoBusinessCountryCode = detectCountryCode(detectionNumberBusiness);
-//       finalIsdBusinessCode = isdBusinessCode || autoBusinessCountryCode || null;
-//       finalIsoBusinessCode = isoBusinessCode || null;
-//     }
-
-//     // 4) Duplicate check (client)
-//     // const existsByEmail = await getClientsByEmail({ email });
-//     // const existsByContact = await getClientsByMbMo({ contact });
-
-//     // if (existsByEmail || existsByContact) {
-//     //   await t.rollback();
-//     //   res.status(409).json({
-//     //     success: false,
-//     //     message: "Email or Contact already exists.",
-//     //   });
-//     //   return;
-//     // }
-
-//     // 5) USER TABLE: find or create for this email
-//     let clientUser: any = await User.findOne({
-//       where: { email },
-//       transaction: t,
-//     });
-
-//     // 6) BusinessType + Subcategory validation
-//     let finalBusinessTypeId: number | null = null;
-//     let finalBusinessSubCategoryIds: number[] | null = null;
-
-//     if (businessTypeId) {
-//       const bt = await BusinessType.findByPk(businessTypeId, { transaction: t });
-//       if (!bt) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "Invalid businessTypeId.",
-//         });
-//         return;
-//       }
-//       finalBusinessTypeId = bt.id;
-//     }
-
-//     if (Array.isArray(businessSubCategoryIds) && businessSubCategoryIds.length > 0) {
-//       const subcats = await BusinessSubcategory.findAll({
-//         where: { id: businessSubCategoryIds },
-//         transaction: t,
-//       });
-
-//       if (subcats.length !== businessSubCategoryIds.length) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "One or more businessSubCategoryIds are invalid.",
-//         });
-//         return;
-//       }
-
-//       if (finalBusinessTypeId) {
-//         const mismatch = subcats.some(
-//           (s: any) => s.businessTypeId !== finalBusinessTypeId
-//         );
-//         if (mismatch) {
-//           await t.rollback();
-//           res.status(400).json({
-//             success: false,
-//             message: "Subcategories do not belong to the given businessTypeId.",
-//           });
-//           return;
-//         }
-//       }
-
-//       finalBusinessSubCategoryIds = businessSubCategoryIds;
-//     }
-
-//     // Generate password once for both User and Client
-//     const plainPassword = generateRandomPassword();
-
-//     // Create or update User with generated password
-//     if (!clientUser) {
-//       clientUser = await User.create(
-//         {
-//           firstName: clientfirstName,
-//           lastName: clientLastName,
-//           email,
-//           contact,
-//           isdCode: finalIsdCode,
-//           isoCode: finalIsoCode,
-//           password: plainPassword,
-//           userType: "client",
-//           secretCode: null,
-//           isThemeDark: false,
-//           categories: null,
-//           isDeleted: false,
-//           isEmailVerified: true,   // OTP verified
-//           isMobileVerified: false,
-//           isRegistering: false,
-//           registrationStep: 0,
-//           isActive: true,
-//           googleId: null,
-//           appleId: null,
-//           authProvider: "email",
-//           companyId: companyId || null,
-//         } as any,
-//         { transaction: t }
-//       );
-//     } else {
-//       await clientUser.update(
-//         {
-//           firstName: clientfirstName || clientUser.firstName,
-//           lastName: clientLastName || clientUser.lastName,
-//           contact,
-//           isdCode: finalIsdCode,
-//           isoCode: finalIsoCode,
-//           password: plainPassword,
-//           userType: "client",
-//           isEmailVerified: true,
-//           isActive: true,
-//           companyId: clientUser.companyId ?? companyId ?? null,
-//         },
-//         { transaction: t }
-//       );
-//     }
-
-//     // 7) Payload for CLIENTS
-//     const payload = {
-//       userId: clientUser.id,        //link with user table
-//       companyId: companyId || clientUser.companyId || null,
-//       userName: null,
-//       clientfirstName,
-//       clientLastName,
-//       email,
-//       contact,
-//       isdCode: finalIsdCode,
-//       isoCode: finalIsoCode,
-//       password: plainPassword,
-//       businessName,
-//       businessBase: businessBase || "service",
-//       businessTypeId: finalBusinessTypeId,
-//       businessSubCategory: finalBusinessSubCategoryIds,
-//       businessWebsite: businessWebsite || null,
-//       businessEmail: businessEmail || null,
-//       businessContact: businessContact || null,
-//       businessExecutive: businessExecutive || null,
-//       businessDescription: businessDescription || null,
-//       isoBusinessCode: finalIsoBusinessCode,
-//       isdBusinessCode: finalIsdBusinessCode,
-//       isVip: !!isVip,
-//       country,
-//       state,
-//       city,
-//       postcode,
-//       address: address || null,
-//       accounteHolderName: accounteHolderName || null,
-//       accountNumber: accountNumber || null,
-//       bankName: bankName || null,
-//       branchName: branchName || null,
-//       ifscCode: ifscCode || null,
-//       swiftCode: swiftCode || null,
-//       accountType: accountType || null,
-//       currency: currency || null,
-//       taxVatId: taxVatId || null,
-//       isActive: true,
-//       isDeleted: false,
-//       isStatus: true,
-//       isApprove: false,
-//       isCredential: false,
-//       profileStatus: false,
-//       isEmailVerified: true,   // verified otp in client record 
-//       isMobileVerified: false,
-//       isRegistering: false,
-//       registrationStep: 0,
-//       isFirstLogin: true,
-//       twofactorEnabled: false,
-//       twofactorSecret: null,
-//       twofactorVerified: false,
-//       twofactorBackupCodes: null,
-//     };
-
-//     const client = await addAgencyClient(payload, t);
-//     const mailData: any = {
-//       to: email,
-//       subject: "Your ZarklyX Client Account Details",
-//       html: `
-//         <p>Hi ${clientfirstName},</p>
-//         <p>Your client account has been created on <b>ZarklyX</b>.</p>
-//         <p>You can login using:</p>
-//         <ul>
-//           <li>Email: <b>${email}</b></li>
-//           <li>Password: <b>${plainPassword}</b></li>
-//         </ul>
-//         <p>For security, please login and change your password from your profile settings.</p>
-//       `,
-//     };
-//     await sendEmail(mailData);
-//     await t.commit();
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Client created successfully.",
-//       data: {
-//         id: client.id,
-//         userId: client.userId,       // user table id
-//         companyId: client.companyId,
-//         clientfirstName: client.clientfirstName,
-//         clientLastName: client.clientLastName,
-//         email: client.email,
-//         contact: client.contact,
-//       },
-//     });
-//   } catch (error: any) {
-//     await t.rollback();
-//     console.error("[clients/add] ERROR:", error);
-//     ErrorLogger.write({ type: "clients/add error", error });
-//     serverError(res, error.message || "Failed to create client.");
-//   }
-// });
-
-
+// add agency client 
 router.post("/clients/add", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
 
@@ -1238,34 +1045,30 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       finalBusinessSubCategoryIds = businessSubCategoryIds;
     }
 
-    // USER TABLE = ONLY CREATE IF NOT EXISTS (NO UPDATE)
-    let clientUser: any = await User.findOne({ where: { email }, transaction: t });
+    // USER TABLE: Always create new user for each client (even with duplicate email/contact)
+    const plainPassword = generateRandomPassword();
 
-    let plainPassword: string | null = null;
+    const clientUser = await User.create(
+      {
+        firstName: clientfirstName,
+        lastName: clientLastName,
+        email,
+        contact,
+        isdCode: finalIsdCode,
+        isoCode: finalIsoCode,
+        password: plainPassword,
+        userType: "client", // ⭐ Always set as client role
+        isEmailVerified: true, // Email from admin is pre-verified
+        isMobileVerified: false,
+        isDeleted: false,
+        isActive: true,
+        authProvider: "email",
+        companyId: companyId || null,
+      } as any,
+      { transaction: t }
+    );
 
-    if (!clientUser) {
-      plainPassword = generateRandomPassword();
-
-      clientUser = await User.create(
-        {
-          firstName: clientfirstName,
-          lastName: clientLastName,
-          email,
-          contact,
-          isdCode: finalIsdCode,
-          isoCode: finalIsoCode,
-          password: plainPassword,
-          userType: "client",
-          isEmailVerified: true,
-          isDeleted: false,
-          isActive: true,
-          authProvider: "email",
-          companyId: companyId || null,
-        } as any,
-        { transaction: t }
-      );
-    }
-    //  If user already exists → DO NOTHING (no update)
+    console.log(`[clients/add] New client user created: ${clientUser.id} with email: ${email}, contact: ${contact}`);
 
     // Create CLIENT record
     const payload = {
@@ -1316,43 +1119,88 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
 
     const client = await addAgencyClient(payload, t);
 
-    //  Send mail only when new user is created
-    if (plainPassword) {
-      await sendEmail({
-        to: email,
-        subject: "Your ZarklyX Account Details",
-        html: `
-          <p>Hi ${clientfirstName},</p>
-          <p>Your account has been created on <b>ZarklyX</b>.</p>
-          <ul>
-            <li>Email: <b>${email}</b></li>
-            <li>Password: <b>${plainPassword}</b></li>
-          </ul>
-          <p>Please login & change your password from profile settings.</p>
-        `,
-        from: "" as any,
-        text: "" as any,
-        replacements: null,
-        htmlFile: "" as any,
-        attachments: null,
-        cc: null,
-        replyTo: null,
-      });
-    }
+    // Send welcome email with credentials
+    const welcomeEmailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; }
+          .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+          .header { background-color: #4CAF50; color: white; padding: 30px; text-align: center; }
+          .header h1 { margin: 0; font-size: 28px; }
+          .content { padding: 30px; }
+          .content h2 { color: #4CAF50; margin-top: 0; }
+          .credentials { background-color: #f9f9f9; padding: 20px; border-left: 4px solid #4CAF50; margin: 20px 0; }
+          .credentials p { margin: 10px 0; }
+          .credentials strong { color: #333; }
+          .button { display: inline-block; padding: 12px 30px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+          .footer { text-align: center; padding: 20px; background-color: #f4f4f4; color: #666; font-size: 12px; }
+          .footer p { margin: 5px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Welcome to ZarklyX!</h1>
+          </div>
+          <div class="content">
+            <h2>Hi ${clientfirstName} ${clientLastName},</h2>
+            <p>Congratulations! Your client account has been successfully created on <strong>ZarklyX</strong>.</p>
+            <p>We're excited to have you on board. Your account is now ready to use.</p>
+            
+            <div class="credentials">
+              <p><strong>Your Login Credentials:</strong></p>
+              <p><strong>Email:</strong> ${email}</p>
+              <p><strong>Password:</strong> ${plainPassword}</p>
+              <p><strong>Business Name:</strong> ${businessName}</p>
+            </div>
+            
+            <p>For security reasons, we strongly recommend that you change your password after your first login.</p>
+            <p>You can update your password from your profile settings.</p>
+            
+            <p>If you have any questions or need assistance, feel free to reach out to our support team.</p>
+            
+            <p>Best regards,<br><strong>The ZarklyX Team</strong></p>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} ZarklyX. All rights reserved.</p>
+            <p>This is an automated message. Please do not reply to this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmail({
+      to: email,
+      subject: "Welcome to ZarklyX - Your Account is Ready!",
+      html: welcomeEmailHtml,
+      text: `Hi ${clientfirstName} ${clientLastName}, Welcome to ZarklyX! Your account has been created. Email: ${email}, Password: ${plainPassword}. Please login and change your password from profile settings.`,
+      from: "" as any,
+      replacements: null,
+      htmlFile: "" as any,
+      attachments: null,
+      cc: null,
+      replyTo: null,
+    });
 
     await t.commit();
+
+    console.log(`[clients/add] Client added successfully with clientId: ${client.id}, userId: ${clientUser.id}`);
 
     res.status(201).json({
       success: true,
       message: "Client added successfully.",
       data: {
         id: client.id,
-        userId: client.userId,
+        userId: clientUser.id, // ✅ Include the newly created user ID
         companyId: client.companyId,
         clientfirstName,
         clientLastName,
         email,
         contact,
+        userType: "client", // ✅ Confirm user type
       },
     });
   } catch (error: any) {
@@ -1362,158 +1210,8 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
   }
 });
 
-
-
-// VERIFY OTP on Add Client email
-// router.post(
-//   "/clients/email-otp/verify",
-//   async (req: Request, res: Response): Promise<void> => {
-//     const t = await dbInstance.transaction();
-//     try {
-//       const { email, otp } = req.body;
-
-//       if (!email || !otp) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "Email and OTP are required.",
-//         });
-//         return;
-//       }
-
-//       const otpRecord: any = await Otp.findOne({
-//         where: {
-//           email,
-//           otp: String(otp),
-//           otpVerify: false,
-//           isDeleted: false,
-//           otpExpiresAt: { [Op.gt]: new Date() },
-//         },
-//         transaction: t,
-//       });
-
-//       if (!otpRecord) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "Invalid or expired OTP.",
-//         });
-//         return;
-//       }
-
-//       // mark OTP as used + email verified
-//       otpRecord.otpVerify = true;
-//       otpRecord.isEmailVerified = true;
-//       otpRecord.otp = null;
-//       otpRecord.otpExpiresAt = null;
-//       await otpRecord.save({ transaction: t });
-
-//       await t.commit();
-
-//       res.status(200).json({
-//         success: true,
-//         message: "Email verified successfully.",
-//         data: {
-//           email,
-//           emailOtpRefId: otpRecord.id, 
-//         },
-//       });
-//     } catch (err: any) {
-//       await t.rollback();
-//       console.error("[/clients/email-otp/verify] ERROR:", err);
-//       ErrorLogger.write({ type: "clients email-otp verify error", error: err });
-//       serverError(res, err.message || "Server error while verifying OTP.");
-//     }
-//   }
-// );
-
-// // SEND OTP on Add Client email
-// router.post(
-//   "/clients/email-otp/start",
-//   async (req: Request, res: Response): Promise<void> => {
-//     const t = await dbInstance.transaction();
-//     try {
-//       const { email } = req.body;
-
-//       if (!email) {
-//         await t.rollback();
-//         res.status(400).json({
-//           success: false,
-//           message: "Email is required.",
-//         });
-//         return;
-//       }
-
-//       // (optional) check client duplicate email
-//       const existingClient = await getClientsByEmail({ email });
-//       if (existingClient) {
-//         await t.rollback();
-//         res.status(409).json({
-//           success: false,
-//           message: "This email is already used by another client.",
-//         });
-//         return;
-//       }
-
-//       //reset previous OTPs for this email
-//       await Otp.destroy({ where: { email }, transaction: t });
-
-//       const otpCode = generateOTP(); // 6 digit
-//       const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
-
-//       const otpRecord: any = await Otp.create(
-//         {
-//           userId: null,
-//           clientId: null,
-//           email,
-//           contact: null as any,
-//           otp: otpCode as string,
-//           mbOTP: null,
-//           loginOTP: null,
-//           otpVerify: false,
-//           otpExpiresAt: expiry,
-//           mbOTPExpiresAt: null,
-//           isDeleted: false,
-//           isEmailVerified: false,
-//           isMobileVerified: false,
-//           isActive: true,
-//           tempUserData: {
-//             flow: "CLIENT_ADD_EMAIL", // just for debugging
-//           },
-//         },
-//         { transaction: t }
-//       );
-
-//       // send OTP email
-//       const sendResult = await sendOTP({ email, otp: otpCode }, "client-add");
-//       if (!sendResult || !sendResult.success) {
-//         await t.rollback();
-//         serverError(res, sendResult?.message || "Failed to send OTP.");
-//         return;
-//       }
-
-//       await t.commit();
-
-//       res.status(200).json({
-//         success: true,
-//         message: `OTP sent to ${email}.`,
-//         data: {
-//           emailOtpRefId: otpRecord.id, 
-//           email,
-//         },
-//       });
-//     } catch (err: any) {
-//       await t.rollback();
-//       console.error("[/clients/email-otp/start] ERROR:", err);
-//       ErrorLogger.write({ type: "clients email-otp start error", error: err });
-//       serverError(res, err.message || "Server error while sending OTP.");
-//     }
-//   }
-// );
-
 // GET /clients
 // Pagination + filters 
-// Filters support: search, email, isActive, businessType, city, country, isVip, etc.
 router.get("/clients/getAll", async (req: Request, res: Response): Promise<void> => {
   try {
     // query: ?limit=10&offset=0&search=abc&isActive=true&businessType=marketing&city=Surat
@@ -1563,8 +1261,8 @@ router.get("/clients/getAll", async (req: Request, res: Response): Promise<void>
   }
 });
 
-//   GET /clients/:id
-//   Single client detail (edit form)
+// GET /clients/:id
+// Single client detail (edit form)
 router.get("/clients/getById/:id",
   async (req: Request, res: Response): Promise<void> => {
     try {
@@ -1906,6 +1604,7 @@ router.delete("/clients/deleteById/:id",
   }
 );
 
+// get clients by companyid 
 router.get("/clients/by-company/:companyId", async (req: Request, res: Response) : Promise<void>=> {
     try {
         const { companyId } = req.params;
@@ -1987,4 +1686,5 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
         });
     }
 });
+
 export default router;
