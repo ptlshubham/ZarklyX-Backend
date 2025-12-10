@@ -95,7 +95,7 @@ export class User extends Model<
                     },
                 },
                 userType: {
-                    type: DataTypes.ENUM("organization", "freelancer"),
+                    type: DataTypes.ENUM("agency", "freelancer"),
                     allowNull: true,
                     defaultValue: null,
                 },

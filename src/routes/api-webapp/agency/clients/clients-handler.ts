@@ -36,6 +36,7 @@ interface ClientsPayload {
   //   referId?: string | null;
   //   companyId?: number | null;        // Required for step 5
   // ownerName?: string | null;
+  userName?: string | null;
   clientfirstName?: string;
   clientLastName?: string;
   businessName?: string | null;
@@ -48,8 +49,12 @@ interface ClientsPayload {
   businessEmail?: string;
   contact?: string;
   businessContact: string;
-  countryCode: string | null;
-  password?: string;
+  businessExecutive: string;
+  isdCode?: string | null;
+  isoCode?: string | null;
+  isoBusinessCode?: string | null;
+  isdBusinessCode?: string | null;
+  password?: string | null;
   confirmPassword?: string;
   country?: string;
   state?: string;
@@ -98,6 +103,10 @@ export const getAllAgencyClient = (query: any) => {
     // include, // You can uncomment this if needed
   };
 
+  if (query.companyId) {
+    modalParam.where.push({ companyId: query.companyId });
+  }
+
   // Add pagination only if not for Excel
   if (!forExcel) {
     modalParam.limit = limit;
@@ -109,7 +118,8 @@ export const getAllAgencyClient = (query: any) => {
 
 // for get AgencyClient by ID
 export const getagencyClientByid = async (id: string) => {
-  return await Clients.findByPk(id); // returns null if not found
+  return await Clients.findByPk(id); 
+    // returns null if not found
 };
 
 // Update AgencyClient details
@@ -125,21 +135,23 @@ export const deleteAgencyClient = async (id: number, t: any) => {
   );
 };
 
-//to get Clients by email
+//to get Clients by email (excluding soft-deleted)
 export const getClientsByEmail = (data: any) => {
   return Clients.findOne({
     where: {
       email: data.email,
+      isDeleted: false, // Only check active clients
     },
     raw: true,
   });
 };
 
-//to get Clients by mobile no
+//to get Clients by mobile no (excluding soft-deleted)
 export const getClientsByMbMo = (data: any) => {
   return Clients.findOne({
     where: {
       contact: data.contact,
+      isDeleted: false, // Only check active clients
     },
     raw: true,
   });
@@ -156,4 +168,5 @@ export const checkUserActive = async (email: string) => {
   });
   return !!clients;
 };
+
 
