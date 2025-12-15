@@ -43,11 +43,33 @@ const handleCheckBoxAction = (modelOption:any, query:any)=>{
   }
   // return modelOption
 }
+// const MakeQuery = (obj: any) => {
+//   let { query, Model, filterSetting, orderSetting } = obj;
+//   const { page, limit, id, filters, sort, forExcel } = query;
+//   let convertedLimit = Number(limit);
+//   let offset = (page - 1) * convertedLimit;
+//   let filterObj = filters ? JSON.parse(filters) : null;
+//   let modelOption = MakeFilter(filterObj, filterSetting);
+//   let orderBy = MakeSort(sort, orderSetting);
+//   let attributes = MakeAttributes(Model);
+//   handleCheckBoxAction(modelOption, query)
+
+//   return {
+//     ...query,
+//     modelOption,
+//     orderBy,
+//     attributes,
+//     offset,
+//     limit: convertedLimit,
+//   };
+// };
+
 const MakeQuery = (obj: any) => {
   let { query, Model, filterSetting, orderSetting } = obj;
   const { page, limit, id, filters, sort, forExcel } = query;
-  let convertedLimit = Number(limit);
-  let offset = (page - 1) * convertedLimit;
+  let convertedLimit = Number(limit) || 10;
+  let convertedPage = Number(page) || 1;
+  let offset = (convertedPage - 1) * convertedLimit;
   let filterObj = filters ? JSON.parse(filters) : null;
   let modelOption = MakeFilter(filterObj, filterSetting);
   let orderBy = MakeSort(sort, orderSetting);
