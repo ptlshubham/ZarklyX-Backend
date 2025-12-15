@@ -6,8 +6,8 @@ import nodemailer from 'nodemailer';
 
 // Load environment configuration
 const config = (configs as { [key: string]: any })[environment];
-  const MSG91_AUTHKEY = '446606Apuh307kK692fd83cP1';
-    const TEMPLATE_ID = '66b607add6fc057c8f61f502';
+const MSG91_AUTHKEY = '446606Apuh307kK692fd83cP1';
+const TEMPLATE_ID = '66b607add6fc057c8f61f502';
 const COUNTRY_CODE = '91';
 
 // Email configuration from environment

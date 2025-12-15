@@ -3,18 +3,14 @@ import { Request, Response } from "express";
 import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
 import {
-  alreadyExist,
   serverError,
-  unauthorized,
-  sendEncryptedResponse,
-  other,
 } from "../../../../utils/responseHandler";
 import {
   generateOTP
 } from "../../../../services/password-service";
 import { sendOTP } from "../../../../services/otp-service";
-import { generateToken, tokenMiddleWare } from "../../../../services/jwtToken-service";
-import { hashPassword, checkPassword, generateRandomPassword } from "../../../../services/password-service";
+import { generateToken } from "../../../../services/jwtToken-service";
+import { generateRandomPassword } from "../../../../services/password-service";
 import { sendEmail } from "../../../../services/mailService";
 import { Op } from "sequelize";
 import ErrorLogger from "../../../../db/core/logger/error-logger";
@@ -32,8 +28,11 @@ import { detectCountryCode, } from "../../../../services/phone-service";
 import { BusinessType } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
+<<<<<<< HEAD
 import { sendMobileOTP } from "../../../../services/otp-service";
 import { OAuth2Client } from "google-auth-library";
+=======
+>>>>>>> a7b03db982c4ee0257b3d410c35455f832ec5621
 
 const router = express.Router();
 
