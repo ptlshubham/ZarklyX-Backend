@@ -12,6 +12,7 @@ export default (app: Application) => {
     app.use("/category", require("./api-webapp/superAdmin/generalSetup/category/category-api"));
     // app.use("/clients", require("./api-webapp/superAdmin/agency/clients/clients-api"));
     app.use("/clients", require("./api-webapp/agency/clients/clients-api"));
+    app.use("/employee", require("./api-webapp/agency/employee/employee-api"));
 
 };
 

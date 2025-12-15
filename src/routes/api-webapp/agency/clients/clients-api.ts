@@ -3,18 +3,14 @@ import { Request, Response } from "express";
 import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
 import {
-  alreadyExist,
   serverError,
-  unauthorized,
-  sendEncryptedResponse,
-  other,
 } from "../../../../utils/responseHandler";
 import {
   generateOTP
 } from "../../../../services/password-service";
 import { sendOTP } from "../../../../services/otp-service";
-import { generateToken, tokenMiddleWare } from "../../../../services/jwtToken-service";
-import { hashPassword, checkPassword, generateRandomPassword } from "../../../../services/password-service";
+import { generateToken } from "../../../../services/jwtToken-service";
+import { generateRandomPassword } from "../../../../services/password-service";
 import { sendEmail } from "../../../../services/mailService";
 import { Op } from "sequelize";
 import ErrorLogger from "../../../../db/core/logger/error-logger";
@@ -32,7 +28,6 @@ import { detectCountryCode, } from "../../../../services/phone-service";
 import { BusinessType } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
-import { sendMobileOTP } from "../../../../services/otp-service";
 
 const router = express.Router();
 
@@ -1987,4 +1982,5 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
         });
     }
 });
+
 export default router;
