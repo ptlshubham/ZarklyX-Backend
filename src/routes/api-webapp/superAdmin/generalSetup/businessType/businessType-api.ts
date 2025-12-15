@@ -30,12 +30,11 @@ import { Op } from "sequelize";
 const router = express.Router();
 
 // Add
-router.post(
-  "/business-type/add",
+router.post("/addBusinessType",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
-      const { name, description, isActive } = req.body;
+      const { name, isActive } = req.body;
 
       if (!name) {
         await t.rollback();
@@ -58,7 +57,7 @@ router.post(
       }
 
       const bt = await addBusinessType(
-        { name, description, isActive },
+        { name, isActive },
         t
       );
 
@@ -77,7 +76,7 @@ router.post(
 );
 
 // List (with filters & pagination)
-router.get("/business-type/getAll",
+router.get("/getAllBusinessType",
   async (req: Request, res: Response): Promise<void> => {
     try {
       const result = await getAllBusinessTypes(req.query);
@@ -124,7 +123,7 @@ router.get("/business-type/getBusinessTypeById",
   }
 );
 
-// Update
+// Update business type by id
 router.put("/business-type/updateBusinessTypeById",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
@@ -146,7 +145,7 @@ router.put("/business-type/updateBusinessTypeById",
         return;
       }
 
-      const { name, description, isActive } = req.body;
+      const { name, isActive } = req.body;
 
       if (name) {
         // duplicate check
@@ -167,7 +166,7 @@ router.put("/business-type/updateBusinessTypeById",
 
       await updateBusinessType(
         id,
-        { name, description, isActive },
+        { name, isActive },
         t
       );
 
@@ -228,7 +227,7 @@ router.post("/business-subcategory/addBusinessSubcategory",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
-      const { businessTypeId, name, description, isActive } = req.body;
+      const { businessTypeId, name, isActive } = req.body;
 
       if (!businessTypeId || !name) {
         await t.rollback();
@@ -248,7 +247,7 @@ router.post("/business-subcategory/addBusinessSubcategory",
       }
 
       const subcat = await addBusinessSubcategory(
-        { businessTypeId, name, description, isActive },
+        { businessTypeId, name, isActive },
         t
       );
 
@@ -314,7 +313,7 @@ router.get("/business-subcategory/getBusinessSubcategoryId",
   }
 );
 
-// Update
+// Update business subcategory by id
 router.put("/business-subcategory/updateBusinessSubcategoryById",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
@@ -336,7 +335,7 @@ router.put("/business-subcategory/updateBusinessSubcategoryById",
         return;
       }
 
-      const { businessTypeId, name, description, isActive } = req.body;
+      const { businessTypeId, name, isActive } = req.body;
 
       // if businessTypeId change, validate
       if (businessTypeId) {
@@ -350,7 +349,7 @@ router.put("/business-subcategory/updateBusinessSubcategoryById",
 
       await updateBusinessSubcategory(
         id,
-        { businessTypeId, name, description, isActive },
+        { businessTypeId, name, isActive },
         t
       );
 
