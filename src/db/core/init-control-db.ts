@@ -5,6 +5,7 @@ import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
 import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
+import { LoginHistory } from "../../routes/api-webapp/loginHistory/loginHistory-model";
 import { Category, initCategoryModel } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
 import { PremiumModule ,initPremiumModuleModel } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
 import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
@@ -16,12 +17,12 @@ export {
   Company,
   UserCompany,
   Otp,
+  LoginHistory,
   Category,
   PremiumModule,
   Clients,
   BusinessType,
   BusinessSubcategory,
-  // LoginHistory,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -32,6 +33,7 @@ export function initControlDB(sequelize: Sequelize) {
   Category.initModel(sequelize);
   Clients.initModel(sequelize);  
   Otp.initModel(sequelize);  
+  LoginHistory.initModel(sequelize);
   initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
@@ -118,6 +120,15 @@ Otp.belongsTo(Clients, {
     as: "businessType",
   });
 
+  /*** User <-> LoginHistory */
+  User.hasMany(LoginHistory, {
+    foreignKey: "userId",
+    as: "loginHistories",
+  });
+  LoginHistory.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
 
 // User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
 // Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -130,7 +141,8 @@ Otp.belongsTo(Clients, {
   return {
     User,
     Company,
-    Otp,  
+    Otp,
+    LoginHistory,
     UserCompany,
     Category,
     PremiumModule,

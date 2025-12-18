@@ -65,7 +65,7 @@ export = {
     templatePath: "src/template",
     publicPath: "src/public",
     // cryptoKey: "rgb*proses",
-    cryptoKey: "rideit_secure_key",
+    cryptoKey: "zarklyx_secure_key",
     routesPath: "src/routes",
     localUrlAccess: "/../../src/public/",
   },
@@ -159,7 +159,7 @@ export = {
 //     },
 //     ApiUrl: process.env.API_URL || "http://localhost:9005",
 //     adminURL: process.env.ADMIN_URL || "http://localhost:4200",
-//     cryptoKey: process.env.CRYPTO_KEY || "rideit_secure_key",
+//     cryptoKey: process.env.CRYPTO_KEY || "zarklyx_secure_key",
 
 //     email: {
 //       host: process.env.SENDER_EMAIL_HOST || "smtp.hostinger.com",
