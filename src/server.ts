@@ -4,6 +4,7 @@ import express, { Request, Response } from "express";
 import connectMySQL from "./config/dbSQL"; // Importing MySQL Connection
 import { connectDatabases } from "./config/db"; // MongoDB connection
 import { initControlDBConnection } from "./db/core/control-db";
+import { initTokenStore } from "./services/token-store.service";
 import http from "http";
 import cors from 'cors';
 import { ConsoleSpinner } from "./services/console-info";
@@ -14,10 +15,33 @@ import Category from './routes/api-webapp/superAdmin/generalSetup/category/categ
 import PremiumModule  from './routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api';
 import  ClientsRoutes from './routes/api-webapp/agency/clients/clients-api';
 import businessTypeRoutes from './routes/api-webapp/superAdmin/generalSetup/businessType/businessType-api';
+const youtubeRoutes = require('./routes/api-webapp/agency/social-Integration/youtube/youtube-api');
+const googleBusinessRoutes = require('./routes/api-webapp/agency/social-Integration/google-business/google-business-api');
+const gmailRoutes = require('./routes/api-webapp/agency/social-Integration/gmail/gmail-api');
+const driveRoutes = require('./routes/api-webapp/agency/social-Integration/drive/drive-api');
+const googleRoutes = require('./routes/api-webapp/agency/social-Integration/google/google-api');
+const linkedinRoutes = require('./routes/api-webapp/agency/social-Integration/linkedin/linkedin-api');
+const facebookRoutes = require('./routes/api-webapp/agency/social-Integration/facebook/facebook-api');
+const pinterestRoutes = require('./routes/api-webapp/agency/social-Integration/pinterest/pinterest-api');
+import twitterRoutes from './routes/api-webapp/agency/social-Integration/twitter/twitter-api';
+// const twitterRoutes = require('./routes/api-webapp/agency/social-Integration/twitter/twitter-api');
+import rolesRoutes from './routes/api-webapp/roles/roles-api';
+const bodyParser = require('body-parser');
+const cookieSession = require('cookie-session');
+
 
 import path from "path";
 const app = express();
 dotenv.config();
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+app.use(cookieSession({
+  name: 'session',
+  keys: [process.env.COOKIE_SECRET || 'default_secret_key'],
+  maxAge: 24 * 60 * 60 * 1000 // 24 hours
+}));
 
 //Rinkal 
 app.use(cors({
@@ -25,6 +49,7 @@ app.use(cors({
   credentials: true,               // only if you want to send cookies
 }));
 
+// console.log("FB APP ID:", process.env.FACEBOOK_APP_ID);
 app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
@@ -35,7 +60,21 @@ app.use("/category", Category);
 app.use("/premiumModule", PremiumModule);
 app.use("/clients", ClientsRoutes);
 app.use("/businessType", businessTypeRoutes);
+app.use("/youtube", youtubeRoutes);
+app.use("/google-business", googleBusinessRoutes);
+app.use("/gmail", gmailRoutes);
+app.use("/google", googleRoutes);
+app.use("/drive", driveRoutes);
+app.use("/linkedin", linkedinRoutes);
+app.use("/facebook", facebookRoutes);
+app.use("/pinterest", pinterestRoutes);
+app.use("/twitter", twitterRoutes);
+app.use("/roles", rolesRoutes);
 
+
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
 // Web App Apis Route Index
 // Initialize databases (MySQL main, MongoDB and control DB)
 (async () => {
@@ -56,6 +95,13 @@ app.use("/businessType", businessTypeRoutes);
     await initControlDBConnection();
   } catch (err) {
     console.warn("Control DB init warning:", err);
+  }
+
+  // Initialize token store model
+  try {
+    await initTokenStore();
+  } catch (err) {
+    console.warn("Token store init warning:", err);
   }
 })();
 
