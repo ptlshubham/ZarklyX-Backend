@@ -5,23 +5,29 @@ import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
 import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
+import { LoginHistory } from "../../routes/api-webapp/loginHistory/loginHistory-model";
 import { Category, initCategoryModel } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
 import { PremiumModule ,initPremiumModuleModel } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
 import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
+import { Role } from "../../routes/api-webapp/roles/role-model";
+import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// Use a relative path to the route-local Google token model to avoid module alias issues
+import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
 
 export {
   User,
   Company,
   UserCompany,
   Otp,
+  LoginHistory,
   Category,
   PremiumModule,
   Clients,
   BusinessType,
   BusinessSubcategory,
-  // LoginHistory,
+  SocialToken
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -32,9 +38,14 @@ export function initControlDB(sequelize: Sequelize) {
   Category.initModel(sequelize);
   Clients.initModel(sequelize);  
   Otp.initModel(sequelize);  
+  LoginHistory.initModel(sequelize);
+  // Roles
+  Role.initModel(sequelize);
+  SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
+  SocialToken.initModel(sequelize); 
 //  initCategoryModel(sequelize);
 //  initPremiumModuleModel(sequelize);
 // LoginHistory.initModel(sequelize);
@@ -118,6 +129,19 @@ Otp.belongsTo(Clients, {
     as: "businessType",
   });
 
+  /*** User <-> LoginHistory */
+  User.hasMany(LoginHistory, {
+    foreignKey: "userId",
+    as: "loginHistories",
+  });
+  LoginHistory.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
+
+  // Role <-> SubRole
+  Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
+  SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
 
 // User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
 // Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -130,13 +154,17 @@ Otp.belongsTo(Clients, {
   return {
     User,
     Company,
-    Otp,  
+    Otp,
+    LoginHistory,
     UserCompany,
     Category,
     PremiumModule,
     Clients,
     BusinessType,
-    BusinessSubcategory
+    BusinessSubcategory,
+    Role,
+    SubRole,
+    SocialToken
 ,    // LoginHistory
   };
 }

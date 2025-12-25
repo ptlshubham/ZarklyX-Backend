@@ -57,15 +57,15 @@ export = {
     email: {
       SENDER_EMAIL_HOST: "smtp.hostinger.com",
       SENDER_EMAIL_PORT: "465",
-      SENDER_EMAIL_ID: "zarklyX@keryar.com",// br.rinkal1997@gmail.com
-      SENDER_EMAIL_PASSWORD: "ZarklyX@dev1", // dmtz kgzb vadp cdki
+     SENDER_EMAIL_ID: "zarklyxconnection@gmail.com",// br.rinkal1997@gmail.com
+      SENDER_EMAIL_PASSWORD: "iysmcygimxwwxreq", // dmtz kgzb vadp cdki
     },
     ApiUrl: "http://localhost:9005",
     adminURL: "http://localhost:4200",
     templatePath: "src/template",
     publicPath: "src/public",
     // cryptoKey: "rgb*proses",
-    cryptoKey: "rideit_secure_key",
+    cryptoKey: "zarklyx_secure_key",
     routesPath: "src/routes",
     localUrlAccess: "/../../src/public/",
   },
@@ -159,7 +159,7 @@ export = {
 //     },
 //     ApiUrl: process.env.API_URL || "http://localhost:9005",
 //     adminURL: process.env.ADMIN_URL || "http://localhost:4200",
-//     cryptoKey: process.env.CRYPTO_KEY || "rideit_secure_key",
+//     cryptoKey: process.env.CRYPTO_KEY || "zarklyx_secure_key",
 
 //     email: {
 //       host: process.env.SENDER_EMAIL_HOST || "smtp.hostinger.com",

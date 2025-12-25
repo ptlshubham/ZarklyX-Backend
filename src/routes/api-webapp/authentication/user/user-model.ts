@@ -28,6 +28,19 @@ export class User extends Model<
     // categories is stored as JSON; it can be a single category id (string),
     // an array of category ids, or null.
     declare categories: string | string[] | null;
+
+     // Two-factor authentication
+    declare twofactorEnabled: boolean;
+    declare twofactorSecret: string | null;
+    declare twofactorVerified: boolean;
+    declare twofactorBackupCodes: string[] | null;
+    
+    // Temporary 2FA setup fields
+    declare temp2FACode: string | null;
+    declare temp2FACodeExpiry: Date | null;
+    declare temp2FASecret: string | null;
+    declare temp2FASecretExpiry: Date | null;
+
     declare isDeleted: boolean;
     declare deletedAt: CreationOptional<Date | null>;
     // declare deletedAt: CreationOptional<Date>;
@@ -76,10 +89,6 @@ export class User extends Model<
                 contact: {
                     type: DataTypes.STRING(15),
                     allowNull: true,
-                    unique: {
-                        name: "contact",
-                        msg: "Contact number must be unique",
-                    },
                     validate: {
                         notEmpty: {
                             msg: "Contact number cannot be empty",
@@ -89,23 +98,15 @@ export class User extends Model<
                 email: {
                     type: DataTypes.STRING(255),
                     allowNull: false,
-                    unique: {
-                        name: "email",
-                        msg: "Email must be unique",
-                    },
                 },
                 userType: {
-                    type: DataTypes.ENUM("organization", "freelancer"),
+                    type: DataTypes.ENUM("agency", "freelancer", "client"),
                     allowNull: true,
                     defaultValue: null,
                 },
                 secretCode: {
                     type: DataTypes.STRING,
                     allowNull: true,
-                    unique: {
-                        name: "secretCode",
-                        msg: "secret Code must be unique",
-                    }
                 },
                 isThemeDark: {
                     type: DataTypes.BOOLEAN,
@@ -123,7 +124,6 @@ export class User extends Model<
                     allowNull: true,
                 },
                 countryCode: {
-                    // 👈 NEW FIELD
                     type: DataTypes.STRING(10),
                     allowNull: true,
                     defaultValue: null,
@@ -131,6 +131,48 @@ export class User extends Model<
 
                 categories: {
                     type: DataTypes.JSON,
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                // Two-factor authentication
+                twofactorEnabled: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
+                },
+                twofactorSecret: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                twofactorVerified: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
+                },
+                twofactorBackupCodes: {
+                    type: DataTypes.JSON,
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                // Temporary 2FA setup fields
+                temp2FACode: {
+                    type: DataTypes.STRING(6),
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                temp2FACodeExpiry: {
+                    type: DataTypes.DATE,
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                temp2FASecret: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                temp2FASecretExpiry: {
+                    type: DataTypes.DATE,
                     allowNull: true,
                     defaultValue: null,
                 },
@@ -167,12 +209,12 @@ export class User extends Model<
                 googleId: {
                     type: DataTypes.STRING,
                     allowNull: true,
-                    unique: true,
+                    // Removed unique constraint to stay within MySQL 64-key limit
                 },
                 appleId: {
                     type: DataTypes.STRING,
                     allowNull: true,
-                    unique: true,
+                    // Removed unique constraint to stay within MySQL 64-key limit
                 },
                 authProvider: {
                     type: DataTypes.ENUM("email", "google", "apple"),
