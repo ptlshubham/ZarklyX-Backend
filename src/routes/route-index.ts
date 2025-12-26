@@ -12,6 +12,9 @@ export default (app: Application) => {
     app.use("/category", require("./api-webapp/superAdmin/generalSetup/category/category-api"));
     // app.use("/clients", require("./api-webapp/superAdmin/agency/clients/clients-api"));
     app.use("/clients", require("./api-webapp/agency/clients/clients-api")); 
+    app.use("/clients", require("./api-webapp/agency/clients/clients-2fa-api"));
+    app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
+    app.use("/employee", require("./api-webapp/agency/employee/employee-api"));
     app.use("/businessType", require("./api-webapp/superAdmin/generalSetup/businessType/businessType-api"));
     // app.use("/youtube", require("./api-webapp/other/youtube/youtube-api"));
     app.use("/youtube", require("./api-webapp/agency/social-Integration/youtube/youtube-api"));
@@ -20,6 +23,5 @@ export default (app: Application) => {
     app.use("/drive", require("./api-webapp/agency/social-Integration/drive/drive-api"));
     app.use("/google", require("./api-webapp/agency/social-Integration/google/google-api"));
     // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
-
 };
 
