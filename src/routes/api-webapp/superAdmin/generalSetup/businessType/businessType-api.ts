@@ -30,12 +30,11 @@ import { Op } from "sequelize";
 const router = express.Router();
 
 // Add
-router.post(
-  "/business-type/add",
+router.post("/addBusinessType",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
-      const { name, description, isActive } = req.body;
+      const { name, isActive } = req.body;
 
       if (!name) {
         await t.rollback();
@@ -58,7 +57,7 @@ router.post(
       }
 
       const bt = await addBusinessType(
-        { name, description, isActive },
+        { name, isActive },
         t
       );
 
@@ -77,7 +76,7 @@ router.post(
 );
 
 // List (with filters & pagination)
-router.get("/business-type/getAll",
+router.get("/getAllBusinessType",
   async (req: Request, res: Response): Promise<void> => {
     try {
       const result = await getAllBusinessTypes(req.query);
@@ -94,38 +93,37 @@ router.get("/business-type/getAll",
 );
 
 // Get by id
-router.get("/business-type/getBusinessTypeById",
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const id = Number(req.params.id);
-      if (!id) {
-        res.status(400).json({
-          success: false,
-          message: "Valid id is required.",
-        });
-        return;
-      }
-
-      const bt = await getBusinessTypeById(id);
-      if (!bt) {
-        notFound(res, "Business Type not found.");
-        return;
-      }
-
-      res.status(200).json({
-        success: true,
-        message: "Business Type fetched successfully.",
-        data: bt,
+router.get("/business-type/getBusinessTypeById/:id", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      res.status(400).json({
+        success: false,
+        message: "Valid id is required.",
       });
-    } catch (err: any) {
-      console.error("[/business-type/:id] ERROR:", err);
-      serverError(res, err.message || "Failed to fetch business type.");
+      return;
     }
+
+    const bt = await getBusinessTypeById(id);
+    if (!bt) {
+      notFound(res, "Business Type not found.");
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Business Type fetched successfully.",
+      data: bt,
+    });
+  } catch (err: any) {
+    console.error("[/business-type/:id] ERROR:", err);
+    serverError(res, err.message || "Failed to fetch business type.");
   }
+}
 );
 
-// Update
-router.put("/business-type/updateBusinessTypeById",
+// Update business type by id
+router.put("/business-type/updateBusinessTypeById/:id",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
@@ -146,7 +144,7 @@ router.put("/business-type/updateBusinessTypeById",
         return;
       }
 
-      const { name, description, isActive } = req.body;
+      const { name, isActive } = req.body;
 
       if (name) {
         // duplicate check
@@ -167,7 +165,7 @@ router.put("/business-type/updateBusinessTypeById",
 
       await updateBusinessType(
         id,
-        { name, description, isActive },
+        { name, isActive },
         t
       );
 
@@ -221,14 +219,14 @@ router.delete(
   }
 );
 
-  // BUSINESS SUBCATEGORY APIs
+// BUSINESS SUBCATEGORY APIs
 
 // Add
 router.post("/business-subcategory/addBusinessSubcategory",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
-      const { businessTypeId, name, description, isActive } = req.body;
+      const { businessTypeId, name, isActive } = req.body;
 
       if (!businessTypeId || !name) {
         await t.rollback();
@@ -248,7 +246,7 @@ router.post("/business-subcategory/addBusinessSubcategory",
       }
 
       const subcat = await addBusinessSubcategory(
-        { businessTypeId, name, description, isActive },
+        { businessTypeId, name, isActive },
         t
       );
 
@@ -284,7 +282,7 @@ router.get("/business-subcategory/getAllBusinessSubcategory",
 );
 
 // Get by id
-router.get("/business-subcategory/getBusinessSubcategoryId",
+router.get("/business-subcategory/getBusinessSubcategoryId/:id",
   async (req: Request, res: Response): Promise<void> => {
     try {
       const id = Number(req.params.id);
@@ -314,8 +312,8 @@ router.get("/business-subcategory/getBusinessSubcategoryId",
   }
 );
 
-// Update
-router.put("/business-subcategory/updateBusinessSubcategoryById",
+// Update business subcategory by id
+router.put("/business-subcategory/updateBusinessSubcategoryById/:id",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
@@ -336,7 +334,7 @@ router.put("/business-subcategory/updateBusinessSubcategoryById",
         return;
       }
 
-      const { businessTypeId, name, description, isActive } = req.body;
+      const { businessTypeId, name, isActive } = req.body;
 
       // if businessTypeId change, validate
       if (businessTypeId) {
@@ -350,7 +348,7 @@ router.put("/business-subcategory/updateBusinessSubcategoryById",
 
       await updateBusinessSubcategory(
         id,
-        { businessTypeId, name, description, isActive },
+        { businessTypeId, name, isActive },
         t
       );
 
@@ -368,7 +366,7 @@ router.put("/business-subcategory/updateBusinessSubcategoryById",
 );
 
 // Soft delete
-router.delete("/business-subcategory/deleteBusinessSubcategoryById",
+router.delete("/business-subcategory/deleteBusinessSubcategoryById/:id",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
@@ -404,9 +402,9 @@ router.delete("/business-subcategory/deleteBusinessSubcategoryById",
   }
 );
 
- // Extra helper API:
- // GET /business-subcategory/by-type/:businessTypeId
- // for simple dropdown
+// Extra helper API:
+// GET /business-subcategory/by-type/:businessTypeId
+// for simple dropdown
 router.get(
   "/business-subcategory/by-type/:businessTypeId",
   async (req: Request, res: Response): Promise<void> => {
