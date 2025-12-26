@@ -27,7 +27,7 @@ export class Clients extends Model<
     declare businessWebsite: string | null;
     declare businessEmail: string | null;
     declare businessContact: string | null;
-    declare businessExecutive: string | null;   
+    declare businessExecutive: string | null;
     declare isoBusinessCode: string | null;
     declare isdBusinessCode: string | null;
     declare businessDescription: string | null;
@@ -150,7 +150,7 @@ export class Clients extends Model<
                     allowNull: true,
                 },
                 businessExecutive: {
-                    type: DataTypes.STRING(255),    
+                    type: DataTypes.STRING(255),
                     allowNull: true,
                 },
                 isoBusinessCode: {
@@ -182,7 +182,7 @@ export class Clients extends Model<
                 },
                 contact: {
                     type: DataTypes.STRING(15),
-                    allowNull: false,
+                    allowNull: true,
                 },
                 countryCode: {
                     type: DataTypes.STRING(10),
@@ -190,10 +190,12 @@ export class Clients extends Model<
                     defaultValue: null,
                 },
                 isoCode: {
-                    type: DataTypes.STRING(255)
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
                 },
                 isdCode: {
-                    type: DataTypes.STRING(255)
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
                 },
 
                 // Address
