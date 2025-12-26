@@ -15,7 +15,6 @@ export class Clients extends Model<
     declare id: CreationOptional<number>;
     //   declare icon: string | null;
     // Basic business info
-    // declare ownerName: string;
     declare userId: string | null; // UUID FK to User
     declare companyId: string | null; // UUID FK to Company
     declare userName: string | null;
@@ -28,7 +27,7 @@ export class Clients extends Model<
     declare businessWebsite: string | null;
     declare businessEmail: string | null;
     declare businessContact: string | null;
-    declare businessExecutive: string | null;   
+    declare businessExecutive: string | null;
     declare isoBusinessCode: string | null;
     declare isdBusinessCode: string | null;
     declare businessDescription: string | null;
@@ -43,7 +42,7 @@ export class Clients extends Model<
     declare state: string | null;
     declare city: string | null;
     declare postcode: string | null;
-    declare address: string;
+    declare address: string | null;
     // Auth
     declare password: string | null;
     // Account details
@@ -72,12 +71,6 @@ export class Clients extends Model<
     declare registrationStep: number;
     declare isMobileVerified: boolean;
     declare isFirstLogin: boolean;
-    
-    // Two-factor authentication
-    declare twofactorEnabled: boolean;
-    declare twofactorSecret: string | null;
-    declare twofactorVerified: boolean;
-    declare twofactorBackupCodes: string[] | null;
 
     // Timestamps
     declare createdAt: CreationOptional<Date>;
@@ -122,10 +115,6 @@ export class Clients extends Model<
                 businessName: {
                     type: DataTypes.STRING(255),
                     allowNull: false,
-                    // unique: {
-                    //     name: "Clients_name",
-                    //     msg: "Clients name must be unique",
-                    // },
                 },
                 clientfirstName: {
                     type: DataTypes.STRING(255),
@@ -161,7 +150,7 @@ export class Clients extends Model<
                     allowNull: true,
                 },
                 businessExecutive: {
-                    type: DataTypes.STRING(255),    
+                    type: DataTypes.STRING(255),
                     allowNull: true,
                 },
                 isoBusinessCode: {
@@ -193,16 +182,7 @@ export class Clients extends Model<
                 },
                 contact: {
                     type: DataTypes.STRING(15),
-                    allowNull: false,
-                    // unique: {
-                    //     name: "contact",
-                    //     msg: "Contact number must be unique",
-                    // },
-                    // validate: {
-                    //     notEmpty: {
-                    //         msg: "Contact number cannot be empty",
-                    //     },
-                    // },
+                    allowNull: true,
                 },
                 countryCode: {
                     type: DataTypes.STRING(10),
@@ -210,10 +190,12 @@ export class Clients extends Model<
                     defaultValue: null,
                 },
                 isoCode: {
-                    type: DataTypes.STRING(255)
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
                 },
                 isdCode: {
-                    type: DataTypes.STRING(255)
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
                 },
 
                 // Address
@@ -368,28 +350,6 @@ export class Clients extends Model<
                     type: DataTypes.BOOLEAN,
                     allowNull: false,
                     defaultValue: true,
-                },
-                
-                // Two-factor authentication
-                twofactorEnabled: {
-                    type: DataTypes.BOOLEAN,
-                    allowNull: false,
-                    defaultValue: false,
-                },
-                twofactorSecret: {
-                    type: DataTypes.STRING(255),
-                    allowNull: true,
-                    defaultValue: null,
-                },
-                twofactorVerified: {
-                    type: DataTypes.BOOLEAN,
-                    allowNull: false,
-                    defaultValue: false,
-                },
-                twofactorBackupCodes: {
-                    type: DataTypes.JSON,
-                    allowNull: true,
-                    defaultValue: null,
                 },
 
                 // timestamps

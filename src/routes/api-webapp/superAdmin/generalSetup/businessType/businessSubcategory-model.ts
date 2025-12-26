@@ -15,7 +15,6 @@ export class BusinessSubcategory extends Model<
   declare id: CreationOptional<number>;
   declare businessTypeId: number;
   declare name: string;
-  declare description: string | null;
   declare isActive: boolean;
   declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
@@ -24,14 +23,15 @@ export class BusinessSubcategory extends Model<
   static initModel(sequelize: Sequelize): typeof BusinessSubcategory {
     BusinessSubcategory.init(
       {
-        id: {
-          type: DataTypes.INTEGER,
+       id: {
+          type: DataTypes.UUID,
           primaryKey: true,
-          autoIncrement: true,
           allowNull: false,
+          unique: true,
+          defaultValue: DataTypes.UUIDV4,
         },
         businessTypeId: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           allowNull: false,
           references: {
             model: BusinessType,
@@ -41,11 +41,6 @@ export class BusinessSubcategory extends Model<
         name: {
           type: DataTypes.STRING(255),
           allowNull: false,
-        },
-        description: {
-          type: DataTypes.TEXT,
-          allowNull: true,
-          defaultValue: null,
         },
         isActive: {
           type: DataTypes.BOOLEAN,

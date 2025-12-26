@@ -13,7 +13,6 @@ export class BusinessType extends Model<
 > {
   declare id: CreationOptional<number>;
   declare name: string;
-  declare description: string | null;
   declare isActive: boolean;
   declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
@@ -23,10 +22,11 @@ export class BusinessType extends Model<
     BusinessType.init(
       {
         id: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           primaryKey: true,
-          autoIncrement: true,
           allowNull: false,
+          unique: true,
+          defaultValue: DataTypes.UUIDV4,
         },
         name: {
           type: DataTypes.STRING(255),
@@ -35,11 +35,6 @@ export class BusinessType extends Model<
             name: "business_type_name",
             msg: "Business type name must be unique",
           },
-        },
-        description: {
-          type: DataTypes.TEXT,
-          allowNull: true,
-          defaultValue: null,
         },
         isActive: {
           type: DataTypes.BOOLEAN,

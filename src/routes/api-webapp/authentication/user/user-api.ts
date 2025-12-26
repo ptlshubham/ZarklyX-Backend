@@ -2,6 +2,8 @@ import express from "express";
 import { Request, Response } from "express";
 import { OAuth2Client } from "google-auth-library";
 import { google } from "googleapis";
+import speakeasy from "speakeasy";
+import QRCode from "qrcode";
 import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
 import {
@@ -22,7 +24,6 @@ import {
   getAllUser,
   updateTheme,
   generateUniqueSecretCode,
-  socialLoginHandler
 } from "../../authentication/user/user-handler";
 import { sendEmail } from "../../../../services/mailService";
 import { createCompany, addUserToCompany } from "../../company/company-handler";
@@ -186,52 +187,51 @@ router.post("/register/start",
         categories: null,
       };
 
-      // Generate OTP 
-      const otpCode = generateOTP();
+      // Generate OTP for both email and mobile
+      const emailOtp = generateOTP();
+      const mobileOtp = generateOTP();
       const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 
-      // find existing otp record for this email, else create new
-      let otpRecord = await Otp.findOne({
-        where: { email },
+      // Remove any previous OTP for this email or contact
+      await Otp.destroy({
+        where: { [Op.or]: [{ email }, { contact: localNumber }] },
         transaction: t,
       });
 
-      if (!otpRecord) {
-        otpRecord = await Otp.create(
-          {
-            userId: null,
-            email,
-            contact: localNumber,
-            otp: otpCode,
-            mbOTP: null,
-            loginOTP: null,
-            otpVerify: false,
-            otpExpiresAt: expiry,
-            mbOTPExpiresAt: null,
-            isDeleted: false,
-            isEmailVerified: false,
-            isMobileVerified: false,
-            isActive: true,
-            tempUserData,
-          },
-          { transaction: t }
-        );
-      } else {
-        otpRecord.email = email;
-        otpRecord.contact = localNumber;
-        otpRecord.otp = otpCode;
-        otpRecord.otpExpiresAt = expiry;
-        otpRecord.otpVerify = false;
-        otpRecord.isDeleted = false;
-        otpRecord.tempUserData = tempUserData;
-        await otpRecord.save({ transaction: t });
+      // Create new OTP record
+      const otpRecord = await Otp.create(
+        {
+          userId: null,
+          email,
+          contact: localNumber,
+          otp: emailOtp,
+          mbOTP: mobileOtp,
+          loginOTP: null,
+          otpVerify: false,
+          otpExpiresAt: expiry,
+          mbOTPExpiresAt: expiry,
+          isDeleted: false,
+          isEmailVerified: false,
+          isMobileVerified: false,
+          isActive: true,
+          tempUserData,
+        },
+        { transaction: t }
+      );
+
+      // Send OTP to email
+      const emailResult = await sendOTP({ email, otp: emailOtp }, "register");
+      if (!emailResult || !emailResult.success) {
+        await safeRollback(t);
+        serverError(res, emailResult?.message || "Failed to send Email OTP.");
+        return;
       }
 
-      // / Send OTP on email 
-      const sendResult = await sendOTP({ email, otp: otpCode }, "register");
-      if (!sendResult || !sendResult.success) {
+      // Send OTP to mobile
+      const mobileResult = await sendOTP({ contact: localNumber, mbOTP: mobileOtp }, "register");
+      if (!mobileResult || !mobileResult.success) {
         await safeRollback(t);
-        serverError(res, sendResult?.message || "Failed to send OTP.");
+        serverError(res, mobileResult?.message || "Failed to send Mobile OTP.");
         return;
       }
 
@@ -240,10 +240,11 @@ router.post("/register/start",
       // No user row yet – only OTP record is inserted/updated
       res.status(200).json({
         success: true,
-        message: `Signup step 1 done. OTP sent to ${email}.`,
+        message: `Signup step 1 done. OTP sent to ${email} and ${localNumber}.`,
         data: {
           otpRefId: otpRecord.id,
           email,
+          contact: localNumber,
           countryCode: finalCountryCode,
         },
       });
@@ -262,39 +263,73 @@ router.post("/register/verify-otp",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
-      const { email, otp } = req.body;
+      const { email, otp, mbOTP } = req.body;
 
-      if (!email || !otp) {
+      console.log("[register/verify-otp] Request body:", { email, otp, mbOTP });
+
+      // Require email and at least one OTP (email or mobile)
+      if (!email || (!otp && !mbOTP)) {
         await t.rollback();
         res.status(400).json({
           success: false,
-          message: "email and otp are required",
+          message: "email and either otp (email) or mbOTP (mobile) are required",
         });
         return;
       }
 
-      // Find OTP record
+      // Build where clause based on which OTP(s) are provided
+      const whereConditions: any[] = [];
+
+      if (otp) {
+        whereConditions.push({
+          otp: String(otp),
+          otpExpiresAt: { [Op.gt]: new Date() },
+        });
+      }
+
+      if (mbOTP) {
+        whereConditions.push({
+          mbOTP: String(mbOTP),
+          mbOTPExpiresAt: { [Op.gt]: new Date() },
+        });
+      }
+
+      // Find OTP record matching email and EITHER email OTP OR mobile OTP
       const otpRecord: any = await Otp.findOne({
         where: {
           email,
-          otp: String(otp),
           otpVerify: false,
           isDeleted: false,
+          [Op.or]: whereConditions,
         },
         transaction: t,
       });
 
+      console.log("[register/verify-otp] OTP Record found:", !!otpRecord);
+
       if (!otpRecord) {
         await t.rollback();
-        unauthorized(res, "Invalid OTP.");
+        res.status(400).json({
+          success: false,
+          message: "Invalid / expired OTP.",
+        });
         return;
       }
 
-      // Expiry check
-      if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < new Date()) {
-        await t.rollback();
-        unauthorized(res, "OTP has expired.");
-        return;
+      // Determine which OTP was verified
+      let isEmailVerified = false;
+      let isMobileVerified = false;
+
+      if (otp && otpRecord.otp === String(otp)) {
+        // Email OTP was verified
+        isEmailVerified = true;
+        console.log("[register/verify-otp] Email OTP verified");
+      }
+
+      if (mbOTP && otpRecord.mbOTP === String(mbOTP)) {
+        // Mobile OTP was verified
+        isMobileVerified = true;
+        console.log("[register/verify-otp] Mobile OTP verified");
       }
 
       //  Ensure we still have tempUserData
@@ -337,12 +372,13 @@ router.post("/register/verify-otp",
       }
 
       //  Create User ONLY NOW (after OTP success)
+      // Set email verified if email OTP was used, mobile verified if mobile OTP was used
       const user: any = await User.create(
         {
           ...tempUserData,
           isDeleted: false,
-          isEmailVerified: true,
-          isMobileVerified: false,
+          isEmailVerified: isEmailVerified, // true if email OTP verified
+          isMobileVerified: isMobileVerified, // true if mobile OTP verified
           isRegistering: true,
           registrationStep: 2,
           isActive: false, // or true if you want auto-activate
@@ -350,12 +386,22 @@ router.post("/register/verify-otp",
         { transaction: t }
       );
 
-      // Update OTP record:  userId + mark verified + clear temp data
+      // Update OTP record: userId + mark verified + clear only the verified OTP
       otpRecord.userId = user.id;
       otpRecord.otpVerify = true;
-      otpRecord.isEmailVerified = true;
-      otpRecord.otp = null;
-      otpRecord.otpExpiresAt = null;
+      otpRecord.isEmailVerified = isEmailVerified;
+      otpRecord.isMobileVerified = isMobileVerified;
+
+      // Clear only the OTP that was verified
+      if (isEmailVerified) {
+        otpRecord.otp = null;
+        otpRecord.otpExpiresAt = null;
+      }
+      if (isMobileVerified) {
+        otpRecord.mbOTP = null;
+        otpRecord.mbOTPExpiresAt = null;
+      }
+
       otpRecord.tempUserData = null;
       await otpRecord.save({ transaction: t });
 
@@ -476,44 +522,54 @@ router.post("/register/categories",
         }
         categoryId = cat.id;
       }
-      // string name, e.g. "food"
+      // string input: could be a UUID id, a numeric string, or a name.
       else if (typeof input === "string") {
-        const name = input.trim();
-        console.log("Category input is string name:", name);
+        const raw = input.trim();
+        console.log("Category input is string:", raw);
 
-        if (!name) {
+        if (!raw) {
           await t.rollback();
           res.status(400).json({
             success: false,
-            message: "Category name cannot be empty",
+            message: "Category value cannot be empty",
           });
           return;
         }
 
-        let cat = await Category.findOne({
-          where: { name },
-          transaction: t,
-        });
-        console.log(
-          "Category found by name:",
-          cat ? { id: cat.id, name: cat.name } : null
-        );
+        // Detect UUID (v1-v5) pattern and treat it as an ID lookup
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(raw)) {
+          console.log("Detected UUID string, treating as category ID", raw);
+          const cat = await Category.findByPk(raw, { transaction: t });
+          console.log("Category found by ID:", cat ? { id: cat.id, name: cat.name } : null);
+          if (!cat) {
+            await t.rollback();
+            res.status(400).json({ success: false, message: "Category ID is invalid" });
+            return;
+          }
+          categoryId = cat.id;
+        } else {
+          // treat as a name (fallback)
+          const name = raw;
+          let cat = await Category.findOne({ where: { name }, transaction: t });
+          console.log("Category found by name:", cat ? { id: cat.id, name: cat.name } : null);
 
-        if (!cat) {
-          console.log("Category not found, creating new master row...");
-          cat = await Category.create(
-            {
-              name,
-              icon: null,
-              isActive: true,
-              isDeleted: false
-            },
-            { transaction: t }
-          );
-          console.log("New category created:", { id: cat.id, name: cat.name });
+          if (!cat) {
+            console.log("Category not found, creating new master row...");
+            cat = await Category.create(
+              {
+                name,
+                icon: null,
+                isActive: true,
+                isDeleted: false,
+              },
+              { transaction: t }
+            );
+            console.log("New category created:", { id: cat.id, name: cat.name });
+          }
+
+          categoryId = cat.id;
         }
-
-        categoryId = cat.id;
       }
       //  object { name, icon }
       else if (typeof input === "object" && input !== null) {
@@ -634,7 +690,7 @@ router.post("/register/user-type", async (req: Request, res: Response): Promise<
     }
 
     // Only these two are allowed
-    const allowedTypes = ["freelancer", "agency"];
+    const allowedTypes = ["freelancer", "agency", "client"];
     if (!allowedTypes.includes(userType)) {
       await t.rollback();
       res.status(400).json({
@@ -1107,14 +1163,73 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
       "7d"
     );
 
+    // Commit transaction FIRST to save data
     await t.commit();
 
-    console.log("[/register/final] DONE:", {
+    console.log("[/register/final] Data saved successfully:", {
       userId: user.id,
       companyId: company.id,
       no_of_clients: company.no_of_clients,
       selectedModules: company.selectedModules,
     });
+
+    // -------- Send Welcome Email AFTER successful save --------
+    try {
+      const welcomeEmailHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+            .button { display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Welcome to ZarklyX!</h1>
+            </div>
+            <div class="content">
+              <h2>Hi ${user.firstName} ${user.lastName},</h2>
+              <p>Congratulations! Your agency account has been successfully created.</p>
+              <p><strong>Company Name:</strong> ${company.name}</p>
+              <p><strong>Email:</strong> ${user.email}</p>
+              <p><strong>Number of Clients:</strong> Up to ${company.no_of_clients}</p>
+              <p>You can now log in to your dashboard and start managing your clients and campaigns.</p>
+              <p>If you have any questions or need assistance, feel free to reach out to our support team.</p>
+              <p>Best regards,<br>The ZarklyX Team</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} ZarklyX. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      await sendEmail({
+        from: "" as any,
+        to: user.email,
+        subject: "Welcome to ZarklyX - Registration Complete!",
+        text: `Welcome ${user.firstName}! Your agency account has been successfully created for ${company.name}.`,
+        html: welcomeEmailHtml,
+        replacements: null,
+        htmlFile: "" as any,
+        attachments: null,
+        cc: null,
+        replyTo: null,
+      });
+
+      console.log("[/register/final] Welcome email sent to:", user.email);
+    } catch (emailError: any) {
+      console.error("[/register/final] Failed to send welcome email:", emailError);
+      // Don't fail the registration if email fails - data is already saved
+      ErrorLogger.write({ type: "welcome email error", error: emailError });
+    }
 
     res.status(200).json({
       success: true,
@@ -1135,7 +1250,6 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     return;
   }
 });
-
 
 // Get user by ID
 router.get("/getUserID/:id", async (req: Request, res: Response): Promise<void> => {
@@ -1160,6 +1274,7 @@ router.get("/getUserID/:id", async (req: Request, res: Response): Promise<void> 
   }
 });
 
+//get all users
 router.get("/getAllUser", async (req: Request, res: Response): Promise<void> => {
   try {
     const allUser = await getAllUser(req.query);
@@ -1257,6 +1372,759 @@ router.post("/updateTheme", async (req, res) => {
   }
 });
 
+// ========================= TWO-FACTOR AUTHENTICATION ENDPOINTS =========================
+
+// 1. Generate 2FA Secret and QR Code
+// POST /user/2fa/setup/step1
+// Step 1: Send confirmation code via email
+router.post("/2fa/setup/step1", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authUser: any = (req as any).user;
+
+    if (!authUser || !authUser.id) {
+      unauthorized(res, "Invalid or missing token user.");
+      return;
+    }
+
+    const user: any = await User.findByPk(authUser.id);
+    if (!user) {
+      notFound(res, "User not found");
+      return;
+    }
+
+    // Generate 6-digit confirmation code
+    const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Store temporarily in session/cache (or in a temp field in user table)
+    user.temp2FACode = confirmationCode;
+    user.temp2FACodeExpiry = codeExpiry;
+    await user.save();
+
+    // Send confirmation code via email
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; }
+          .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 8px; }
+          .code { font-size: 32px; font-weight: bold; color: #4CAF50; text-align: center; letter-spacing: 5px; padding: 20px 0; }
+          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>2FA Setup Confirmation</h1>
+          </div>
+          <p>Hi ${user.firstName || 'User'},</p>
+          <p>You have initiated 2-Factor Authentication setup for your ZarklyX account.</p>
+          <p>Please enter the confirmation code below to proceed:</p>
+          <div class="code">${confirmationCode}</div>
+          <p><strong>This code will expire in 10 minutes.</strong></p>
+          <p>If you did not request this, please ignore this email and contact support.</p>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} ZarklyX. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmail({
+      to: user.email,
+      subject: "ZarklyX - 2FA Setup Confirmation Code",
+      html: emailHtml,
+      text: `Your 2FA confirmation code is: ${confirmationCode}. This code will expire in 10 minutes.`,
+      from: "" as any,
+      replacements: null,
+      htmlFile: "" as any,
+      attachments: null,
+      cc: null,
+      replyTo: null,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Confirmation code sent to your email. Please check your inbox.",
+      data: {
+        step: 1,
+        email: user.email,
+        codeExpiry: codeExpiry,
+      },
+    });
+  } catch (error: any) {
+    console.error("[2fa/setup/step1] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/setup/step1 error", error });
+    serverError(res, error.message || "Failed to send confirmation code.");
+  }
+});
+
+// POST /user/2fa/setup/step2
+// Step 2: Verify email confirmation code
+router.post("/2fa/setup/step2", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authUser: any = (req as any).user;
+    const { confirmationCode } = req.body;
+
+    if (!authUser || !authUser.id) {
+      unauthorized(res, "Invalid or missing token user.");
+      return;
+    }
+
+    if (!confirmationCode) {
+      res.status(400).json({
+        success: false,
+        message: "Confirmation code is required.",
+      });
+      return;
+    }
+
+    const user: any = await User.findByPk(authUser.id);
+    if (!user) {
+      notFound(res, "User not found");
+      return;
+    }
+
+    // Verify confirmation code
+    if (user.temp2FACode !== String(confirmationCode)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid confirmation code.",
+      });
+      return;
+    }
+
+    // Check expiry
+    if (user.temp2FACodeExpiry && user.temp2FACodeExpiry < new Date()) {
+      res.status(400).json({
+        success: false,
+        message: "Confirmation code has expired. Please request a new one.",
+      });
+      return;
+    }
+
+    // Code verified, now generate 2FA secret for QR code
+    const secret = speakeasy.generateSecret({
+      name: `ZarklyX (${user.email})`,
+      issuer: 'ZarklyX',
+      length: 32
+    });
+
+    // Generate QR code
+    const qrCode = await QRCode.toDataURL(secret.otpauth_url || '');
+
+    // Store temp secret for step 3 verification
+    user.temp2FASecret = secret.base32;
+    user.temp2FASecretExpiry = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Email confirmed. Please download an authenticator app and scan the QR code.",
+      data: {
+        step: 2,
+        qrCode: qrCode,
+        manualEntryKey: secret.base32,
+        authenticatorApps: [
+          {
+            name: "Google Authenticator",
+            icon: "google",
+            downloadUrl: "https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2",
+          },
+          {
+            name: "Authy",
+            icon: "authy",
+            downloadUrl: "https://authy.com/download/",
+          },
+          {
+            name: "NordPass",
+            icon: "nordpass",
+            downloadUrl: "https://nordpass.com/",
+          },
+        ],
+      },
+    });
+  } catch (error: any) {
+    console.error("[2fa/setup/step2] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/setup/step2 error", error });
+    serverError(res, error.message || "Failed to verify confirmation code.");
+  }
+});
+
+// POST /user/2fa/setup (kept for backward compatibility, now calls step 1)
+router.post("/2fa/setup", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authUser: any = (req as any).user;
+
+    if (!authUser || !authUser.id) {
+      unauthorized(res, "Invalid or missing token user.");
+      return;
+    }
+
+    const user: any = await User.findByPk(authUser.id);
+    if (!user) {
+      notFound(res, "User not found");
+      return;
+    }
+
+    // Generate 6-digit confirmation code
+    const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Store temporarily
+    user.temp2FACode = confirmationCode;
+    user.temp2FACodeExpiry = codeExpiry;
+    await user.save();
+
+    // Send confirmation code via email
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; }
+          .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 8px; }
+          .code { font-size: 32px; font-weight: bold; color: #4CAF50; text-align: center; letter-spacing: 5px; padding: 20px 0; }
+          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>2FA Setup Confirmation</h1>
+          </div>
+          <p>Hi ${user.firstName || 'User'},</p>
+          <p>You have initiated 2-Factor Authentication setup for your ZarklyX account.</p>
+          <p>Please enter the confirmation code below to proceed:</p>
+          <div class="code">${confirmationCode}</div>
+          <p><strong>This code will expire in 10 minutes.</strong></p>
+          <p>If you did not request this, please ignore this email and contact support.</p>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} ZarklyX. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmail({
+      to: user.email,
+      subject: "ZarklyX - 2FA Setup Confirmation Code",
+      html: emailHtml,
+      text: `Your 2FA confirmation code is: ${confirmationCode}. This code will expire in 10 minutes.`,
+      from: "" as any,
+      replacements: null,
+      htmlFile: "" as any,
+      attachments: null,
+      cc: null,
+      replyTo: null,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Confirmation code sent to your email. Please check your inbox.",
+      data: {
+        step: 1,
+        email: user.email,
+        codeExpiry: codeExpiry,
+      },
+    });
+  } catch (error: any) {
+    console.error("[2fa/setup] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/setup error", error });
+    serverError(res, error.message || "Failed to setup 2FA.");
+  }
+});
+
+// POST /user/2fa/setup/step3
+// Step 3: Verify TOTP code and generate backup codes
+router.post("/2fa/setup/step3", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    const authUser: any = (req as any).user;
+    const { totpCode } = req.body;
+
+    if (!authUser || !authUser.id) {
+      await t.rollback();
+      unauthorized(res, "Invalid or missing token user.");
+      return;
+    }
+
+    if (!totpCode) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "TOTP code is required.",
+      });
+      return;
+    }
+
+    const user: any = await User.findByPk(authUser.id, { transaction: t });
+    if (!user) {
+      await t.rollback();
+      notFound(res, "User not found");
+      return;
+    }
+
+    // Check if temp secret exists
+    if (!user.temp2FASecret) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "2FA setup not initiated. Please start from step 1.",
+      });
+      return;
+    }
+
+    // Check temp secret expiry
+    if (user.temp2FASecretExpiry && user.temp2FASecretExpiry < new Date()) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "2FA setup session expired. Please start from step 1.",
+      });
+      return;
+    }
+
+    // Verify the TOTP code against the temp secret
+    const verified = speakeasy.totp.verify({
+      secret: user.temp2FASecret,
+      encoding: 'base32',
+      token: String(totpCode),
+      window: 2 // Allow 2 time windows (±30 seconds)
+    });
+
+    if (!verified) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid TOTP code. Please try again.",
+      });
+      return;
+    }
+
+    // Generate backup codes (10 codes with format XXXX-XXXX)
+    const backupCodes: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const code = speakeasy.generateSecret({ length: 8 }).base32;
+      const formattedCode = `${code.slice(0, 4)}-${code.slice(4, 8)}`;
+      backupCodes.push(formattedCode);
+    }
+
+    // Update user with 2FA enabled
+    user.twofactorSecret = user.temp2FASecret;
+    user.twofactorEnabled = true;
+    user.twofactorVerified = true;
+    user.twofactorBackupCodes = backupCodes;
+
+    // Clear temp fields
+    user.temp2FACode = null;
+    user.temp2FACodeExpiry = null;
+    user.temp2FASecret = null;
+    user.temp2FASecretExpiry = null;
+
+    await user.save({ transaction: t });
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "2FA has been enabled successfully.",
+      data: {
+        step: 4,
+        twofactorEnabled: true,
+        backupCodes: backupCodes,
+        warning: "Save these backup codes in a safe place. You will need them if you lose access to your authenticator app. Each code can only be used once.",
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[2fa/setup/step3] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/setup/step3 error", error });
+    serverError(res, error.message || "Failed to verify TOTP code.");
+  }
+});
+
+// 2. Verify and Enable 2FA
+// POST /user/2fa/enable (kept for backward compatibility, now calls step 3)
+// Body: { verificationCode }
+router.post("/2fa/enable", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    const authUser: any = (req as any).user;
+    const { verificationCode } = req.body;
+
+    if (!authUser || !authUser.id) {
+      await t.rollback();
+      unauthorized(res, "Invalid or missing token user.");
+      return;
+    }
+
+    if (!verificationCode) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "verificationCode is required",
+      });
+      return;
+    }
+
+    const user: any = await User.findByPk(authUser.id, { transaction: t });
+    if (!user) {
+      await t.rollback();
+      notFound(res, "User not found");
+      return;
+    }
+
+    // Check if temp secret exists
+    if (!user.temp2FASecret) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "2FA setup not initiated. Please start from /2fa/setup.",
+      });
+      return;
+    }
+
+    // Verify the code against the temp secret
+    const verified = speakeasy.totp.verify({
+      secret: user.temp2FASecret,
+      encoding: 'base32',
+      token: verificationCode,
+      window: 2 // Allow 2 time windows (±30 seconds)
+    });
+
+    if (!verified) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid verification code. Please try again.",
+      });
+      return;
+    }
+
+    // Generate backup codes
+    const backupCodes: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const code = speakeasy.generateSecret({ length: 8 }).base32;
+      const formattedCode = `${code.slice(0, 4)}-${code.slice(4, 8)}`;
+      backupCodes.push(formattedCode);
+    }
+
+    // Update user with 2FA enabled
+    user.twofactorSecret = user.temp2FASecret;
+    user.twofactorEnabled = true;
+    user.twofactorVerified = true;
+    user.twofactorBackupCodes = backupCodes;
+
+    // Clear temp fields
+    user.temp2FACode = null;
+    user.temp2FACodeExpiry = null;
+    user.temp2FASecret = null;
+    user.temp2FASecretExpiry = null;
+
+    await user.save({ transaction: t });
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "2FA has been enabled successfully.",
+      data: {
+        twofactorEnabled: true,
+        backupCodes: backupCodes,
+        warning: "Save these backup codes in a safe place. You will need them if you lose access to your authenticator app.",
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[2fa/enable] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/enable error", error });
+    serverError(res, error.message || "Failed to enable 2FA.");
+  }
+});
+
+// 3. Disable 2FA
+// POST /user/2fa/disable
+// Body: { password } - require password for security
+router.post("/2fa/disable", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    const authUser: any = (req as any).user;
+    const { password } = req.body;
+
+    if (!authUser || !authUser.id) {
+      await t.rollback();
+      unauthorized(res, "Invalid or missing token user.");
+      return;
+    }
+
+    if (!password) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Password is required to disable 2FA.",
+      });
+      return;
+    }
+
+    const user: any = await User.findByPk(authUser.id, { transaction: t });
+    if (!user) {
+      await t.rollback();
+      notFound(res, "User not found");
+      return;
+    }
+
+    // Verify password
+    const isPasswordValid = await checkPassword(password, user.password);
+    if (!isPasswordValid) {
+      await t.rollback();
+      unauthorized(res, "Invalid password.");
+      return;
+    }
+
+    // Disable 2FA
+    user.twofactorEnabled = false;
+    user.twofactorVerified = false;
+    user.twofactorSecret = null;
+    user.twofactorBackupCodes = null;
+    await user.save({ transaction: t });
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "2FA has been disabled successfully.",
+      data: {
+        twofactorEnabled: false,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[2fa/disable] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/disable error", error });
+    serverError(res, error.message || "Failed to disable 2FA.");
+  }
+});
+
+// 4. Verify 2FA Code during Login
+// POST /user/2fa/verify-login
+// Body: { userId, totpCode, backupCode? }
+router.post("/2fa/verify-login", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId, totpCode, backupCode } = req.body;
+
+    if (!userId || (!totpCode && !backupCode)) {
+      res.status(400).json({
+        success: false,
+        message: "userId and either totpCode or backupCode are required",
+      });
+      return;
+    }
+
+    const user: any = await User.findByPk(userId);
+    if (!user) {
+      notFound(res, "User not found");
+      return;
+    }
+
+    if (!user.twofactorEnabled || !user.twofactorSecret) {
+      res.status(400).json({
+        success: false,
+        message: "2FA is not enabled for this user.",
+      });
+      return;
+    }
+
+    let isValid = false;
+
+    // Check TOTP code if provided
+    if (totpCode) {
+      isValid = speakeasy.totp.verify({
+        secret: user.twofactorSecret,
+        encoding: 'base32',
+        token: totpCode,
+        window: 2
+      });
+    }
+
+    // Check backup code if TOTP failed or not provided
+    if (!isValid && backupCode && user.twofactorBackupCodes) {
+      const backupCodes = Array.isArray(user.twofactorBackupCodes)
+        ? user.twofactorBackupCodes
+        : JSON.parse(user.twofactorBackupCodes);
+
+      const codeIndex = backupCodes.indexOf(backupCode);
+      if (codeIndex !== -1) {
+        isValid = true;
+        // Remove used backup code
+        backupCodes.splice(codeIndex, 1);
+        user.twofactorBackupCodes = backupCodes;
+        await user.save();
+      }
+    }
+
+    if (!isValid) {
+      // Record failed login attempt
+      await recordFailedLogin(user?.id || null, "OTP", req, "Invalid 2FA code");
+      res.status(400).json({
+        success: false,
+        message: "Invalid 2FA code or backup code.",
+      });
+      return;
+    }
+
+    // 2FA verified, generate token
+    const tokenPayload = {
+      id: user.id,
+      email: user.email,
+      contact: user.contact,
+      companyId: user.companyId || null,
+    };
+
+    const token = await generateToken(tokenPayload, "30d");
+
+    // Create login history for successful 2FA verification
+    const loginHistoryResult = await createLoginHistory(
+      user.id,
+      "OTP",
+      req,
+      token,
+      "SUCCESS"
+    );
+
+    const nameData = user.email || user.contact || `User ID ${user.id}`;
+    res.status(200).json({
+      success: true,
+      message: `2FA verified successfully for ${nameData}.`,
+      data: {
+        userId: user.id,
+        companyId: user.companyId || null,
+        token: token,
+        sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
+      },
+    });
+  } catch (error: any) {
+    console.error("[2fa/verify-login] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/verify-login error", error });
+    serverError(res, error.message || "Failed to verify 2FA code.");
+  }
+});
+
+// 5. Get 2FA Status
+// GET /user/2fa/status
+router.get("/2fa/status", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authUser: any = (req as any).user;
+
+    if (!authUser || !authUser.id) {
+      unauthorized(res, "Invalid or missing token user.");
+      return;
+    }
+
+    const user: any = await User.findByPk(authUser.id, {
+      attributes: ['id', 'email', 'twofactorEnabled', 'twofactorVerified']
+    });
+
+    if (!user) {
+      notFound(res, "User not found");
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "2FA status retrieved successfully.",
+      data: {
+        twofactorEnabled: user.twofactorEnabled,
+        twofactorVerified: user.twofactorVerified,
+      },
+    });
+  } catch (error: any) {
+    console.error("[2fa/status] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/status error", error });
+    serverError(res, error.message || "Failed to get 2FA status.");
+  }
+});
+
+// 6. Regenerate Backup Codes
+// POST /user/2fa/regenerate-backup-codes
+// Body: { password }
+router.post("/2fa/regenerate-backup-codes", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    const authUser: any = (req as any).user;
+    const { password } = req.body;
+
+    if (!authUser || !authUser.id) {
+      await t.rollback();
+      unauthorized(res, "Invalid or missing token user.");
+      return;
+    }
+
+    if (!password) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Password is required to regenerate backup codes.",
+      });
+      return;
+    }
+
+    const user: any = await User.findByPk(authUser.id, { transaction: t });
+    if (!user) {
+      await t.rollback();
+      notFound(res, "User not found");
+      return;
+    }
+
+    // Verify password
+    const isPasswordValid = await checkPassword(password, user.password);
+    if (!isPasswordValid) {
+      await t.rollback();
+      unauthorized(res, "Invalid password.");
+      return;
+    }
+
+    if (!user.twofactorEnabled) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "2FA is not enabled for this user.",
+      });
+      return;
+    }
+
+    // Generate new backup codes
+    const backupCodes: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      backupCodes.push(speakeasy.generateSecret({ length: 8 }).base32);
+    }
+
+    user.twofactorBackupCodes = backupCodes;
+    await user.save({ transaction: t });
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "Backup codes regenerated successfully.",
+      data: {
+        backupCodes: backupCodes,
+        warning: "Save these new backup codes in a safe place. The old codes are no longer valid.",
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[2fa/regenerate-backup-codes] ERROR:", error);
+    ErrorLogger.write({ type: "2fa/regenerate-backup-codes error", error });
+    serverError(res, error.message || "Failed to regenerate backup codes.");
+  }
+});
+
 // login
 router.post("/login", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -1301,59 +2169,46 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    //  password correct, OTP NOT yet provided 
-    if (!otp) {
-      // const loginOTP = generateOTP();
-      // const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    // ===== AUTO-GENERATE SECRET CODE FOR CLIENTS =====
+    if (user.userType === "client" && !user.secretCode) {
+      const secretCode = await generateUniqueSecretCode();
+      user.secretCode = secretCode;
+      await user.save();
+      console.log(`[Login] Generated secretCode for client user: ${user.id}`);
+    }
 
-      // // Find or create OTP row for this user
-      // let otpRecord: any = await Otp.findOne({
-      //   where: { userId: user.id },
-      // });
+    // ===== OTP LOGIN (SKIP 2FA) =====
+    // If OTP is provided, verify it and login directly (no 2FA required)
+    if (otp) {
+      const otpRecord: any = await Otp.findOne({
+        where: {
+          userId: user.id,
+          loginOTP: String(otp),
+          isDeleted: false,
+        },
+      });
+      if (!otpRecord) {
+        // Record failed login attempt
+        await recordFailedLogin(user?.id || null, "OTP", req, "Invalid login OTP");
+        unauthorized(res, "Invalid login OTP.");
+        return;
+      }
 
-      // if (!otpRecord) {
-      //   otpRecord = await Otp.create({
-      //     userId: user.id,
-      //     email: user.email,
-      //     contact: user.contact,
-      //     otp: null,
-      //     mbOTP: null,
-      //     loginOTP: String(loginOTP),
-      //     otpVerify: false,
-      //     otpExpiresAt: expiresAt,
-      //     mbOTPExpiresAt: null,
-      //     isDeleted: false,
-      //     isEmailVerified: user.isEmailVerified,
-      //     isMobileVerified: user.isMobileVerified,
-      //     isActive: true,
-      //   } as any);
-      // } else {
-      //   otpRecord.loginOTP = String(loginOTP);
-      //   otpRecord.otpExpiresAt = expiresAt;
-      //   otpRecord.otpVerify = false;
-      //   otpRecord.isDeleted = false;
-      //   await otpRecord.save();
-      // }
+      const now = new Date();
+      if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
+        // Record failed login attempt
+        await recordFailedLogin(user?.id || null, "OTP", req, "Login OTP has expired");
+        unauthorized(res, "Login OTP has expired. Please try again.");
+        return;
+      }
 
-      // // Send OTP – prefer email, 
-      // let sendResult: any;
-      // if (user.email) {
-      //   sendResult = await sendOTP({ email: user.email, otp: loginOTP }, "login");
-      // } else if (user.contact) {
-      //   sendResult = await sendOTP(
-      //     { contact: user.contact, mbOTP: loginOTP },
-      //     "login"
-      //   );
-      // }
+      // Mark login OTP as used
+      otpRecord.loginOTP = null;
+      otpRecord.otpExpiresAt = null;
+      otpRecord.otpVerify = true;
+      await otpRecord.save();
 
-      // if (!sendResult || !sendResult.success) {
-      //   serverError(
-      //     res,
-      //     sendResult?.message || "Failed to send login OTP."
-      //   );
-      //   return;
-      // }
-
+      // Generate JWT token (FINAL login via OTP - no 2FA required)
       const tokenPayload = {
         id: user.id,
         email: user.email,
@@ -1363,59 +2218,47 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
       const token = await generateToken(tokenPayload, "30d");
 
-      // Create login history for successful password verification
+      // Create login history for successful OTP verification
       const loginHistoryResult = await createLoginHistory(
         user.id,
-        "PASSWORD",
+        "OTP",
         req,
         token,
         "SUCCESS"
       );
 
       const nameData = user.email || user.contact || `User ID ${user.id}`;
+      sendEncryptedResponse(
+        res,
+        {
+          userId: user.id,
+          token,
+          sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
+        },
+        `Login successful for ${nameData}.`
+      );
+      return;
+    }
+
+    // ===== PASSWORD-ONLY LOGIN (CHECK 2FA) =====
+    // If no OTP provided, check if 2FA is enabled
+    if (user.twofactorEnabled && user.twofactorVerified) {
+      // 2FA is enabled, request 2FA code instead of generating token
       res.status(200).json({
         success: true,
-        userId: user.id,
-        companyId: user.companyId || null,
-        ...(user.isRegistering ? {} : { token }),
-        isRegistering: user.isRegistering,
-        sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
-        message: `Password verified. ${nameData}.`,
+        message: "Password verified. Please provide 2FA code to complete login.",
+        data: {
+          userId: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          requires2FA: true,
+        },
       });
       return;
     }
 
-    // password + OTP verify
-    const otpRecord: any = await Otp.findOne({
-      where: {
-        userId: user.id,
-        loginOTP: String(otp),
-        isDeleted: false,
-      },
-    });
-
-    if (!otpRecord) {
-      // Record failed login attempt
-      await recordFailedLogin(user?.id || null, "OTP", req, "Invalid login OTP");
-      unauthorized(res, "Invalid login OTP.");
-      return;
-    }
-
-    const now = new Date();
-    if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
-      // Record failed login attempt
-      await recordFailedLogin(user?.id || null, "OTP", req, "Login OTP has expired");
-      unauthorized(res, "Login OTP has expired. Please try again.");
-      return;
-    }
-
-    // Mark login OTP as used
-    otpRecord.loginOTP = null;
-    otpRecord.otpExpiresAt = null;
-    otpRecord.otpVerify = true;
-    await otpRecord.save();
-
-    // Generate JWT token (FINAL login)
+    // Password-only login (no 2FA, no OTP) - generate token directly
     const tokenPayload = {
       id: user.id,
       email: user.email,
@@ -1425,25 +2268,25 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
     const token = await generateToken(tokenPayload, "30d");
 
-    // Create login history for successful OTP verification
+    // Create login history for successful password verification
     const loginHistoryResult = await createLoginHistory(
       user.id,
-      "OTP",
+      "PASSWORD",
       req,
       token,
       "SUCCESS"
     );
 
     const nameData = user.email || user.contact || `User ID ${user.id}`;
-    sendEncryptedResponse(
-      res,
-      {
-        userId: user.id,
-        token,
-        sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
-      },
-      `Login successful for ${nameData}.`
-    );
+    res.status(200).json({
+      success: true,
+      userId: user.id,
+      companyId: user.companyId || null,
+      ...(user.isRegistering ? {} : { token }),
+      isRegistering: user.isRegistering,
+      sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
+      message: `Password verified. ${nameData}.`,
+    });
   } catch (error: any) {
     console.error("Error in /login:", error);
     serverError(res, "Something went wrong during login.");
@@ -1509,9 +2352,13 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
       message: `Login successful for ${nameData}.`,
       data: {
         userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        secretCode: user.secretCode || null,
         companyId: user.companyId || null,
         ...(user.isRegistering ? {} : { token }),
-        isRegistering: user.isRegistering
+        isRegistering: user.isRegistering,
       },
     });
   } catch (error: any) {
@@ -1600,90 +2447,61 @@ router.post("/changePassword",
   }
 );
 
-//forgot password
-// router.post("/forgotPassword", async (req: Request, res: Response): Promise<void> => {
-//   let t = await dbInstance.transaction();
-
-//   try {
-//     const { email } = req.body;
-
-//     if (!email) {
-//       await t.rollback();
-//        res.status(400).json({
-//         success: false,
-//         message: "Email is required",
-//       });
-//     }
-
-//     // Find user
-//     const user = await User.findOne({ where: { email } });
-
-//     if (!user) {
-//       await t.rollback();
-//        res.status(404).json({
-//         success: false,
-//         message: "User not found with this email.",
-//       });
-//     }
-
-//     // Generate new password
-//     const newPWD = generateRandomPassword();  // ✔ e.g. "Xyz@1234"
-
-//     // Send email
-//     // const mailData = {
-//     //   to: email,
-//     //   subject: "Your New Password",
-//     //   html: `<p>Your new password is <strong>${newPWD}</strong></p>`,
-//     // };
-//     // await sendEmail(mailData);
-
-//     //     //send email - forgot pass
-//     const mailData: any = {
-//       to: email,
-//       subject: "ZarklyX-New Password",
-//       html: `<p> Your new password is <strong>${newPWD}</strong></p>.`,
-//     };
-
-//     sendEmail(mailData);
-
-//     // Update new password (hashing enabled)
-//     user.password = newPWD;        // ✔ triggers hashing in model setter
-//     await user.save({ transaction: t });
-
-//     await t.commit();
-
-//      res.status(200).json({
-//       success: true,
-//       message: "New password sent to your email.",
-//     });
-//   } catch (error: any) {
-//     await t.rollback();
-//     ErrorLogger.write({ type: "forgotPassword error", error });
-
-//      serverError(res, error.message || "Something went wrong.");
-//      return;
-//   }
-// });
-
+// forgot password
 router.post("/forgotPassword",
   async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
 
     try {
-      const { email } = req.body;
+      const { email, contact, password, confirmPassword } = req.body;
 
       // Validate email 
-      if (!email) {
+      if (!email && !contact) {
         await t.rollback();
         res.status(400).json({
           success: false,
-          message: "Email is required",
+          message: "Email or contact is required",
         });
         return;
       }
 
+      if (!password || !confirmPassword) {
+        await safeRollback(t);
+        res.status(400).json({
+          success: false,
+          message: "password and confirmPassword are required",
+        });
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        await safeRollback(t);
+        res.status(400).json({
+          success: false,
+          message: "password and confirmPassword must match",
+        });
+        return;
+      }
+
+      if (password.length < 6) {
+        await safeRollback(t);
+        res.status(400).json({
+          success: false,
+          message: "Password must be at least 6 characters.",
+        });
+        return;
+      }
+
+      const conditions: any[] = [];
+      if (email) conditions.push({ email });
+      if (contact) conditions.push({ contact });
+
       //  Find user 
-      const user: any = await User.findOne({ where: { email } });
+      const user: any = await User.findOne({
+        where: {
+          [Op.or]: [conditions]
+        }
+      });
 
       if (!user) {
         await t.rollback();
@@ -1695,27 +2513,27 @@ router.post("/forgotPassword",
       }
 
       //  Generate new password 
-      const newPWD = generateRandomPassword(); // e.g. "Xyz@1234"
+      // const newPWD = generateRandomPassword(); // e.g. "Xyz@1234"
 
-      //  Send email with new password 
-      const mailData: any = {
-        to: email,
-        subject: "ZarklyX - New Password",
-        html: `<p>Your new password is <strong>${newPWD}</strong></p>.`,
-      };
+      // //  Send email with new password 
+      // const mailData: any = {
+      //   to: email,
+      //   subject: "ZarklyX - New Password",
+      //   html: <p>Your new password is <strong>${newPWD}</strong></p>.,
+      // };
 
 
-      await sendEmail(mailData);
+      // await sendEmail(mailData);
 
       //  Update user password (model setter will hash) 
-      user.password = newPWD;
+      user.password = password;
       await user.save({ transaction: t });
 
       await t.commit();
 
       res.status(200).json({
         success: true,
-        message: "New password sent to your email.",
+        message: "Password has been successfully updated. Please login with your new password.",
       });
       return;
     } catch (error: any) {
@@ -1727,129 +2545,6 @@ router.post("/forgotPassword",
     }
   }
 );
-
-// router.post("/forgotPassword", async (req, res) => {
-//   let t = await dbInstance.transaction();
-//   try {
-//     const { email } = req.body;
-
-//     let user = await UserData(req.body);
-
-//     if (!user) {
-//       throw unauthorized(res, "Invalid Email");
-//     }
-//     const newPWD = generateRandomPassword();
-
-//     //send email - forgot pass
-//     const mailData: any = {
-//       to: email,
-//       subject: "GreenBolt-New Password",
-//       html: `<p> Your new password is <strong>${newPWD}</strong></p>.`,
-//     };
-
-//     sendEmail(mailData);
-
-//     // update newly generated password
-//     const usr = await User.update({ password: newPWD }, { where: { email }, transaction: t });
-
-//     await t.commit();
-//     // success(res, user, "New Password Sent via Email");
-//     sendEncryptedResponse(res, user, "New Password Sent via Email");
-//   } catch (error: any) {
-//     ErrorLogger.write({ type: "forgotPassword error", error });
-//     await t.rollback();
-//     serverError(res, error);
-//   }
-// });
-
-// router.post("/login", async (req: Request, res: Response) => {
-//   try {
-//     const bodyData = req.body;
-//     const { email, contact, fcmToken } = bodyData;
-
-//     // Validation
-//     if (!email && !contact) {
-//       return serverError(res, "Email or mobile number is required for login.");
-//     }
-
-//     // User Lookup
-//     const findCondition: any = {};
-//     if (email) findCondition.email = email;
-//     if (contact) findCondition.contact = contact;
-
-//     const user = await User.findOne({ where: findCondition });
-//     if (!user) {
-//       return serverError(res, "User not found. Please register first.");
-//     }
-
-//     // OTP Verification Check
-//     const isVerified =
-//       (email && user.isEmailVerified) ||
-//       (contact && user.isMobileVerified);
-
-//     if (!isVerified) {
-//       return serverError(
-//         res,
-//         "OTP not verified. Please verify your email or mobile number before login."
-//       );
-//     }
-
-//     // JWT Token
-//     const authToken = generateToken(user);
-
-//     // Optional: Save/update FCM token
-//     // if (fcmToken) {
-//     //   await user.update({ fcmToken });
-//     // }
-
-//     // Final Response
-//     const nameData = user.email || user.contact || `User ID ${user.id}`;
-//     return sendEncryptedResponse(
-//       res,
-//       {
-//         userId: user.id,
-//         authToken,
-//       },
-//       `Login successful for ${nameData}.`
-//     );
-//   } catch (error) {
-//     console.error("Error in /login:", error);
-//     return serverError(res, "Something went wrong during login.");
-//   }
-// });
-
-router.post("/social-login", async (req, res): Promise<void> => {
-  try {
-    const { provider, idToken } = req.body;
-
-    if (!provider || !idToken) {
-      res.status(400).json({
-        success: false,
-        message: "provider & idToken are required",
-      });
-      return;
-    }
-
-    const result = await socialLoginHandler(req.body);
-
-    const message = result.isNew ? "Signup successful" : "Signin successful";
-
-    res.status(200).json({
-      success: true,
-      message: message,
-      data: {
-        isNew: result.isNew,
-        isRegistering: result.user?.isRegistering || false,
-        user: result.user,
-        token: result.token,
-      },
-    });
-  } catch (err: any) {
-    console.error("[/user/social-login] ERROR:", err);
-    serverError(res, err.message || "Social login failed");
-    return;
-  }
-});
 
 // LOGIN with Google - checks if user exists
 router.post("/auth/google-login", async (req: Request, res: Response): Promise<void> => {
@@ -2274,6 +2969,8 @@ async function processGoogleUserSignup(userData: {
         companyId: null as any,
         referId: null as any,
         authProvider: "google",
+        twofactorEnabled: false,
+        twofactorVerified: false,
       });
 
       console.log(`[Google Signup] New user created: ${email}`);
