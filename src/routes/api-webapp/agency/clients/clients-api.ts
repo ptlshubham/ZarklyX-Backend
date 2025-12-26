@@ -4,12 +4,13 @@ import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
 import {
   serverError,
+  unauthorized,
 } from "../../../../utils/responseHandler";
 import {
   generateOTP
 } from "../../../../services/password-service";
 import { sendOTP } from "../../../../services/otp-service";
-import { generateToken } from "../../../../services/jwtToken-service";
+import { generateToken, tokenMiddleWare } from "../../../../services/jwtToken-service";
 import { generateRandomPassword } from "../../../../services/password-service";
 import { sendEmail } from "../../../../services/mailService";
 import { Op } from "sequelize";
@@ -2701,7 +2702,7 @@ router.post(
       console.error("[/clients/2fa/regenerate-backup-codes] ERROR:", error);
       ErrorLogger.write({ type: "clients 2fa regen backup codes error", error });
       serverError(res, error.message || "Failed to regenerate backup codes.");
-      return;
+      return; 
     }
   }
 );
