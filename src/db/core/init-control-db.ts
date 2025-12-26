@@ -13,10 +13,10 @@ import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/bu
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
 
-import { Role } from "../../routes/api-webapp/roles/role-model";
-import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// import { Role } from "../../routes/api-webapp/roles/role-model";
+// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 // Use a relative path to the route-local Google token model to avoid module alias issues
-import { GoogleToken } from "../../routes/api-webapp/agency/social-Integration/google/google-token.model";
+// import { GoogleToken } from "../../routes/api-webapp/agency/social-Integration/google/google-token.model";
 export {
   User,
   Company,
@@ -29,7 +29,7 @@ export {
   BusinessType,
   BusinessSubcategory,
   Employee,
-  GoogleToken
+  // GoogleToken
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -43,12 +43,12 @@ export function initControlDB(sequelize: Sequelize) {
   Otp.initModel(sequelize);  
   LoginHistory.initModel(sequelize);
   // Roles
-  Role.initModel(sequelize);
-  SubRole.initModel(sequelize);
+  // Role.initModel(sequelize);
+  // SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
-  GoogleToken.initModel(sequelize); 
+  // GoogleToken.initModel(sequelize); 
 //  initCategoryModel(sequelize);
 //  initPremiumModuleModel(sequelize);
 // LoginHistory.initModel(sequelize);
@@ -173,8 +173,8 @@ Otp.belongsTo(Clients, {
   });
 
   // Role <-> SubRole
-  Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
-  SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+  // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
+  // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
 
 // User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
 // Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -196,9 +196,9 @@ Otp.belongsTo(Clients, {
     BusinessType,
     BusinessSubcategory,
     Employee,
-    Role,
-    SubRole,
-    GoogleToken
-,    // LoginHistory
+    // Role,
+    // SubRole,
+    // GoogleToken,
+    // LoginHistory
   };
 }
