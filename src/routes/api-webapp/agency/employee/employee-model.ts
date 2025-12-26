@@ -144,7 +144,7 @@ export class Employee extends Model<
                     unique: true,
                 },
                 departmentId: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.STRING,
                     allowNull: true,
                 },
                 reportingManagerId: {

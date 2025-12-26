@@ -25,6 +25,9 @@ import {
 } from "../../../../routes/api-webapp/agency/employee/employee-handler";
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
+import { authMiddleware } from "../../../../middleware/auth.middleware";
+import { employeeFileUpload } from "../../../../middleware/employeeFileUpload";
+import { errorResponse, unauthorized } from "../../../../utils/responseHandler";
 
 
 const router = express.Router();
@@ -38,10 +41,29 @@ const router = express.Router();
  * Step 2: Create employee entry linked to user
  * Required: firstName, lastName, email, contactNumber, companyId, employeeId
  */
-router.post("/register", async (req: Request, res: Response): Promise<void> => {
+router.post("/register", authMiddleware, employeeFileUpload.fields([
+    { name: "profilePhoto", maxCount: 1 },
+    { name: "resumeFile", maxCount: 1 },
+    { name: "aadharDocument", maxCount: 1 },
+    { name: "panDocument", maxCount: 1 },
+]), async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
-    console.log("req.body", req.body);
+    // console.log("req.body", req.body);
     try {
+        const files = req.files as Record<string, Express.Multer.File[]>;
+
+        Object.entries({
+            profilePhoto: "profilePhoto",
+            resumeFile: "resumeFilePath",
+            aadharDocument: "aadharDocumentPath",
+            panDocument: "panDocumentPath",
+        }).forEach(([multerKey, bodyKey]) => {
+            delete req.body[multerKey];
+
+            if (files?.[multerKey]?.[0]?.path) {
+                req.body[bodyKey] = files[multerKey][0].path;
+            }
+        });
         const {
             // User basic details (REQUIRED)
             firstName,
@@ -51,7 +73,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
             countryCode,
             password,
             // Employee details
-            companyId,
+            // companyId,
             employeeId,
             designation,
             dateOfJoining,
@@ -61,6 +83,14 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
             // Optional fields
             ...restData
         } = req.body;
+
+        const companyId = req.user?.companyId;
+
+
+        if (req.user?.userType != 'agency') {
+            unauthorized(res, "Only Accessiable for agency");
+            return;
+        }
 
         // ✅ Validate required user fields
         if (!firstName || !lastName || !email || !contactNumber || !companyId || !employeeId) {
@@ -83,6 +113,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
+
         // ✅ STEP 1: Create or get User entry with basic details
         let user = await User.findOne({
             where: { email },
@@ -91,6 +122,10 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
 
         if (user) {
             // User already exists - update with new details if needed
+            if (user.userType != 'employee') {
+                errorResponse(res, 'user already exist with other type');
+                return;
+            }
             await user.update(
                 {
                     firstName,
@@ -98,6 +133,8 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
                     contact: contactNumber,
                     countryCode: countryCode || null,
                     isActive: true,
+                    companyId: companyId,
+                    isEmailVerified: true,
                 },
                 { transaction: t }
             );
@@ -108,6 +145,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
                     firstName,
                     lastName,
                     email,
+                    companyId: companyId,
                     contact: contactNumber,
                     countryCode: countryCode || null,
                     password: password || null,
@@ -193,7 +231,12 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
                 registrationStep: 1,
                 isoCode: restData.isoCode || null,
                 isdCode: restData.isdCode || null,
-                ...restData,
+                ...Object.fromEntries(
+                    Object.entries(restData).map(([key, value]) => [
+                        key,
+                        value === "" ? null : value,
+                    ])
+                ),
             } as EmployeePayload,
             t
         );
@@ -233,7 +276,17 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
  */
 router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { companyId } = req.query;
+        // const { companyId } = req.query;
+        const user = (req as any).user;
+
+        if (!user || !user.companyId) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized: companyId missing",
+            });
+            return;
+        }
+        const { companyId } = user;
 
         if (!companyId) {
             res.status(400).json({
@@ -535,7 +588,18 @@ router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): 
 
     try {
         const { id } = req.params;
-        const { companyId, ...updateData } = req.body;
+        const updateData = req.body;
+
+        const copmany = (req as any).user;
+
+        if (!copmany || !copmany.companyId) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized: companyId missing",
+            });
+            return;
+        }
+        const { companyId } = copmany;
 
         // ✅ Verify employee exists
         const employee = await getEmployeeById(id);
@@ -559,28 +623,22 @@ router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): 
             return;
         }
 
-        // ✅ Check for duplicate Aadhar if updating
-        if (updateData.aadharNumber && updateData.aadharNumber !== employee.aadharNumber) {
-            const existingAadhar = await checkAadharExists(updateData.aadharNumber, id);
+        const { aadharNumber, panNumber } = updateData || {};
+
+        if (aadharNumber && aadharNumber !== employee.aadharNumber) {
+            const existingAadhar = await checkAadharExists(aadharNumber, id);
             if (existingAadhar) {
                 await t.rollback();
-                res.status(409).json({
-                    success: false,
-                    message: "Aadhar number already registered",
-                });
+                res.status(409).json({ success: false, message: "Aadhar number already registered" });
                 return;
             }
         }
 
-        // ✅ Check for duplicate PAN if updating
-        if (updateData.panNumber && updateData.panNumber !== employee.panNumber) {
-            const existingPan = await checkPanExists(updateData.panNumber, id);
+        if (panNumber && panNumber !== employee.panNumber) {
+            const existingPan = await checkPanExists(panNumber, id);
             if (existingPan) {
                 await t.rollback();
-                res.status(409).json({
-                    success: false,
-                    message: "PAN already registered",
-                });
+                res.status(409).json({ success: false, message: "PAN already registered" });
                 return;
             }
         }
@@ -693,7 +751,16 @@ router.delete("/delete/:id", tokenMiddleWare, async (req: Request, res: Response
 
     try {
         const { id } = req.params;
-        const { companyId } = req.body;
+        const user = (req as any).user;
+
+        if (!user || !user.companyId) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized: companyId missing",
+            });
+            return;
+        }
+        const { companyId } = user;
 
         const employee = await getEmployeeById(id);
 

@@ -1,3 +1,4 @@
+import { User } from "../../../../db/core/init-control-db";
 import { Employee } from "../../../../routes/api-webapp/agency/employee/employee-model";
 import { Op, Transaction } from "sequelize";
 const { MakeQuery } = require("../../../../services/model-service");
@@ -96,8 +97,8 @@ export const addEmployee = async (body: EmployeePayload, t: Transaction) => {
 // Get all employees with filters and pagination
 export const getAllEmployees = (query: any) => {
     const {
-        limit: rawLimit,
-        offset: rawOffset,
+        // limit: rawLimit,
+        // offset: rawOffset,
         modelOption,
         orderBy,
         attributes,
@@ -107,14 +108,58 @@ export const getAllEmployees = (query: any) => {
         Model: Employee,
     });
 
-    const limit = Number(rawLimit) || 10;
-    const offset = Number(rawOffset) || 0;
+    // const limit = Number(rawLimit) || 10;
+    // const offset = Number(rawOffset) || 0;
 
     let modalParam: any = {
-        where: modelOption,
-        attributes,
+        where: {
+            ...modelOption,
+            [Op.not]: {
+                isDeleted: 1,
+            }
+        },
+        attributes: attributes || [
+            'id',
+            'firstName',
+            'lastName',
+            'companyId',
+            'referId',
+            'isActive',
+            'createdAt',
+        ],
         order: orderBy,
-        raw: true,
+        raw: false,
+        include: [
+            {
+                model: User,
+                as: 'user',
+                attributes: {
+                    exclude: [
+                        'password',
+                        'secretCode',
+                        'googleId',
+                        'appleId',
+                        'authProvider',
+                        'deletedAt',
+                    ],
+                },
+                required: false,
+            },
+            {
+                model: Employee,
+                as: 'reportingManager',
+                attributes: [['id', 'managerId']],
+                required: false,
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['firstName', 'lastName'],
+                        required: false,
+                    },
+                ],
+            },
+        ],
     };
 
     if (query.companyId) {
@@ -124,17 +169,42 @@ export const getAllEmployees = (query: any) => {
         modalParam.where.push({ companyId: query.companyId });
     }
 
-    if (!forExcel) {
-        modalParam.limit = limit;
-        modalParam.offset = offset;
+    if (query.userId) {
+        modalParam.include[0].where = {
+            id: query.userId,
+        };
     }
+
+    // if (!forExcel) {
+    //     modalParam.limit = limit;
+    //     modalParam.offset = offset;
+    // }
 
     return Employee.findAndCountAll(modalParam);
 };
 
 // Get employee by ID
 export const getEmployeeById = async (id: string) => {
-    return await Employee.findByPk(id);
+    return await Employee.findOne({
+        where: { id },
+        include: [
+            {
+                model: User,
+                as: 'user',
+                attributes: {
+                    exclude: [
+                        'password',
+                        'secretCode',
+                        'googleId',
+                        'appleId',
+                        'authProvider',
+                        'deletedAt',
+                    ],
+                },
+                required: false,
+            },
+        ],
+    });
 };
 
 // Get employee by employeeId
