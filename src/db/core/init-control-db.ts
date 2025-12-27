@@ -11,8 +11,8 @@ import { PremiumModule } from "../../routes/api-webapp/superAdmin/generalSetup/p
 import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
-import { Role } from "../../routes/api-webapp/roles/role-model";
-import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// import { Role } from "../../routes/api-webapp/roles/role-model";
+// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 // Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
@@ -32,8 +32,8 @@ export {
   Clients,
   BusinessType,
   BusinessSubcategory,
-  SocialToken
-  Employee,
+  SocialToken,
+  Employee
   // GoogleToken
 };
 export function initControlDB(sequelize: Sequelize) {
@@ -48,8 +48,8 @@ export function initControlDB(sequelize: Sequelize) {
   Otp.initModel(sequelize);  
   LoginHistory.initModel(sequelize);
   // Roles
-  Role.initModel(sequelize);
-  SubRole.initModel(sequelize);
+  // Role.initModel(sequelize);
+  // SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
   SocialToken.initModel(sequelize); 
   // Role.initModel(sequelize);
@@ -182,8 +182,8 @@ Otp.belongsTo(Clients, {
   });
 
   // Role <-> SubRole
-  Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
-  SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+  // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
+  // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
 
 // User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
 // Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -204,8 +204,8 @@ Otp.belongsTo(Clients, {
     Clients,
     BusinessType,
     BusinessSubcategory,
-    Role,
-    SubRole,
+    // Role,
+    // SubRole,
     SocialToken
 ,    // LoginHistory
     Employee,

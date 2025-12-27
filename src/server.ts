@@ -25,7 +25,7 @@ const facebookRoutes = require('./routes/api-webapp/agency/social-Integration/fa
 const pinterestRoutes = require('./routes/api-webapp/agency/social-Integration/pinterest/pinterest-api');
 import twitterRoutes from './routes/api-webapp/agency/social-Integration/twitter/twitter-api';
 // const twitterRoutes = require('./routes/api-webapp/agency/social-Integration/twitter/twitter-api');
-import rolesRoutes from './routes/api-webapp/roles/roles-api';
+// import rolesRoutes from './routes/api-webapp/roles/roles-api';
 const bodyParser = require('body-parser');
 const cookieSession = require('cookie-session');
 
@@ -70,7 +70,7 @@ app.use("/linkedin", linkedinRoutes);
 app.use("/facebook", facebookRoutes);
 app.use("/pinterest", pinterestRoutes);
 app.use("/twitter", twitterRoutes);
-app.use("/roles", rolesRoutes);
+// app.use("/roles", rolesRoutes);
 
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
