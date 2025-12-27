@@ -552,7 +552,7 @@ router.post("/auth/google-signin", async (req: Request, res: Response): Promise<
   }
 });
 
-// Verify Google Token (utility endpoint) - unchanged
+// Verify Google Token (utility endpoint)
 router.post("/auth/verify-google", async (req: Request, res: Response): Promise<void> => {
   try {
     const { credential } = req.body;
@@ -895,6 +895,7 @@ router.post("/clientSignup/verify-otp",
 
       const tempUserId = temp.userId || null;
       const tempCompanyId = temp.companyId || null;
+
       // Validate parent Company (FK safety)
       let parentCompany: Company | null = null;
       if (tempCompanyId) {
@@ -996,6 +997,16 @@ router.post("/clientSignup/verify-otp",
       );
 
       // Mark OTP as used & clear temp data
+      otpRecord.set({
+        otpVerify: true,
+        isEmailVerified: true,
+        isActive: false,
+        otp: null,
+        mbOTP: null,
+        otpExpiresAt: null,
+        tempUserData: null,
+      });
+      await otpRecord.save({ transaction: t });
       await otpRecord.destroy({ transaction: t });
 
       // Build token payload

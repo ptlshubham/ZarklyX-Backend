@@ -122,7 +122,11 @@ export const tokenMiddleWare = async (
 
     next();
   } catch (error) {
-    unauthorized(res, "Token expired");
+    console.error("❌ Token error:", error);
+    res.status(401).json({
+      success: false,
+      message: "Token expired or invalid",
+    });
     return;
   }
 };
