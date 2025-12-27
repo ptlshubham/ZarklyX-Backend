@@ -167,5 +167,11 @@ export const checkUserActive = async (email: string) => {
   });
   return !!clients;
 };
-
+export const getAgencyClientByUserId = async (userId: string) => {
+  return await Clients.findOne({
+    where: {
+      userId,
+    },
+  });
+};
 
