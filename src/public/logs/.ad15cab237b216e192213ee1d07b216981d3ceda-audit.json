@@ -6,24 +6,39 @@
     "auditLog": "src\\public\\logs\\.ad15cab237b216e192213ee1d07b216981d3ceda-audit.json",
     "files": [
         {
-            "date": 1762930397904,
-            "name": "src\\public\\logs\\error.log-2025-11-12.log",
-            "hash": "42795d877ab017a3a0f34815e36f151864f6e52d7f0355053530d9feade8bfaa"
+            "date": 1766470463389,
+            "name": "src\\public\\logs\\error.log-2025-12-23.log",
+            "hash": "892e7a9bc718fd2d63ef14601fb09d68100834d329be8beba33419158bda3e02"
         },
         {
-            "date": 1763027853555,
-            "name": "src\\public\\logs\\error.log-2025-11-13.log",
-            "hash": "9e23bd90ce33acb3bbd53abed8390c62e671dc377a7c248d292799cf3da021a7"
+            "date": 1766555749421,
+            "name": "src\\public\\logs\\error.log-2025-12-24.log",
+            "hash": "e227f0e460b7dd1363f3f739fc5a66dddfe702d6f30282908933c43188903c2d"
         },
         {
-            "date": 1763105045834,
-            "name": "src\\public\\logs\\error.log-2025-11-14.log",
-            "hash": "ff79992d40019c3665b96cd6f3a1d907ca2711a497af4fb618fd79dad9b05c11"
+            "date": 1766642809593,
+            "name": "src\\public\\logs\\error.log-2025-12-25.log",
+            "hash": "8be9c82804bc901f072f0b736d3aeedff6a63161cecded77189e4013b456f276"
         },
         {
-            "date": 1763461086782,
-            "name": "src\\public\\logs\\error.log-2025-11-18.log",
-            "hash": "cc02af73093db21806c3e382e3833f1bead8e7b3cd98f0ba6e54669208951cd8"
+            "date": 1766725857223,
+            "name": "src\\public\\logs\\error.log-2025-12-26.log",
+            "hash": "3549c17e654af565ad34c83e523e3664e832309039ccac79b23786fd68e7dd6e"
+        },
+        {
+            "date": 1766812458483,
+            "name": "src\\public\\logs\\error.log-2025-12-27.log",
+            "hash": "4e109cb67266e503143f6a7d6e7eefc6a5d3588a21f686b25ee9616e16b8b793"
+        },
+        {
+            "date": 1766988168971,
+            "name": "src\\public\\logs\\error.log-2025-12-29.log",
+            "hash": "50e9b9db9e1dfcd81f9d209a31d05bc9b95568d1390681647c9852e14161e9d6"
+        },
+        {
+            "date": 1767070843317,
+            "name": "src\\public\\logs\\error.log-2025-12-30.log",
+            "hash": "628877a9d8bfaf759e9e4af322355cbfb5651f68bad2fc972e88d0632f5971df"
         }
     ],
     "hashType": "sha256"

@@ -8,20 +8,25 @@ import environment from "../../../../environment";
 import { Transaction } from 'sequelize';
 const config = (configs as { [key: string]: any })[environment];
 
-export const sendOTPTest = async (mobileNumber: any, otp: any) => {
+export const sendOTPTest = async (contact: any, otp: any) => {
     const API_KEY = '446606Apuh307kK692fd83cP1';
     const TEMPLATE_ID = '692fdcfe3f1ffe1f51020c26';
     const COUNTRY_CODE = '91';
 
+    // const data = {
+    //     template_id: TEMPLATE_ID,
+    //     realTimeResponse: 1,
+    //     short_url: '1',
+    //     recipients: [{
+    //         "mobiles": `${COUNTRY_CODE}${contact}`,
+    //         "var": otp,
+    //     }],
+    // };
     const data = {
-        template_id: TEMPLATE_ID,
-        realTimeResponse: 1,
-        short_url: '1',
-        recipients: [{
-            "mobiles": `${COUNTRY_CODE}${mobileNumber}`,
-            "var": otp,
-        }],
-    };
+    template_id: TEMPLATE_ID,
+    mobiles: `${COUNTRY_CODE}${contact}`, // e.g. 9876543212
+    otp: otp.toString(),
+  };
 
     try {
         const response = await axios.post(`https://control.msg91.com/api/v5/flow`, data, {
@@ -31,10 +36,12 @@ export const sendOTPTest = async (mobileNumber: any, otp: any) => {
                 'Content-Type': 'application/json'
             }
         });
-        // console.log('OTP sent successfully:', response);
-    } catch (error: any) {
-        console.error('Error sending OTP:', error);
-    }
+      console.log('OTP sent successfully:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error sending OTP:', error.response?.data || error.message);
+    throw error;
+  }
 };
 
 // export const downloadFileToServer = async (payload: any, t: Transaction) => {
