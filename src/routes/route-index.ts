@@ -26,6 +26,8 @@ export default (app: Application) => {
     app.use("/facebook", require("./api-webapp/agency/social-Integration/facebook/facebook-api"));
     app.use("/pinterest", require("./api-webapp/agency/social-Integration/pinterest/pinterest-api"));
     app.use("/twitter", require("./api-webapp/agency/social-Integration/twitter/twitter-api"));
+    app.use("/tiktok", require("./api-webapp/agency/social-Integration/tiktok/tiktok-api"));
+    app.use("/influencer", require("./api-webapp/influencer/influencer-api"));
     // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
 
 };

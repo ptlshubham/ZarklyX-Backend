@@ -24,8 +24,11 @@ const linkedinRoutes = require('./routes/api-webapp/agency/social-Integration/li
 const facebookRoutes = require('./routes/api-webapp/agency/social-Integration/facebook/facebook-api');
 const pinterestRoutes = require('./routes/api-webapp/agency/social-Integration/pinterest/pinterest-api');
 import twitterRoutes from './routes/api-webapp/agency/social-Integration/twitter/twitter-api';
+import tiktokRoutes from './routes/api-webapp/agency/social-Integration/tiktok/tiktok-api';
 // const twitterRoutes = require('./routes/api-webapp/agency/social-Integration/twitter/twitter-api');
 import rolesRoutes from './routes/api-webapp/roles/roles-api';
+// const influencerRoutes = require ('./routes/api-webapp/influencer/influencer-api');
+import influencerRoutes from './routes/api-webapp/influencer/influencer-api';
 const bodyParser = require('body-parser');
 const cookieSession = require('cookie-session');
 
@@ -33,7 +36,6 @@ const cookieSession = require('cookie-session');
 import path from "path";
 const app = express();
 dotenv.config();
-
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -69,7 +71,19 @@ app.use("/linkedin", linkedinRoutes);
 app.use("/facebook", facebookRoutes);
 app.use("/pinterest", pinterestRoutes);
 app.use("/twitter", twitterRoutes);
+app.use("/tiktok", tiktokRoutes);
 app.use("/roles", rolesRoutes);
+app.use("/influencer", influencerRoutes);
+
+// Support root-level callback path that some OAuth providers / dev tools use
+// If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
+// to the mounted tiktok router at '/tiktok/auth/tiktok/callback' so it won't 404.
+app.get('/auth/tiktok/callback', (req: Request, res: Response) => {
+  // Preserve query string when forwarding
+  const qs = req.url && req.url.includes('?') ? req.url.split('?')[1] : '';
+  const forwardUrl = `/tiktok/auth/tiktok/callback${qs ? '?' + qs : ''}`;
+  return res.redirect(302, forwardUrl);
+});
 
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;

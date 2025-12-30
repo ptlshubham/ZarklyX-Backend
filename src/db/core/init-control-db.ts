@@ -15,7 +15,7 @@ import { Role } from "../../routes/api-webapp/roles/role-model";
 import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 // Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
-
+import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
 export {
   User,
   Company,
@@ -27,7 +27,8 @@ export {
   Clients,
   BusinessType,
   BusinessSubcategory,
-  SocialToken
+  SocialToken,
+  Influencer
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -46,6 +47,8 @@ export function initControlDB(sequelize: Sequelize) {
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
   SocialToken.initModel(sequelize); 
+  Influencer.initModel(sequelize);
+
 //  initCategoryModel(sequelize);
 //  initPremiumModuleModel(sequelize);
 // LoginHistory.initModel(sequelize);
@@ -164,7 +167,8 @@ Otp.belongsTo(Clients, {
     BusinessSubcategory,
     Role,
     SubRole,
-    SocialToken
+    SocialToken,
+    Influencer
 ,    // LoginHistory
   };
 }
