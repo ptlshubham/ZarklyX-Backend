@@ -3,18 +3,15 @@ import { Request, Response } from "express";
 import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
 import {
-  alreadyExist,
   serverError,
   unauthorized,
-  sendEncryptedResponse,
-  other,
 } from "../../../../utils/responseHandler";
 import {
   generateOTP
 } from "../../../../services/password-service";
 import { sendOTP } from "../../../../services/otp-service";
 import { generateToken, tokenMiddleWare } from "../../../../services/jwtToken-service";
-import { hashPassword, checkPassword, generateRandomPassword } from "../../../../services/password-service";
+import { generateRandomPassword } from "../../../../services/password-service";
 import { sendEmail } from "../../../../services/mailService";
 import { Op } from "sequelize";
 import ErrorLogger from "../../../../db/core/logger/error-logger";
@@ -26,6 +23,7 @@ import {
   getClientsByEmail,
   getagencyClientByid,
   getAllAgencyClient,
+  getAgencyClientByUserId,
 } from "../../../../routes/api-webapp/agency/clients/clients-handler";
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { generateUniqueSecretCode } from "../../../../routes/api-webapp/authentication/user/user-handler";
@@ -44,22 +42,61 @@ const router = express.Router();
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID || ""
 );
-
 // Google Client Signup - Creates new client account
 router.post("/auth/google-signup", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
 
   try {
-    const { token } = req.body;
+    const { code, companyId } = req.body;
 
-    if (!token) {
+    if (!code) {
       await t.rollback();
       res.status(400).json({
         success: false,
-        message: "Google token is required.",
+        message: "Google authorization code is required.",
       });
       return;
     }
+
+    // Exchange authorization code for ID token
+    let tokenResponse;
+    try {
+      const tokenParams = new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        code: code,
+        grant_type: 'authorization_code',
+        redirect_uri: 'postmessage' // For popup flow
+      });
+
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: tokenParams.toString()
+      });
+
+      tokenResponse = await response.json();
+
+      if (!response.ok || !tokenResponse.id_token) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "Failed to exchange authorization code for token.",
+        });
+        return;
+      }
+    } catch (err) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid or expired Google authorization code.",
+      });
+      return;
+    }
+
+    const token = tokenResponse.id_token;
 
     // Verify Google Token
     let ticket;
@@ -102,6 +139,21 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
       return;
     }
 
+    // Validate company if companyId is provided
+    let validatedCompanyId = null;
+    if (companyId) {
+      const company = await Company.findByPk(companyId, { transaction: t });
+      if (!company) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "Invalid companyId. Company not found.",
+        });
+        return;
+      }
+      validatedCompanyId = companyId;
+    }
+
     // Check if client already exists
     const existingClient = await Clients.findOne({
       where: { email: googleEmail },
@@ -140,7 +192,7 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         authProvider: "google",
         googleId,
         secretCode,
-        companyId: null,
+        companyId: validatedCompanyId,
       } as any,
       { transaction: t }
     );
@@ -149,7 +201,7 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
     const client = await Clients.create(
       {
         userId: user.id,
-        companyId: null,
+        companyId: validatedCompanyId,
         userName: `${firstName} ${lastName}`.trim(),
         clientfirstName: firstName,
         clientLastName: lastName,
@@ -289,6 +341,7 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         authProvider: "google",
         token: jwtToken,
         isFirstLogin: client.isFirstLogin,
+        companyId: validatedCompanyId,
       },
     });
   } catch (error: any) {
@@ -304,16 +357,56 @@ router.post("/auth/google-signin", async (req: Request, res: Response): Promise<
   const t = await dbInstance.transaction();
 
   try {
-    const { token } = req.body;
+    const { code } = req.body;
 
-    if (!token) {
+    if (!code) {
       await t.rollback();
       res.status(400).json({
         success: false,
-        message: "Google token is required.",
+        message: "Google authorization code is required.",
       });
       return;
     }
+
+    // Exchange authorization code for ID token
+    let tokenResponse;
+    try {
+      const tokenParams = new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        code: code,
+        grant_type: 'authorization_code',
+        redirect_uri: 'postmessage' // For popup flow
+      });
+
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: tokenParams.toString()
+      });
+
+      tokenResponse = await response.json();
+
+      if (!response.ok || !tokenResponse.id_token) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "Failed to exchange authorization code for token.",
+        });
+        return;
+      }
+    } catch (err) {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid or expired Google authorization code.",
+      });
+      return;
+    }
+
+    const token = tokenResponse.id_token;
 
     // Verify Google Token
     let ticket;
@@ -511,8 +604,6 @@ router.post("/auth/verify-google", async (req: Request, res: Response): Promise<
   }
 });
 
-
-
 // signup for client (Agency)
 router.post("/clientSignup/start",
   async (req: Request, res: Response): Promise<void> => {
@@ -520,7 +611,6 @@ router.post("/clientSignup/start",
 
     try {
       const {
-        userId,
         companyId,
         businessName,
         clientfirstName,
@@ -536,7 +626,6 @@ router.post("/clientSignup/start",
 
       // 1) Basic required validation
       if (
-        !userId ||
         !companyId ||
         !clientfirstName ||
         !clientLastName ||
@@ -563,18 +652,7 @@ router.post("/clientSignup/start",
         return;
       }
 
-      // 2) Validate USER and COMPANY mapping
-      const parentUser: any = await User.findByPk(userId, { transaction: t });
-
-      if (!parentUser) {
-        await t.rollback();
-        res.status(400).json({
-          success: false,
-          message: "Invalid userId. User not found.",
-        });
-        return;
-      }
-
+      // 2) Validate COMPANY
       const parentCompany: any = await Company.findByPk(companyId, {
         transaction: t,
       });
@@ -588,27 +666,13 @@ router.post("/clientSignup/start",
         return;
       }
 
-      // user.companyId must match given companyId
-      if (parentUser.companyId && parentUser.companyId !== parentCompany.id) {
-        await t.rollback();
-        res.status(403).json({
-          success: false,
-          message:
-            "User is not linked with this company. Please check userId / companyId.",
-        });
-        return;
-      }
-
-      // Build safe userName from DB (DB is source of truth)
+      // Build safe userName from client details
       const actualUserName =
-        `${parentUser.firstName || ""} ${parentUser.lastName || ""}`.trim() ||
-        parentUser.email ||
-        parentUser.contact ||
-        `User-${parentUser.id}`;
+        `${clientfirstName} ${clientLastName}`.trim();
 
       //  userName only for logging 
       if (userNameFromFE && userNameFromFE !== actualUserName) {
-        console.warn("[clientSignup/start] userName mismatch, using DB value:", {
+        console.warn("[clientSignup/start] userName mismatch, using client names:", {
           fromFE: userNameFromFE,
           fromDB: actualUserName,
         });
@@ -668,7 +732,7 @@ router.post("/clientSignup/start",
 
       await Otp.create(
         {
-          userId: parentUser.id, // parent user link
+          userId: 'null', // No parent user for client signup
           email,
           contact,
           // otp,
@@ -679,7 +743,6 @@ router.post("/clientSignup/start",
           otpExpiresAt: expiry,
           mbOTPExpiresAt: expiry,
           tempUserData: {
-            userId: parentUser.id,
             companyId: parentCompany.id,
             userName: actualUserName, // validated userName store
             businessName,
@@ -724,7 +787,6 @@ router.post("/clientSignup/start",
         success: true,
         message: "OTP sent to email. Please verify to complete signup.",
         data: {
-          userId: parentUser.id,
           companyId: parentCompany.id,
           userName: actualUserName,
           email,
@@ -833,20 +895,8 @@ router.post("/clientSignup/verify-otp",
 
       const tempUserId = temp.userId || null;
       const tempCompanyId = temp.companyId || null;
-      // Validate parent User & Company (FK safety)
-      let parentUser: User | null = null;
-      if (tempUserId) {
-        parentUser = await User.findByPk(tempUserId, { transaction: t });
-        if (!parentUser) {
-          await t.rollback();
-          res.status(400).json({
-            success: false,
-            message: "Invalid userId in signup data. Please login again.",
-          });
-          return;
-        }
-      }
 
+      // Validate parent Company (FK safety)
       let parentCompany: Company | null = null;
       if (tempCompanyId) {
         parentCompany = await Company.findByPk(tempCompanyId, {
@@ -957,6 +1007,7 @@ router.post("/clientSignup/verify-otp",
         tempUserData: null,
       });
       await otpRecord.save({ transaction: t });
+      await otpRecord.destroy({ transaction: t });
 
       // Build token payload
       const tokenPayload: any = {
@@ -1330,8 +1381,9 @@ router.get("/clients/getAll", async (req: Request, res: Response): Promise<void>
 router.get("/clients/getById/:id",
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const id = Number(req.params.id);
-      if (Number.isNaN(id)) {
+      const id = req.params.id;
+      console.log(id)
+      if (!id || id.trim() === '') {
         res.status(400).json({
           success: false,
           message: "Invalid client id.",
@@ -1339,7 +1391,7 @@ router.get("/clients/getById/:id",
         return;
       }
 
-      const client = await getagencyClientByid(String(id));
+      const client = await getagencyClientByid(id);
 
       if (!client) {
         notFound(res, "Client not found.");
@@ -1355,6 +1407,40 @@ router.get("/clients/getById/:id",
       console.error("[GET /clients/:id] ERROR:", error);
       ErrorLogger.write({ type: "get client by id error", error });
       serverError(res, error.message || "Failed to fetch client details.");
+    }
+  }
+);
+
+router.get("/clients/by-user/:userId",
+  async (req: Request, res: Response): Promise<void> => {
+    console.log(req.params.userId);
+    try {
+      const { userId } = req.params;
+
+      if (!userId || userId.trim() === "") {
+        res.status(400).json({
+          success: false,
+          message: "Invalid user id.",
+        });
+        return;
+      }
+
+      const client = await getAgencyClientByUserId(userId);
+
+      if (!client) {
+        notFound(res, "Client not found.");
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Client fetched by user id.",
+        data: client,
+      });
+    } catch (error: any) {
+      console.error("[GET /clients/by-user/:userId] ERROR:", error);
+      ErrorLogger.write({ type: "get client by user id error", error });
+      serverError(res, error.message || "Failed to fetch client.");
     }
   }
 );
@@ -1778,16 +1864,14 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
     const limit = Number(req.query.limit) || 10;
     const offset = Number(req.query.offset) || 0;
 
-    // Pass companyId to your handler
     const queryForHandler = {
       ...restQuery,
       companyId,
     };
 
-    // Fetch from DB using your handler
     const result: any = await getAllAgencyClient(queryForHandler);
 
-    let rows = result.rows || result;    // Might be (rows + count) or only rows
+    let rows = result.rows || result;
     let count = result.count ?? rows.length;
 
     // ---------- SEARCH FILTER ----------
@@ -1798,7 +1882,6 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
         const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
           .trim()
           .toLowerCase();
-
         const email = (r.email || "").toLowerCase();
         const businessName = (r.businessName || "").toLowerCase();
 
@@ -1809,7 +1892,7 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
         );
       });
 
-      count = rows.length; // update count after search
+      count = rows.length;
     }
 
     // ---------- PAGINATION ----------
@@ -1841,201 +1924,262 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
   }
 });
 
+// check the user exists for the company
+router.post("/clients/validate-company-user", async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log(req.body, 'jdhew');
+    const { companyId, email, contact } = req.body;
+    console.log(companyId, email, contact, 'jdhew2');
+
+    if (!companyId || (!email && !contact)) {
+      res.status(400).json({
+        success: false,
+        message: "companyId and email or contact is required",
+      });
+      return;
+    }
+
+    // 🔍 check user belongs to company
+    const user = await User.findOne({
+      where: {
+        companyId,
+        ...(email ? { email } : {}),
+        ...(contact ? { contact } : {}),
+        isDeleted: false,
+        isActive: true,
+      },
+      attributes: ["id", "email", "contact", "userType", "companyId"],
+    });
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "No user information available",
+        data: {
+          isValid: false,
+        },
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "User is valid for this company",
+      data: {
+        isValid: true,
+        userId: user.id,
+        email: user.email,
+        contact: user.contact,
+        userType: user.userType,
+        companyId: user.companyId,
+      },
+    });
+  } catch (error: any) {
+    console.error("[validate-user ERROR]", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to validate user",
+    });
+  }
+}
+);
+// Add this after the existing Google auth endpoints
+
 /**
  * POST /clients/login
  * Client login with:
  * 1. email + OTP (no 2FA required)
  * 2. email/contact + password (2FA required if enabled)
  */
-router.post("/clients/login",
-    async (req: Request, res: Response): Promise<void> => {
-        const t = await dbInstance.transaction();
-        try {
-            const { email, contact, password, otp, twofactorToken, backupCode } = req.body;
+router.post("/clients/login", async (req: Request, res: Response): Promise<void> => {
 
-            // --- EMAIL + OTP LOGIN ---
-            if (email && otp) {
-                // Find client by email
-                const client: any = await Clients.findOne({
-                    where: { email, isDeleted: false },
-                    transaction: t,
-                });
-                if (!client) {
-                    await t.rollback();
-                    res.status(401).json({ success: false, message: "Invalid email or OTP." });
-                    return;
-                }
-                // Validate OTP (implement your OTP validation logic here)
-                const isValidOTP = client.validateOTP && client.validateOTP(otp); // assumes validateOTP exists
-                if (!isValidOTP) {
-                    await t.rollback();
-                    res.status(401).json({ success: false, message: "Invalid OTP." });
-                    return;
-                }
-                if (!client.isActive) {
-                    await t.rollback();
-                    res.status(403).json({ success: false, message: "Your account is deactivated. Please contact support." });
-                    return;
-                }
-                // First login logic
-                const isFirstLogin = client.isFirstLogin || false;
-                if (isFirstLogin) {
-                    await client.update({ isFirstLogin: false }, { transaction: t });
-                }
-                // Generate JWT token
-                const tokenPayload: any = {
-                    clientId: client.id,
-                    email: client.email,
-                    role: "client",
-                };
-                if (client.userId) tokenPayload.userId = client.userId;
-                if (client.companyId) tokenPayload.companyId = client.companyId;
-                const token = await generateToken(tokenPayload, "7d");
-                await t.commit();
-                res.status(200).json({
-                    success: true,
-                    message: isFirstLogin
-                        ? "Login successful! Welcome to ZarklyX. Please update your password."
-                        : "Login successful!",
-                    data: {
-                        clientId: client.id,
-                        userId: client.userId,
-                        companyId: client.companyId,
-                        email: client.email,
-                        businessName: client.businessName,
-                        clientfirstName: client.clientfirstName,
-                        clientLastName: client.clientLastName,
-                        secretCode: client.secretCode || null,
-                        isFirstLogin,
-                        token,
-                        twofactorEnabled: client.twofactorEnabled || false,
-                    },
-                });
-                return;
-            }
+  const t = await dbInstance.transaction();
 
-            // --- EMAIL/CONTACT + PASSWORD LOGIN ---
-            if ((email || contact) && password) {
-                // Find client by email or contact
-                const whereClause: any = { isDeleted: false };
-                if (email) whereClause.email = email;
-                if (contact) whereClause.contact = contact;
-                const client: any = await Clients.findOne({
-                    where: whereClause,
-                    transaction: t,
-                });
-                if (!client) {
-                    await t.rollback();
-                    res.status(401).json({ success: false, message: "Invalid credentials." });
-                    return;
-                }
-                // Verify password
-                const isValidPassword = client.validatePassword(password);
-                if (!isValidPassword) {
-                    await t.rollback();
-                    res.status(401).json({ success: false, message: "Invalid credentials." });
-                    return;
-                }
-                if (!client.isActive) {
-                    await t.rollback();
-                    res.status(403).json({ success: false, message: "Your account is deactivated. Please contact support." });
-                    return;
-                }
-                // 2FA required if enabled
-                if (client.twofactorEnabled && client.twofactorVerified) {
-                    if (!twofactorToken && !backupCode) {
-                        await t.rollback();
-                        res.status(200).json({
-                            success: true,
-                            requires2FA: true,
-                            message: "Password verified. Please provide 2FA code to complete login.",
-                            data: {
-                                clientId: client.id,
-                                email: client.email,
-                                clientfirstName: client.clientfirstName,
-                                clientLastName: client.clientLastName,
-                                secretCode: client.secretCode || null,
-                                twofactorEnabled: true,
-                            },
-                        });
-                        return;
-                    }
-                    // Verify 2FA token
-                    if (twofactorToken) {
-                        const verified = speakeasy.totp.verify({
-                            secret: client.twofactorSecret,
-                            encoding: "base32",
-                            token: String(twofactorToken),
-                            window: 2,
-                        });
-                        if (!verified) {
-                            await t.rollback();
-                            res.status(401).json({ success: false, requires2FA: true, message: "Invalid 2FA token. Please try again." });
-                            return;
-                        }
-                    }
-                    // Verify backup code
-                    if (backupCode) {
-                        const backupCodes = client.twofactorBackupCodes || [];
-                        const codeIndex = backupCodes.findIndex((code: string) => code === String(backupCode).toUpperCase());
-                        if (codeIndex === -1) {
-                            await t.rollback();
-                            res.status(401).json({ success: false, requires2FA: true, message: "Invalid backup code." });
-                            return;
-                        }
-                        // Remove used backup code
-                        const updatedBackupCodes = backupCodes.filter((_: string, index: number) => index !== codeIndex);
-                        await client.update({ twofactorBackupCodes: updatedBackupCodes }, { transaction: t });
-                    }
-                }
-                // First login logic
-                const isFirstLogin = client.isFirstLogin || false;
-                if (isFirstLogin) {
-                    await client.update({ isFirstLogin: false }, { transaction: t });
-                }
-                // Generate JWT token
-                const tokenPayload: any = {
-                    clientId: client.id,
-                    email: client.email,
-                    role: "client",
-                };
-                if (client.userId) tokenPayload.userId = client.userId;
-                if (client.companyId) tokenPayload.companyId = client.companyId;
-                const token = await generateToken(tokenPayload, "7d");
-                await t.commit();
-                res.status(200).json({
-                    success: true,
-                    message: isFirstLogin
-                        ? "Login successful! Welcome to ZarklyX. Please update your password."
-                        : "Login successful!",
-                    data: {
-                        clientId: client.id,
-                        userId: client.userId,
-                        companyId: client.companyId,
-                        email: client.email,
-                        businessName: client.businessName,
-                        clientfirstName: client.clientfirstName,
-                        clientLastName: client.clientLastName,
-                        secretCode: client.secretCode || null,
-                        isFirstLogin,
-                        token,
-                        twofactorEnabled: client.twofactorEnabled || false,
-                    },
-                });
-                return;
-            }
+  try {
+    const { email, contact, password, otp, twofactorToken, backupCode } = req.body;
 
-            // If neither login method matches
-            await t.rollback();
-            res.status(400).json({ success: false, message: "Invalid login request. Please provide valid credentials." });
-        } catch (error: any) {
-            await t.rollback();
-            console.error("[POST /clients/login] ERROR:", error);
-            ErrorLogger.write({ type: "client login error", error });
-            serverError(res, error.message || "Login failed.");
-        }
+    // ===============================
+    // EMAIL + OTP LOGIN (user table)
+    // ===============================
+    if (email && otp) {
+      const user: any = await User.findOne({
+        where: { email, isDeleted: false },
+        transaction: t,
+      });
+
+      // Ensure OTP record exists and is valid (not used and not expired)
+      const otpRecord: any = await Otp.findOne({
+        where: {
+          email,
+          otp: String(otp),
+          otpVerify: false,
+          otpExpiresAt: { [Op.gt]: new Date() },
+        },
+        transaction: t,
+      });
+
+      if (!user || !otpRecord) {
+        await t.rollback();
+        res.status(401).json({ success: false, message: "Invalid email or OTP." });
+        return;
+      }
+
+      if (!user.isActive) {
+        await t.rollback();
+        res.status(403).json({
+          success: false,
+          message: "Your account is deactivated. Please contact support.",
+        });
+        return;
+      }
+
+      // Mark OTP as used
+      otpRecord.set({ otpVerify: true, otp: null, otpExpiresAt: null });
+      await otpRecord.save({ transaction: t });
+
+      // Ensure user's email verified flag is set
+      if (!user.isEmailVerified) {
+        await user.update({ isEmailVerified: true }, { transaction: t });
+      }
+
+      const isFirstLogin = user.isFirstLogin || false;
+      if (isFirstLogin) {
+        await user.update({ isFirstLogin: false }, { transaction: t });
+      }
+
+      const token = await generateToken(
+        { userId: user.id, email: user.email, role: "client", companyId: user.companyId },
+        "7d"
+      );
+
+      await t.commit();
+
+      res.status(200).json({
+        success: true,
+        message: "Login successful!",
+        data: {
+          userId: user.id,
+          email: user.email || email,
+          contact: user.contact || null,
+          companyId: user.companyId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          isFirstLogin,
+          token,
+          twofactorEnabled: user.twofactorEnabled || false,
+        },
+      });
+      return;
     }
-);
+
+    // =====================================
+    // EMAIL / CONTACT + PASSWORD LOGIN
+    // =====================================
+    if ((email || contact) && password) {
+      const whereClause: any = { isDeleted: false };
+      if (email) whereClause.email = email;
+      if (contact) whereClause.contact = contact;
+
+      const user: any = await User.findOne({ where: whereClause, transaction: t });
+
+      if (!user || !user.validatePassword(password)) {
+        await t.rollback();
+        res.status(401).json({ success: false, message: "Invalid credentials." });
+        return;
+      }
+
+      if (!user.isActive) {
+        await t.rollback();
+        res.status(403).json({
+          success: false,
+          message: "Your account is deactivated. Please contact support.",
+        });
+        return;
+      }
+
+      // ==============
+      // 2FA HANDLING
+      // ==============
+      if (user.twofactorEnabled && user.twofactorVerified) {
+        if (!twofactorToken && !backupCode) {
+          await t.rollback();
+          res.status(200).json({
+            success: true,
+            requires2FA: true,
+            message: "Password verified. Please provide 2FA code.",
+            data: { userId: user.id, email: user.email, twofactorEnabled: true },
+          });
+          return;
+        }
+
+        if (twofactorToken) {
+          const verified = speakeasy.totp.verify({
+            secret: user.twofactorSecret,
+            encoding: "base32",
+            token: String(twofactorToken),
+            window: 2,
+          });
+
+          if (!verified) {
+            await t.rollback();
+            res.status(401).json({ success: false, requires2FA: true, message: "Invalid 2FA token." });
+            return;
+          }
+        }
+
+        if (backupCode) {
+          const backupCodes = user.twofactorBackupCodes || [];
+          const index = backupCodes.findIndex((code: string) => code === String(backupCode).toUpperCase());
+          if (index === -1) {
+            await t.rollback();
+            res.status(401).json({ success: false, requires2FA: true, message: "Invalid backup code." });
+            return;
+          }
+          backupCodes.splice(index, 1);
+          await user.update({ twofactorBackupCodes: backupCodes }, { transaction: t });
+        }
+      }
+
+      const isFirstLogin = user.isFirstLogin || false;
+      if (isFirstLogin) await user.update({ isFirstLogin: false }, { transaction: t });
+
+      const token = await generateToken(
+        { userId: user.id, email: user.email || email, role: "user", companyId: user.companyId },
+        "7d"
+      );
+
+      await t.commit();
+
+      res.status(200).json({
+        success: true,
+        message: "Login successful!",
+        data: {
+          userId: user.id,
+          email: user.email || email || null,
+          contact: user.contact || contact || null,
+          companyId: user.companyId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          isFirstLogin,
+          token,
+          twofactorEnabled: user.twofactorEnabled || false,
+        },
+      });
+      return;
+    }
+
+    await t.rollback();
+    res.status(400).json({ success: false, message: "Invalid login request." });
+
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[POST /clients/login] ERROR:", error);
+    ErrorLogger.write({ type: "user login error", error });
+    serverError(res, error.message || "Login failed.");
+  }
+});
+
+
 
 /**
  * POST /clients/verify-2fa
@@ -2043,163 +2187,163 @@ router.post("/clients/login",
  * Used when login returns requires2FA: true
  */
 router.post("/clients/verify-2fa",
-    async (req: Request, res: Response): Promise<void> => {
-        const t = await dbInstance.transaction();
-        try {
-            const { email, twofactorToken, backupCode } = req.body;
+  async (req: Request, res: Response): Promise<void> => {
+    const t = await dbInstance.transaction();
+    try {
+      const { email, twofactorToken, backupCode } = req.body;
 
-            if (!email) {
-                await t.rollback();
-                res.status(400).json({
-                    success: false,
-                    message: "Email is required.",
-                });
-                return;
-            }
+      if (!email) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "Email is required.",
+        });
+        return;
+      }
 
-            if (!twofactorToken && !backupCode) {
-                await t.rollback();
-                res.status(400).json({
-                    success: false,
-                    message: "2FA token or backup code is required.",
-                });
-                return;
-            }
+      if (!twofactorToken && !backupCode) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "2FA token or backup code is required.",
+        });
+        return;
+      }
 
-            // Find client
-            const client: any = await Clients.findOne({
-                where: { email, isDeleted: false },
-                transaction: t,
-            });
+      // Find client
+      const client: any = await Clients.findOne({
+        where: { email, isDeleted: false },
+        transaction: t,
+      });
 
-            if (!client) {
-                await t.rollback();
-                res.status(404).json({
-                    success: false,
-                    message: "Client not found.",
-                });
-                return;
-            }
+      if (!client) {
+        await t.rollback();
+        res.status(404).json({
+          success: false,
+          message: "Client not found.",
+        });
+        return;
+      }
 
-            if (!client.twofactorEnabled || !client.twofactorVerified) {
-                await t.rollback();
-                res.status(400).json({
-                    success: false,
-                    message: "2FA is not enabled for this account.",
-                });
-                return;
-            }
+      if (!client.twofactorEnabled || !client.twofactorVerified) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "2FA is not enabled for this account.",
+        });
+        return;
+      }
 
-            // Verify 2FA token
-            if (twofactorToken) {
-                const verified = speakeasy.totp.verify({
-                    secret: client.twofactorSecret,
-                    encoding: "base32",
-                    token: String(twofactorToken),
-                    window: 2,
-                });
+      // Verify 2FA token
+      if (twofactorToken) {
+        const verified = speakeasy.totp.verify({
+          secret: client.twofactorSecret,
+          encoding: "base32",
+          token: String(twofactorToken),
+          window: 2,
+        });
 
-                if (!verified) {
-                    await t.rollback();
-                    res.status(401).json({
-                        success: false,
-                        message: "Invalid 2FA token.",
-                    });
-                    return;
-                }
-            }
-
-            // Verify backup code
-            if (backupCode) {
-                const backupCodes = client.twofactorBackupCodes || [];
-                const codeIndex = backupCodes.findIndex(
-                    (code: string) => code === String(backupCode).toUpperCase()
-                );
-
-                if (codeIndex === -1) {
-                    await t.rollback();
-                    res.status(401).json({
-                        success: false,
-                        message: "Invalid backup code.",
-                    });
-                    return;
-                }
-
-                // Remove used backup code
-                const updatedBackupCodes = backupCodes.filter(
-                    (_: string, index: number) => index !== codeIndex
-                );
-                await client.update(
-                    { twofactorBackupCodes: updatedBackupCodes },
-                    { transaction: t }
-                );
-            }
-
-            // Check if first login
-            const isFirstLogin = client.isFirstLogin || false;
-            if (isFirstLogin) {
-                await client.update({ isFirstLogin: false }, { transaction: t });
-            }
-
-            // Generate token
-            const tokenPayload: any = {
-                clientId: client.id,
-                email: client.email,
-                role: "client",
-            };
-
-            if (client.userId) tokenPayload.userId = client.userId;
-            if (client.companyId) tokenPayload.companyId = client.companyId;
-
-            const token = await generateToken(tokenPayload, "7d");
-
-            // Log login history (optional - if model exists)
-            // try {
-            //   await LoginHistory.create(
-            //     {
-            //       userId: client.userId || null,
-            //       clientId: client.id,
-            //       email: client.email,
-            //       contact: client.contact || null,
-            //       loginTime: new Date(),
-            //       ipAddress: req.ip || req.headers["x-forwarded-for"] || "Unknown",
-            //       userAgent: req.headers["user-agent"] || "Unknown",
-            //       status: "success",
-            //       loginType: "client-2fa",
-            //       isDeleted: false,
-            //     } as any,
-            //     { transaction: t }
-            //   );
-            // } catch (logError) {
-            //   console.error("Failed to log login history:", logError);
-            // }
-
-            await t.commit();
-
-            res.status(200).json({
-                success: true,
-                message: "2FA verification successful!",
-                data: {
-                    clientId: client.id,
-                    userId: client.userId,
-                    companyId: client.companyId,
-                    email: client.email,
-                    businessName: client.businessName,
-                    clientfirstName: client.clientfirstName,
-                    clientLastName: client.clientLastName,
-                    secretCode: client.secretCode || null,
-                    isFirstLogin,
-                    token,
-                    twofactorEnabled: client.twofactorEnabled,
-                },
-            });
-        } catch (error: any) {
-            await t.rollback();
-            console.error("[POST /clients/verify-2fa] ERROR:", error);
-            ErrorLogger.write({ type: "client 2fa verification error", error });
-            serverError(res, error.message || "2FA verification failed.");
+        if (!verified) {
+          await t.rollback();
+          res.status(401).json({
+            success: false,
+            message: "Invalid 2FA token.",
+          });
+          return;
         }
+      }
+
+      // Verify backup code
+      if (backupCode) {
+        const backupCodes = client.twofactorBackupCodes || [];
+        const codeIndex = backupCodes.findIndex(
+          (code: string) => code === String(backupCode).toUpperCase()
+        );
+
+        if (codeIndex === -1) {
+          await t.rollback();
+          res.status(401).json({
+            success: false,
+            message: "Invalid backup code.",
+          });
+          return;
+        }
+
+        // Remove used backup code
+        const updatedBackupCodes = backupCodes.filter(
+          (_: string, index: number) => index !== codeIndex
+        );
+        await client.update(
+          { twofactorBackupCodes: updatedBackupCodes },
+          { transaction: t }
+        );
+      }
+
+      // Check if first login
+      const isFirstLogin = client.isFirstLogin || false;
+      if (isFirstLogin) {
+        await client.update({ isFirstLogin: false }, { transaction: t });
+      }
+
+      // Generate token
+      const tokenPayload: any = {
+        clientId: client.id,
+        email: client.email,
+        role: "client",
+      };
+
+      if (client.userId) tokenPayload.userId = client.userId;
+      if (client.companyId) tokenPayload.companyId = client.companyId;
+
+      const token = await generateToken(tokenPayload, "7d");
+
+      // Log login history (optional - if model exists)
+      // try {
+      //   await LoginHistory.create(
+      //     {
+      //       userId: client.userId || null,
+      //       clientId: client.id,
+      //       email: client.email,
+      //       contact: client.contact || null,
+      //       loginTime: new Date(),
+      //       ipAddress: req.ip || req.headers["x-forwarded-for"] || "Unknown",
+      //       userAgent: req.headers["user-agent"] || "Unknown",
+      //       status: "success",
+      //       loginType: "client-2fa",
+      //       isDeleted: false,
+      //     } as any,
+      //     { transaction: t }
+      //   );
+      // } catch (logError) {
+      //   console.error("Failed to log login history:", logError);
+      // }
+
+      await t.commit();
+
+      res.status(200).json({
+        success: true,
+        message: "2FA verification successful!",
+        data: {
+          clientId: client.id,
+          userId: client.userId,
+          companyId: client.companyId,
+          email: client.email,
+          businessName: client.businessName,
+          clientfirstName: client.clientfirstName,
+          clientLastName: client.clientLastName,
+          secretCode: client.secretCode || null,
+          isFirstLogin,
+          token,
+          twofactorEnabled: client.twofactorEnabled,
+        },
+      });
+    } catch (error: any) {
+      await t.rollback();
+      console.error("[POST /clients/verify-2fa] ERROR:", error);
+      ErrorLogger.write({ type: "client 2fa verification error", error });
+      serverError(res, error.message || "2FA verification failed.");
     }
+  }
 );
 
 
@@ -2268,16 +2412,19 @@ router.get("/client/validate-url",
         return;
       }
 
-      const whereClause: any = { isDeleted: false };
+      // Use isActive instead of isDeleted
+      const whereClause: any = { isActive: true };
+
       if (companyId) {
-        whereClause.companyId = String(companyId).trim();
-      } else if (userName) {
-        whereClause.userName = String(userName).trim();
+        whereClause.id = String(companyId).trim(); // primary key
+      }
+      if (userName) {
+        whereClause.userName = String(userName).trim(); // username column
       }
 
-      const client: any = await Clients.findOne({ where: whereClause });
+      const company: any = await Company.findOne({ where: whereClause });
 
-      if (!client) {
+      if (!company) {
         res.status(404).json({ success: false, message: "Not found or invalid URL", data: { isValid: false } });
         return;
       }
@@ -2287,17 +2434,15 @@ router.get("/client/validate-url",
         success: true,
         message: "Valid URL",
         data: {
-          companyId: client.companyId || null,
-          userName: client.userName || null,
+          companyId: company.id || null,
+          userName: company.userName || null,
           isValid: true,
         },
       });
-      return;
     } catch (error: any) {
       console.error("[/client/auth/validate-url] ERROR:", error);
       ErrorLogger.write({ type: "validate-url error", error });
       serverError(res, error.message || "Validation failed.");
-      return;
     }
   }
 );
@@ -2568,7 +2713,7 @@ router.post(
       console.error("[/clients/2fa/regenerate-backup-codes] ERROR:", error);
       ErrorLogger.write({ type: "clients 2fa regen backup codes error", error });
       serverError(res, error.message || "Failed to regenerate backup codes.");
-      return;
+      return; 
     }
   }
 );

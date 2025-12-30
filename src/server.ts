@@ -13,7 +13,7 @@ import companyRoutes from './routes/api-webapp/company/company-api';
 import otpRoutes from './routes/api-webapp/otp/otp-api';
 import Category from './routes/api-webapp/superAdmin/generalSetup/category/category-api';
 import PremiumModule  from './routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api';
-import  ClientsRoutes from './routes/api-webapp/agency/clients/clients-api';
+import ClientsRoutes from './routes/api-webapp/agency/clients/clients-api';
 import businessTypeRoutes from './routes/api-webapp/superAdmin/generalSetup/businessType/businessType-api';
 const youtubeRoutes = require('./routes/api-webapp/agency/social-Integration/youtube/youtube-api');
 const googleBusinessRoutes = require('./routes/api-webapp/agency/social-Integration/google-business/google-business-api');
@@ -32,6 +32,7 @@ import influencerRoutes from './routes/api-webapp/influencer/influencer-api';
 const bodyParser = require('body-parser');
 const cookieSession = require('cookie-session');
 
+import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
 
 import path from "path";
 const app = express();
@@ -89,6 +90,8 @@ app.get('/auth/tiktok/callback', (req: Request, res: Response) => {
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
+app.use("/employee", employeeRoutes);
+
 // Web App Apis Route Index
 // Initialize databases (MySQL main, MongoDB and control DB)
 (async () => {
