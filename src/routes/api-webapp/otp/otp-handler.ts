@@ -98,8 +98,8 @@ export const updateOtpById = (body: any, id: number, t?: Transaction) => {
   });
 };
 
-// Create a new OTP row
-export const createOtp = (body: any, t?: Transaction) => {
+// Add a new OTP entry to the OTP table
+export const createOtp = async (body: any, t?: Transaction) => {
   return Otp.create(body, { transaction: t });
 };
 // Use this when you want to call otpRecord.update(...)

@@ -7,6 +7,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "baseUrl": "./",
+    "paths": {
+      "routes/*": ["src/routes/*"],
+      "services/*": ["src/services/*"],
+      "config/*": ["src/config/*"]
+    },
     "typeRoots": ["./node_modules/@types", "./src/types"],
     "outDir": "./dist" 
   },

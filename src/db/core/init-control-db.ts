@@ -1,9 +1,7 @@
 import type { Sequelize } from "sequelize";
-
-// Models for Web -app
 import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
-import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
+import { UserCompany, initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
 import { LoginHistory } from "../../routes/api-webapp/loginHistory/loginHistory-model";
 import { Category } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
@@ -11,16 +9,12 @@ import { PremiumModule } from "../../routes/api-webapp/superAdmin/generalSetup/p
 import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
-// import { Role } from "../../routes/api-webapp/roles/role-model";
-// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
-// Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
+import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
+import { Role } from "../../routes/api-webapp/roles/role-model";
+import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 
-// import { Role } from "../../routes/api-webapp/roles/role-model";
-// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
-// Use a relative path to the route-local Google token model to avoid module alias issues
-// import { GoogleToken } from "../../routes/api-webapp/agency/social-Integration/google/google-token.model";
 export {
   User,
   Company,
@@ -33,34 +27,34 @@ export {
   BusinessType,
   BusinessSubcategory,
   SocialToken,
-  Employee
+  Employee,
+  Influencer,
   // GoogleToken
 };
 export function initControlDB(sequelize: Sequelize) {
-  // For web App
-  // User.initModel(sequelize);
   User.initModel(sequelize);
   Company.initModel(sequelize);
   PremiumModule.initModel(sequelize);
   Category.initModel(sequelize);
-  Clients.initModel(sequelize);  
+  Clients.initModel(sequelize);
   Employee.initModel(sequelize);
-  Otp.initModel(sequelize);  
+  Otp.initModel(sequelize);
   LoginHistory.initModel(sequelize);
   // Roles
-  // Role.initModel(sequelize);
-  // SubRole.initModel(sequelize);
+  Role.initModel(sequelize);
+  SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
-  SocialToken.initModel(sequelize); 
-  // Role.initModel(sequelize);
-  // SubRole.initModel(sequelize);
+  SocialToken.initModel(sequelize);
   initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
+  SocialToken.initModel(sequelize);
+  Influencer.initModel(sequelize);
+
   // GoogleToken.initModel(sequelize); 
-//  initCategoryModel(sequelize);
-//  initPremiumModuleModel(sequelize);
-// LoginHistory.initModel(sequelize);
+  //  initCategoryModel(sequelize);
+  //  initPremiumModuleModel(sequelize);
+  // LoginHistory.initModel(sequelize);
 
 
   // Relations and associations
@@ -86,31 +80,31 @@ export function initControlDB(sequelize: Sequelize) {
   UserCompany.belongsTo(Company, {
     foreignKey: "companyId",
   });
-  
+
 
   /***user <-> otp */
-//   User.hasMany(Otp, {
-//     foreignKey: "userId",
-//     as: "otps",
-//   });
-//   Otp.belongsTo(User, {
-//     foreignKey: "userId",
-//     as : "user"
-//   });
- 
-// /*** clients <-> otp */
-Clients.hasMany(Otp, {
-  foreignKey: "clientId",
-  as: "Otps",
-  constraints: false,
-});
-Otp.belongsTo(Clients, {
-  foreignKey: "clientId",
-  as: "client",
-  constraints: false,
-});
+  //   User.hasMany(Otp, {
+  //     foreignKey: "userId",
+  //     as: "otps",
+  //   });
+  //   Otp.belongsTo(User, {
+  //     foreignKey: "userId",
+  //     as : "user"
+  //   });
 
- /*** User <-> Clients  */
+  // /*** clients <-> otp */
+  Clients.hasMany(Otp, {
+    foreignKey: "clientId",
+    as: "Otps",
+    constraints: false,
+  });
+  Otp.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /*** User <-> Clients  */
   User.hasMany(Clients, {
     foreignKey: "userId",
     as: "clients",          // user.getClients()
@@ -160,7 +154,7 @@ Otp.belongsTo(Clients, {
     as: "subordinates",     // manager.getSubordinates()
   });
 
-   /*** BusinessType <-> BusinessSubcategory */
+  /*** BusinessType <-> BusinessSubcategory */
   BusinessType.hasMany(BusinessSubcategory, {
     foreignKey: "businessTypeId",
     as: "subcategories",
@@ -185,13 +179,13 @@ Otp.belongsTo(Clients, {
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
   // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
 
-// User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
-// Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
+  // User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
+  // Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
 
-// Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
-// Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
-// Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
-// Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
+  // Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
+  // Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
+  // Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
+  // Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
 
   return {
     User,
@@ -204,14 +198,11 @@ Otp.belongsTo(Clients, {
     Clients,
     BusinessType,
     BusinessSubcategory,
-    // Role,
-    // SubRole,
-    SocialToken
-,    // LoginHistory
+    SocialToken,
+    Role,
+    SubRole,
+    Influencer,
     Employee,
-    // Role,
-    // SubRole,
-    // GoogleToken,
-    // LoginHistory
+
   };
 }
