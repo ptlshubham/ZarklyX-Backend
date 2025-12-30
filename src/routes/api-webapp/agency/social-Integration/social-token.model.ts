@@ -27,6 +27,7 @@ export class SocialToken extends Model<
   declare tokenType: string | null;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
+  declare accountId: string | null;
 
   static initModel(sequelize: Sequelize): typeof SocialToken {
     SocialToken.init(
@@ -96,6 +97,11 @@ export class SocialToken extends Model<
           type: DataTypes.DATE,
           allowNull: false,
           defaultValue: DataTypes.NOW,
+        },
+        accountId: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
         },
       },
       {
