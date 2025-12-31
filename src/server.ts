@@ -4,6 +4,7 @@ import express, { Request, Response } from "express";
 import connectMySQL from "./config/dbSQL"; // Importing MySQL Connection
 import { connectDatabases } from "./config/db"; // MongoDB connection
 import { initControlDBConnection } from "./db/core/control-db";
+import { initTokenStore } from "./services/token-store.service";
 import http from "http";
 import cors from 'cors';
 import { ConsoleSpinner } from "./services/console-info";
@@ -12,12 +13,39 @@ import companyRoutes from './routes/api-webapp/company/company-api';
 import otpRoutes from './routes/api-webapp/otp/otp-api';
 import Category from './routes/api-webapp/superAdmin/generalSetup/category/category-api';
 import PremiumModule  from './routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api';
-import  ClientsRoutes from './routes/api-webapp/agency/clients/clients-api';
+import ClientsRoutes from './routes/api-webapp/agency/clients/clients-api';
 import businessTypeRoutes from './routes/api-webapp/superAdmin/generalSetup/businessType/businessType-api';
+const youtubeRoutes = require('./routes/api-webapp/agency/social-Integration/youtube/youtube-api');
+const googleBusinessRoutes = require('./routes/api-webapp/agency/social-Integration/google-business/google-business-api');
+const gmailRoutes = require('./routes/api-webapp/agency/social-Integration/gmail/gmail-api');
+const driveRoutes = require('./routes/api-webapp/agency/social-Integration/drive/drive-api');
+const googleRoutes = require('./routes/api-webapp/agency/social-Integration/google/google-api');
+const linkedinRoutes = require('./routes/api-webapp/agency/social-Integration/linkedin/linkedin-api');
+const facebookRoutes = require('./routes/api-webapp/agency/social-Integration/facebook/facebook-api');
+const pinterestRoutes = require('./routes/api-webapp/agency/social-Integration/pinterest/pinterest-api');
+import twitterRoutes from './routes/api-webapp/agency/social-Integration/twitter/twitter-api';
+import tiktokRoutes from './routes/api-webapp/agency/social-Integration/tiktok/tiktok-api';
+// const twitterRoutes = require('./routes/api-webapp/agency/social-Integration/twitter/twitter-api');
+// import rolesRoutes from './routes/api-webapp/roles/roles-api';
+import rolesRoutes from './routes/api-webapp/roles/roles-api';
+// const influencerRoutes = require ('./routes/api-webapp/influencer/influencer-api');
+import influencerRoutes from './routes/api-webapp/influencer/influencer-api';
+const bodyParser = require('body-parser');
+const cookieSession = require('cookie-session');
+
+import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
 
 import path from "path";
 const app = express();
 dotenv.config();
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+app.use(cookieSession({
+  name: 'session',
+  keys: [process.env.COOKIE_SECRET || 'default_secret_key'],
+  maxAge: 24 * 60 * 60 * 1000 // 24 hours
+}));
 
 //Rinkal 
 app.use(cors({
@@ -25,6 +53,7 @@ app.use(cors({
   credentials: true,               // only if you want to send cookies
 }));
 
+// console.log("FB APP ID:", process.env.FACEBOOK_APP_ID);
 app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
@@ -35,6 +64,35 @@ app.use("/category", Category);
 app.use("/premiumModule", PremiumModule);
 app.use("/clients", ClientsRoutes);
 app.use("/businessType", businessTypeRoutes);
+app.use("/youtube", youtubeRoutes);
+app.use("/google-business", googleBusinessRoutes);
+app.use("/gmail", gmailRoutes);
+app.use("/google", googleRoutes);
+app.use("/drive", driveRoutes);
+app.use("/linkedin", linkedinRoutes);
+app.use("/facebook", facebookRoutes);
+app.use("/pinterest", pinterestRoutes);
+app.use("/twitter", twitterRoutes);
+// app.use("/roles", rolesRoutes);
+app.use("/tiktok", tiktokRoutes);
+app.use("/roles", rolesRoutes);
+app.use("/influencer", influencerRoutes);
+
+// Support root-level callback path that some OAuth providers / dev tools use
+// If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
+// to the mounted tiktok router at '/tiktok/auth/tiktok/callback' so it won't 404.
+app.get('/auth/tiktok/callback', (req: Request, res: Response) => {
+  // Preserve query string when forwarding
+  const qs = req.url && req.url.includes('?') ? req.url.split('?')[1] : '';
+  const forwardUrl = `/tiktok/auth/tiktok/callback${qs ? '?' + qs : ''}`;
+  return res.redirect(302, forwardUrl);
+});
+
+
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
+app.use("/employee", employeeRoutes);
 
 // Web App Apis Route Index
 // Initialize databases (MySQL main, MongoDB and control DB)
@@ -56,6 +114,13 @@ app.use("/businessType", businessTypeRoutes);
     await initControlDBConnection();
   } catch (err) {
     console.warn("Control DB init warning:", err);
+  }
+
+  // Initialize token store model
+  try {
+    await initTokenStore();
+  } catch (err) {
+    console.warn("Token store init warning:", err);
   }
 })();
 

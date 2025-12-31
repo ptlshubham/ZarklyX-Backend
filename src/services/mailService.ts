@@ -22,18 +22,19 @@ const emailConfig = GLOBAL_CONSTANTS.email;
 //   },
 // });
 
-//for Mobile App checkMail for OTP 
+// Configure transporter. Use secure=true for port 465 (SMTPS), otherwise false.
+const useSecure = Number(emailConfig.SENDER_EMAIL_PORT) === 465;
 const nodemailerTransporter = nodemailer.createTransport({
-  // service: "gmail",
   host: emailConfig.SENDER_EMAIL_HOST,
   port: emailConfig.SENDER_EMAIL_PORT,
-  secure: true,
+  secure: useSecure,
   auth: {
     user: emailConfig.SENDER_EMAIL_ID,
     pass: emailConfig.SENDER_EMAIL_PASSWORD,
   },
   tls: {
-    rejectUnauthorized: false,
+    // allow self-signed certs in non-production envs if needed
+    rejectUnauthorized: environment === "production",
   },
 });
 
@@ -70,38 +71,29 @@ export const sendEmail = async (mailData: emailargs) => {
       mailOptions = { ...mailOptions, replyTo: mailData.replyTo };
     }
 
-    // email with FILE
+    // email with FILE/template
     if (mailData.htmlFile) {
-      await fs.readFile(
-        `${config.templatePath}/${mailData.htmlFile}.html`,
-        { encoding: "utf8" },
-        async function (err: any, hbHtml: any) {
-          if (err) {
-            console.log(err);
-            throw err;
-          } else {
-            mailOptions.html = await handleBars.compile(hbHtml)(
-              mailData.replacements
-            );
-            res = await nodemailerTransporter.sendMail(mailOptions);
-
-            let { htmlFile, attachments, html, replacements, ...rest } =
-              mailData;
-            logSmsEmail(JSON.stringify({ ...rest, res }), "success");
-            return res;
-          }
-        }
-      );
+      const filePath = `${config.templatePath}/${mailData.htmlFile}.html`;
+      try {
+        const hbHtml = await fs.promises.readFile(filePath, { encoding: "utf8" });
+        mailOptions.html = handleBars.compile(hbHtml)(mailData.replacements || {});
+        res = await nodemailerTransporter.sendMail(mailOptions);
+        let { htmlFile, attachments, html, replacements, ...rest } = mailData;
+        logSmsEmail(JSON.stringify({ ...rest, res }), "success");
+        return res;
+      } catch (err: any) {
+        console.error(`[sendEmail] template read/send error for ${filePath}:`, err);
+        logSmsEmail({ err: (err as any)?.message || err, filePath }, "err");
+        throw err;
+      }
     } else {
       // email without FILE
       mailOptions.text = mailData.text ? mailData.text : "No Text";
       if (mailData?.html) {
         mailOptions.html = mailData.html;
       }
-      if(environment === 'production'){
-        if(mailData?.cc) {
-          mailOptions.cc = mailData.cc
-        }
+      if (mailData?.cc) {
+        mailOptions.cc = mailData.cc;
       }
       res = await nodemailerTransporter.sendMail(mailOptions);
       let { htmlFile, html, attachments, replacements, ...rest } = mailData;
@@ -109,8 +101,9 @@ export const sendEmail = async (mailData: emailargs) => {
       return res;
     }
   } catch (error) {
-    console.log(error,"MMMMMMMMM");
-    
-    logSmsEmail(error, "err");
+    console.error("[sendEmail] error:", error);
+    logSmsEmail({ err: (error as any)?.message || error }, "err");
+    // rethrow so callers can react if needed
+    throw error;
   }
 };

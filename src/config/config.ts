@@ -57,8 +57,8 @@ export = {
     email: {
       SENDER_EMAIL_HOST: "smtp.hostinger.com",
       SENDER_EMAIL_PORT: "465",
-      SENDER_EMAIL_ID: "zarklyX@keryar.com",// br.rinkal1997@gmail.com
-      SENDER_EMAIL_PASSWORD: "ZarklyX@dev1", // dmtz kgzb vadp cdki
+     SENDER_EMAIL_ID: "zarklyxconnection@gmail.com",// br.rinkal1997@gmail.com
+      SENDER_EMAIL_PASSWORD: "iysmcygimxwwxreq", // dmtz kgzb vadp cdki
     },
     ApiUrl: "http://localhost:9005",
     adminURL: "http://localhost:4200",
