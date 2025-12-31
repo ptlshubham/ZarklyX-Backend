@@ -2,8 +2,6 @@ import express from "express";
 import dbInstance from "../../../../../db/core/control-db";
 import { serverError } from "../../../../../utils/responseHandler";
 import { tokenMiddleWare } from "../../../../../services/jwtToken-service";
-
-
 import {
   addPremiumModule,
   getPremiumModuleByID,

@@ -6,7 +6,7 @@ const users = [
     name: 'Admin',
     mobile_number: "9852565455",
     email: "adminA@gmail.com",
-    role: "driver", // or "passenger"
+    role: "agency", // or "passenger"
     loginType: "email",
     isEmailVerified: true,
     isMobileVerified: true,

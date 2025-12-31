@@ -119,7 +119,6 @@ export const checkCategoryActive = async (name: string) => {
   return !!moduleRecord;
 };
 
-// dynamic filter with MakeQuery (if you use it for listing with filters)
 export const getCategorysWithFilter = async (query: any) => {
   const where: any = {};
 

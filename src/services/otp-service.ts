@@ -6,6 +6,8 @@ import nodemailer from 'nodemailer';
 
 // Load environment configuration
 const config = (configs as { [key: string]: any })[environment];
+const MSG91_AUTHKEY = '446606Apuh307kK692fd83cP1';
+const TEMPLATE_ID = '66b607add6fc057c8f61f502';
 const COUNTRY_CODE = '91';
 
 // Email configuration from environment
@@ -25,8 +27,8 @@ const transporter = nodemailer.createTransport({
   auth: {
     // user: "your_current@gmail.com", // your Gmail address 
     // pass: 'your_secure_pass', // replace with your app password 
-    user: "br.rinkal1997@gmail.com", // your Gmail address // br.rinkal1997@gmail.com
-    pass: 'lhbodchvrstpqmhf', // replace with your app password // dmtz kgzb vadp cdki
+    user: "zarklyxconnection@gmail.com", // your Gmail address // br.rinkal1997@gmail.com
+    pass: 'iysmcygimxwwxreq', // replace with your app password // dmtz kgzb vadp cdki
   },
 });
 
@@ -89,18 +91,21 @@ export const sendMobileOTP = async (data: any, type: string): Promise<{ success:
   }
 
   try {
-    await axios.post(`https://control.msg91.com/api/v5/flow`, payload, {
+    const MSG91_BASE_URL = process.env.MSG91_BASE_URL || 'https://control.msg91.com/api/v5/flow';
+    const authKey = process.env.MSG91_AUTHKEY || MSG91_AUTHKEY;
+
+    await axios.post(MSG91_BASE_URL, payload, {
       headers: {
-        authkey: '424629ATc4GgIzI66a9d8f9P1',
+        authkey: authKey,
         accept: 'application/json',
         'Content-Type': 'application/json',
       },
     });
 
     return { success: true };
-  } catch (error) {
-    console.error('Error sending mobile OTP:', error);
-    return { success: false, message: 'Failed to send mobile OTP' };
+  } catch (error: any) {
+    console.error('Error sending mobile OTP:', error?.message || error);
+    return { success: false, message: error?.message || 'Failed to send mobile OTP' };
   }
 };
 
@@ -131,14 +136,10 @@ export const sendOTP = async (
   data: any,
   type: string
 ): Promise<{ success: boolean; message?: string }> => {
-  console.log("RAW OTP DATA RECEIVED:", data);
-
-  const contact = data.contact || data.contact || data.contact;
+  const contact = data.contact;
   const email = data.email;
 
-  console.log("Extracted mobile:", contact);
-  console.log("Extracted email:", email);
-
+  console.log("sendOTP called with data:", data, "and type:", type);
   if (contact) {
     return await sendMobileOTP({ contact, mbOTP: data.mbOTP }, type);
   } else if (email) {

@@ -251,12 +251,19 @@ router.post("/send-otp", async (req: Request, res: Response): Promise<any>=> {
     }
 
     const nameData = email || contact;
-     sendEncryptedResponse(
-      res,
-      { userId: user.id },
-      `OTP sent to ${nameData}`
-    );
-    return;
+    return res.status(200).json({
+      success: true,
+      message: `OTP sent to  ${nameData}.`,
+      data: { 
+        userId : user.id
+      }
+    })
+    //  sendEncryptedResponse(
+    //   res,
+    //   { userId: user.id },
+    //   `OTP sent to ${nameData}`
+    // );
+    // return;
   } catch (error: any) {
     console.error("Error in /send-otp:", error);
     ErrorLogger.write({ type: "send-otp error", error });

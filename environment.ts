@@ -15,7 +15,7 @@
 //   // URLs & Security Configurations
 //   API_URL: "http://localhost:9005",  // Backend API URL
 //   ADMIN_URL: "http://localhost:4200", // Admin Panel URL (if applicable)
-//   CRYPTO_KEY: "rideit_secure_key",   // Encryption key for sensitive data
+//   CRYPTO_KEY: "zarklyx_secure_key",   // Encryption key for sensitive data
 
 //   // Email Configuration (using Hostinger or Gmail)
 //   SENDER_EMAIL_HOST: "smtp.hostinger.com",  // Or 'smtp.gmail.com' for Gmail

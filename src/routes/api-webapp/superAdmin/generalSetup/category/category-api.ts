@@ -73,35 +73,7 @@ router.get("/getByCategoryId/:id", async (req, res): Promise<any> => {
   }
 });
 
-// Update Category module
-// router.post("/updateCategoryById/:id", async (req, res): Promise<any> => {
-//   const t = await dbInstance.transaction();
-//   try {
-//     const moduleData = await updateCategory(Number(req.body.id), req.body, t);
-//     await t.commit();
-//     return res.status(200).json({
-//       success: true,
-//       message: "Category module updated successfully.",
-//       data: moduleData,
-//     });
-//   } catch (error: any) {
-//     await t.rollback();
-
-//     if (
-//       error.name === "SequelizeUniqueConstraintError" &&
-//       error.errors?.some((e: any) => e.path === "name")
-//     ) {
-//       return res.status(409).json({
-//         success: false,
-//         message: "This Category module name is already registered.",
-//         field: "name",
-//       });
-//     }
-
-//     console.error("Category update Error:", error);
-//     return serverError(res, "Something went wrong during Category module update.");
-//   }
-// });
+//update category by id
 router.post("/updateCategoryById", async (req, res): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
@@ -117,7 +89,7 @@ router.post("/updateCategoryById", async (req, res): Promise<any> => {
   } catch (error: any) {
     await t.rollback();
 
-    console.error("Category update Error:", error); // <- watch your terminal!
+    console.error("Category update Error:", error); 
 
     if (
       error.name === "SequelizeUniqueConstraintError" &&
@@ -133,39 +105,6 @@ router.post("/updateCategoryById", async (req, res): Promise<any> => {
     return serverError(res, "Something went wrong during Category update.");
   }
 });
-
-// router.post("/updateCategoryById/:id", async (req, res): Promise<any> => {
-//   const t = await dbInstance.transaction();
-//   try {
-//     const id = Number(req.params.id); 
-
-//     const moduleData = await updateCategory(id, req.body, t);
-//     await t.commit();
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Category module updated successfully.",
-//       data: moduleData,
-//     });
-//   } catch (error: any) {
-//     await t.rollback();
-
-//     if (
-//       error.name === "SequelizeUniqueConstraintError" &&
-//       error.errors?.some((e: any) => e.path === "name")
-//     ) {
-//       return res.status(409).json({
-//         success: false,
-//         message: "This Category module name is already registered.",
-//         field: "name",
-//       });
-//     }
-
-//     console.error("Category update Error:", error);
-//     return serverError(res, "Something went wrong during Category module update.");
-//   }
-// });
-
 
 // Soft delete Category module (isActive = false)
 router.get("/removeById/:id", async (req, res): Promise<any> => {
