@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser  } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser } from "../../../../../services/drive-service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
 import { sendEmailWithAttachments } from "../../../../../services/gmail-service";
@@ -50,8 +50,8 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
   try {
     const code = req.query.code as string;
     if (!code) {
-       res.status(400).json({ success: false, message: "Missing code" });
-       return
+      res.status(400).json({ success: false, message: "Missing code" });
+      return
     }
 
     const tokens = await exchangeDriveCodeForTokens(code);
@@ -59,14 +59,14 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
     let accountEmail: string | null = null;
     let accountId: string | null = null;
 
-    
+
     if (tokens.id_token) {
       const decoded: any = jwt.decode(tokens.id_token);
       accountEmail = decoded?.email || null;
       accountId = decoded?.sub || null;
     }
 
-    
+
     if (!accountEmail && tokens.access_token) {
       const userinfo = await axios.get(
         "https://openidconnect.googleapis.com/v1/userinfo",
@@ -78,9 +78,9 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
       accountId = userinfo.data.sub;
     }
 
-    
+
     if (!accountEmail) {
-       res.status(400).json({
+      res.status(400).json({
         success: false,
         message: "Failed to resolve Google account email",
       });
@@ -88,8 +88,8 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
 
     await saveOrUpdateToken({
       provider: "google",
-      accountEmail,      
-      accountId,          
+      accountEmail,
+      accountId,
       scopes: (process.env.GOOGLE_SCOPES || "").split(","),
       accessToken: tokens.access_token || null,
       refreshToken: tokens.refresh_token || null,
@@ -97,17 +97,46 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
       tokenType: tokens.token_type || "Bearer",
     });
 
-     res.json({
-      success: true,
-      accountEmail,
-      accountId,
-    });
+    // Redirect to frontend with tokens in URL parameters
+    const frontendCallback = `${process.env.ADMIN_URL || 'http://localhost:4200'}/auth/oauth2callback?accessToken=${encodeURIComponent(tokens.access_token || '')}&refreshToken=${encodeURIComponent(tokens.refresh_token || '')}&expiryDate=${tokens.expiry_date || ''}&tokenType=${tokens.token_type || 'Bearer'}&success=true`;
+    res.redirect(frontendCallback);
+
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
+// GET /drive/me/profile
+router.get("/me/profile", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { access_token, refresh_token } = extractTokens(req);
+
+    if (!access_token && !refresh_token) {
+      res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    // Call Google Drive API's about endpoint
+    const userinfo = await axios.get(
+      "https://www.googleapis.com/drive/v3/about?fields=user,storageQuota",
+      {
+        headers: { Authorization: `Bearer ${access_token}` },
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      user: userinfo.data.user,
+      storageQuota: userinfo.data.storageQuota
+    });
+    return;
+  } catch (error: any) {
+    console.error('Failed to get profile:', error.message);
+    res.status(500).json({ success: false, message: error.message || "Failed to get profile" });
+    return;
+  }
+});
 
 // GET /drive/me/files
 router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
