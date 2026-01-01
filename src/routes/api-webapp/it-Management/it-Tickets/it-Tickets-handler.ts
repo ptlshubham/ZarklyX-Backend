@@ -2,7 +2,7 @@
 import { Op, Transaction } from "sequelize";
 import { ItTickets } from "./it-Tickets-model";
 import fs from "fs";
-
+import path from "path";
 
 //create a new ticket
 export async function createTicket(ticketData: any, t: any) {
@@ -27,17 +27,17 @@ export async function getAllTicketsByUserId(userId: string) {
 }
 
 function normalizeAttachments(
-  attachments: string[] | string | null
+    attachments: string[] | string | null
 ): string[] {
-  if (Array.isArray(attachments)) return attachments;
-  if (typeof attachments === "string") {
-    try {
-      return JSON.parse(attachments);
-    } catch {
-      return [];
+    if (Array.isArray(attachments)) return attachments;
+    if (typeof attachments === "string") {
+        try {
+            return JSON.parse(attachments);
+        } catch {
+            return [];
+        }
     }
-  }
-  return [];
+    return [];
 }
 
 //update ticket details by user
@@ -76,7 +76,12 @@ export async function updateTicketDetails(id: string, userId: string, ticketData
         transaction: t,
     });
 
-    return updatedTicket;
+    if (!updatedTicket) return null;
+
+    const ticketObj = updatedTicket.get({ plain: true });
+    ticketObj.attachments = normalizeAttachments(ticketObj.attachments);
+
+    return ticketObj;
 
 }
 
@@ -101,8 +106,15 @@ export async function removeTicketAttachmentsByUser(id: string, userId: string, 
     }
 
     try {
-        if (fs.existsSync(attachment)) {
-            fs.unlinkSync(attachment);
+        const absolutePath = path.join(
+            process.cwd(),
+            "src",
+            "public",
+            attachment
+        );
+
+        if (fs.existsSync(absolutePath)) {
+            fs.unlinkSync(absolutePath);
         }
     } catch (err) {
         console.error("File delete failed:", err);

@@ -13,36 +13,47 @@ import { serverError, success, unauthorized } from "../../../../utils/responseHa
 // import { tokenMiddleWare } from 'src/services/jwtToken-service';
 import dbInstance from '../../../../db/core/control-db';
 import { ticketAttachmentUpload } from '../../../../services/multer';
+import path from "path";
 
 const router = express.Router();
 
 
 //create ticket route PATCH /itManagement/itTickets/createItTickets
 router.post("/createItTickets", ticketAttachmentUpload.array("attachments", 5), async (req: Request, res: Response): Promise<any> => {
-    const t = await dbInstance.transaction();
-    try {
-        if (req.files?.length) {
-            req.body.attachments = (req.files as Express.Multer.File[])
-                .map(f => f.path);
-        }
-        else {
-            req.body.attachments = null; 
-        }
+        const t = await dbInstance.transaction();
+        try {
+            if (req.files?.length) {
+                req.body.attachments = (req.files as Express.Multer.File[]).map(
+                    (f) => {
+                        const relativePath = path
+                            .relative(
+                                path.join(process.cwd(), "src/public"),
+                                f.path
+                            )
+                            .replace(/\\/g, "/");
 
-        const data = await createTicket(req.body, t);
-        await t.commit();
+                        return `/${relativePath}`;
+                    }
+                );
+            } else {
+                req.body.attachments = null;
+            }
 
-        return res.status(200).json({
-            success: true,
-            message: "Ticket created successfully",
-            data,
-        });
-    } catch (error) {
-        await t.rollback();
-        console.error("Create Ticket Error:", error);
-        return serverError(res, "Failed to create ticket.");
+            const data = await createTicket(req.body, t);
+            await t.commit();
+
+            return res.status(200).json({
+                success: true,
+                message: "Ticket created successfully",
+                data,
+            });
+        } catch (error) {
+            await t.rollback();
+            console.error("Create Ticket Error:", error);
+            return serverError(res, "Failed to create ticket.");
+        }
     }
-});
+);
 
 
 
@@ -81,7 +92,16 @@ router.patch("/updateItTicketsDetailsByUser", ticketAttachmentUpload.array("atta
         const { id, userId, subject, description, preferredDate } = req.body;
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
             req.body.attachments = (req.files as Express.Multer.File[]).map(
-                (file) => file.path
+                (f) => {
+                    const relativePath = path
+                        .relative(
+                            path.join(process.cwd(), "src/public"),
+                            f.path
+                        )
+                        .replace(/\\/g, "/");
+
+                    return `/${relativePath}`;
+                }
             );
         }
         if (!id || !userId) {
