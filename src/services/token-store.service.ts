@@ -15,6 +15,7 @@ export async function initTokenStore() {
 
 export async function saveOrUpdateToken(params: {
   accountEmail?: string | null;
+  accountId?: string | null;
   provider: string;
   scopes: string[];
   accessToken?: string | null;
@@ -22,27 +23,45 @@ export async function saveOrUpdateToken(params: {
   expiryDate?: number | null;
   tokenType?: string | null;
 }) {
-  const key = { accountEmail: params.accountEmail || null, provider: params.provider };
-  const existing = await SocialToken.findOne({ where: key });
   const scopesStr = params.scopes.join(" ");
+
+  // find only by provider
+  const existing = await SocialToken.findOne({
+    where: { provider: params.provider },
+  });
+
   if (existing) {
+    //  UPDATE (do NOT overwrite email with null)
     existing.scopes = scopesStr;
-    existing.accessToken = params.accessToken || null;
-    existing.refreshToken = params.refreshToken || existing.refreshToken || null;
-    existing.expiryDate = params.expiryDate || null;
-    existing.tokenType = params.tokenType || null;
+    existing.accessToken = params.accessToken ?? existing.accessToken;
+    existing.refreshToken = params.refreshToken ?? existing.refreshToken;
+    existing.expiryDate = params.expiryDate ?? existing.expiryDate;
+    existing.tokenType = params.tokenType ?? existing.tokenType;
+
+    // update email/id ONLY if present
+    if (params.accountEmail) {
+      existing.accountEmail = params.accountEmail;
+    }
+    if (params.accountId) {
+      existing.accountId = params.accountId;
+    }
+
     await existing.save();
     return existing;
   }
+
+  //INSERT
   const created = await SocialToken.create({
-    accountEmail: params.accountEmail || null,
     provider: params.provider,
     scopes: scopesStr,
     accessToken: params.accessToken || null,
     refreshToken: params.refreshToken || null,
     expiryDate: params.expiryDate || null,
     tokenType: params.tokenType || null,
+    accountEmail: params.accountEmail || null,
+    accountId: params.accountId || null,
   } as any);
+
   return created;
 }
 

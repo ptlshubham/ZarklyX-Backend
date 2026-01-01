@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { Readable } from "stream";
+import axios from "axios";
 
 // Prefer unified GOOGLE_SCOPES if provided, otherwise fall back to DRIVE_SCOPES, then readonly
 const DEFAULT_SCOPES = (
@@ -189,4 +190,14 @@ export async function readDriveFileAsBase64(tokens: DriveTokens, fileId: string)
   });
   const buf = Buffer.concat(chunks);
   return { base64: buf.toString("base64"), mimeType: targetMime, name: meta.name || fileId };
+}
+
+export async function getGoogleUser(accessToken: string) {
+  const url = "https://openidconnect.googleapis.com/v1/userinfo";
+  const res = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  return res.data;
 }

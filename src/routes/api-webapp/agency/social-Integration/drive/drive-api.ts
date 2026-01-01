@@ -1,5 +1,7 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64 } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser } from "../../../../../services/drive-service";
+import jwt from "jsonwebtoken";
+import axios from "axios";
 import { sendEmailWithAttachments } from "../../../../../services/gmail-service";
 import multer from "multer";
 import { saveOrUpdateToken, updateAccessToken } from "../../../../../services/token-store.service";
@@ -35,7 +37,7 @@ router.get("/auth/url", async (req: Request, res: Response): Promise<void> => {
       process.env.GOOGLE_REDIRECT_URI ||
       `${process.env.API_URL || "http://localhost:9005"}/drive/oauth2callback`
     );
-    res.status(200).json({ success: true, url, scopes, expectedRedirectUri, clientId: (process.env.GOOGLE_CLIENT_ID || "").slice(0,10) + "…" });
+    res.status(200).json({ success: true, url, scopes, expectedRedirectUri, clientId: (process.env.GOOGLE_CLIENT_ID || "").slice(0, 10) + "…" });
     return;
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || "Failed to generate auth URL" });
@@ -48,46 +50,90 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
   try {
     const code = req.query.code as string;
     if (!code) {
-      res.status(400).json({ success: false, message: "Missing 'code' parameter" });
-      return;
+      res.status(400).json({ success: false, message: "Missing code" });
+      return
     }
+
     const tokens = await exchangeDriveCodeForTokens(code);
 
-    // Validate against the unified scopes if configured
-    const requiredScopes = (
-      process.env.GOOGLE_SCOPES ||
-      process.env.DRIVE_SCOPES ||
-      "https://www.googleapis.com/auth/drive.readonly"
-    )
-      .split(",")
-      .map(s => s.trim());
-    let tokenInfo: any = undefined;
-    try {
-      if (tokens?.access_token) tokenInfo = await getDriveAccessTokenInfo(tokens.access_token);
-    } catch {}
-    const grantedScopes: string[] = tokenInfo?.scope?.split(" ")?.filter(Boolean) || [];
-    const missing = requiredScopes.filter(rs => !grantedScopes.includes(rs));
-    if (missing.length > 0) {
-      const reconsentUrl = generateDriveAuthUrl(requiredScopes);
-      res.status(400).json({ success: false, message: "OAuth succeeded but required Drive scopes were not granted. Please re-consent.", requiredScopes, tokenInfo, reconsentUrl });
-      return;
+    let accountEmail: string | null = null;
+    let accountId: string | null = null;
+
+
+    if (tokens.id_token) {
+      const decoded: any = jwt.decode(tokens.id_token);
+      accountEmail = decoded?.email || null;
+      accountId = decoded?.sub || null;
     }
 
-    // Persist Drive tokens
-    const accountEmail = (req.query.accountEmail as string) || (req.headers["x-account-email"] as string) || null;
+
+    if (!accountEmail && tokens.access_token) {
+      const userinfo = await axios.get(
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+        }
+      );
+      accountEmail = userinfo.data.email;
+      accountId = userinfo.data.sub;
+    }
+
+
+    if (!accountEmail) {
+      res.status(400).json({
+        success: false,
+        message: "Failed to resolve Google account email",
+      });
+    }
+
     await saveOrUpdateToken({
+      provider: "google",
       accountEmail,
-      provider: "drive",
-      scopes: grantedScopes.length ? grantedScopes : requiredScopes,
+      accountId,
+      scopes: (process.env.GOOGLE_SCOPES || "").split(","),
       accessToken: tokens.access_token || null,
       refreshToken: tokens.refresh_token || null,
       expiryDate: tokens.expiry_date || null,
-      tokenType: tokens.token_type || null,
+      tokenType: tokens.token_type || "Bearer",
     });
-    res.status(200).json({ success: true, tokens, tokenInfo });
+
+    // Redirect to frontend with tokens in URL parameters
+    const frontendCallback = `${process.env.ADMIN_URL || 'http://localhost:4200'}/auth/oauth2callback?accessToken=${encodeURIComponent(tokens.access_token || '')}&refreshToken=${encodeURIComponent(tokens.refresh_token || '')}&expiryDate=${tokens.expiry_date || ''}&tokenType=${tokens.token_type || 'Bearer'}&success=true`;
+    res.redirect(frontendCallback);
+
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /drive/me/profile
+router.get("/me/profile", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { access_token, refresh_token } = extractTokens(req);
+
+    if (!access_token && !refresh_token) {
+      res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    // Call Google Drive API's about endpoint
+    const userinfo = await axios.get(
+      "https://www.googleapis.com/drive/v3/about?fields=user,storageQuota",
+      {
+        headers: { Authorization: `Bearer ${access_token}` },
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      user: userinfo.data.user,
+      storageQuota: userinfo.data.storageQuota
+    });
     return;
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "OAuth callback failed" });
+    console.error('Failed to get profile:', error.message);
+    res.status(500).json({ success: false, message: error.message || "Failed to get profile" });
     return;
   }
 });
@@ -358,7 +404,7 @@ router.get("/me/files/download/:id", async (req: Request, res: Response): Promis
     const meta = await getDriveFileMetadata(tokens, fileId);
     // Google Docs types must be exported instead of downloaded
     if ((meta.mimeType || "").startsWith("application/vnd.google-apps")) {
-      res.status(400).json({ success: false, message: "This is a Google Docs type. Use /drive/me/files/export/:id?mimeType=..." , meta });
+      res.status(400).json({ success: false, message: "This is a Google Docs type. Use /drive/me/files/export/:id?mimeType=...", meta });
       return;
     }
     const { stream } = await downloadDriveFileStream(tokens, fileId);
@@ -430,7 +476,7 @@ router.get("/debug", async (_req: Request, res: Response): Promise<void> => {
       .split(",")
       .map(s => s.trim())
       .filter(Boolean);
-    res.status(200).json({ success: true, expectedRedirectUri, clientIdStart: clientId.slice(0,10)+"…", scopes });
+    res.status(200).json({ success: true, expectedRedirectUri, clientIdStart: clientId.slice(0, 10) + "…", scopes });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message || "Failed to read config" });
   }

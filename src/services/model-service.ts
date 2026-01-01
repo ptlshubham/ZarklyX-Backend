@@ -93,3 +93,5 @@ module.exports = {
   MakeOptions,
   queryData,
 };
+
+export { MakeQuery };
