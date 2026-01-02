@@ -4,7 +4,22 @@ import jwt from "jsonwebtoken";
 import axios from "axios";
 import { sendEmailWithAttachments } from "../../../../../services/gmail-service";
 import multer from "multer";
-import { saveOrUpdateToken, updateAccessToken } from "../../../../../services/token-store.service";
+import { saveOrUpdateToken, updateAccessToken, getConnectedDrivesByCompanyId } from "../../../../../services/token-store.service";
+import { notifySocialConnectionAdded } from "../../../../../services/socket-service";
+import { v4 as uuidv4 } from "uuid";
+
+// Server-side temporary store for OAuth state (alternative to session)
+const oauthStateStore = new Map<string, { companyId: string; timestamp: number }>();
+
+// Clean up expired state entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of oauthStateStore.entries()) {
+    if (now - value.timestamp > 30 * 60 * 1000) { // 30 minute expiry
+      oauthStateStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
 
 const router = express.Router();
 
@@ -31,13 +46,40 @@ router.get("/auth/url", async (req: Request, res: Response): Promise<void> => {
       process.env.DRIVE_SCOPES ||
       "https://www.googleapis.com/auth/drive.readonly";
     const scopes = scopesParam.split(",").map(s => s.trim()).filter(Boolean);
-    const url = generateDriveAuthUrl(scopes);
+    
+    // Capture companyId from query params to pass through OAuth flow
+    const companyId = req.query.companyId as string;
+    
+    if (!companyId) {
+      res.status(400).json({ error: "companyId is required" });
+      return;
+    }
+    
+    // Generate unique state identifier
+    const stateId = uuidv4();
+    
+    // Store companyId in server-side state store (more reliable than session for OAuth)
+    oauthStateStore.set(stateId, {
+      companyId: companyId,
+      timestamp: Date.now()
+    });
+    
+    const url = generateDriveAuthUrl(scopes, stateId, "offline", "consent");
+    
     const expectedRedirectUri = (
       process.env.DRIVE_REDIRECT_URI ||
       process.env.GOOGLE_REDIRECT_URI ||
       `${process.env.API_URL || "http://localhost:9005"}/drive/oauth2callback`
     );
-    res.status(200).json({ success: true, url, scopes, expectedRedirectUri, clientId: (process.env.GOOGLE_CLIENT_ID || "").slice(0, 10) + "…" });
+    
+    res.status(200).json({ 
+      success: true, 
+      url, 
+      scopes, 
+      expectedRedirectUri, 
+      clientId: (process.env.GOOGLE_CLIENT_ID || "").slice(0, 10) + "…",
+      companyId: companyId || null 
+    });
     return;
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || "Failed to generate auth URL" });
@@ -49,9 +91,11 @@ router.get("/auth/url", async (req: Request, res: Response): Promise<void> => {
 router.get("/oauth2callback", async (req: Request, res: Response): Promise<void> => {
   try {
     const code = req.query.code as string;
+    const state = req.query.state as string;
+    
     if (!code) {
       res.status(400).json({ success: false, message: "Missing code" });
-      return
+      return;
     }
 
     const tokens = await exchangeDriveCodeForTokens(code);
@@ -59,13 +103,11 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
     let accountEmail: string | null = null;
     let accountId: string | null = null;
 
-
     if (tokens.id_token) {
       const decoded: any = jwt.decode(tokens.id_token);
       accountEmail = decoded?.email || null;
       accountId = decoded?.sub || null;
     }
-
 
     if (!accountEmail && tokens.access_token) {
       const userinfo = await axios.get(
@@ -78,24 +120,62 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
       accountId = userinfo.data.sub;
     }
 
-
     if (!accountEmail) {
       res.status(400).json({
         success: false,
         message: "Failed to resolve Google account email",
       });
+      return;
     }
 
+    // Retrieve companyId from state store (more reliable than session for OAuth)
+    let companyId: string | null = null;
+    
+    if (state) {
+      if (oauthStateStore.has(state)) {
+        const stateData = oauthStateStore.get(state);
+        if (stateData) {
+          const timestamp = stateData.timestamp;
+          
+          // Check if state data is still valid (within 30 minutes)
+          if (Date.now() - timestamp < 30 * 60 * 1000) {
+            companyId = stateData.companyId;
+          } else {
+            console.warn("⚠️ [OAUTH2CALLBACK] State data expired in store");
+          }
+        }
+        
+        // Clean up state after use
+        oauthStateStore.delete(state);
+      } else {
+        console.warn("⚠️ [OAUTH2CALLBACK] State NOT FOUND in store. State:", state);
+      }
+    } else {
+      console.warn("⚠️ [OAUTH2CALLBACK] No state parameter in URL");
+    }
+
+    // Save tokens with companyId for multiple drives support
     await saveOrUpdateToken({
       provider: "google",
       accountEmail,
       accountId,
+      companyId,
       scopes: (process.env.GOOGLE_SCOPES || "").split(","),
       accessToken: tokens.access_token || null,
       refreshToken: tokens.refresh_token || null,
       expiryDate: tokens.expiry_date || null,
       tokenType: tokens.token_type || "Bearer",
     });
+
+    // 🔥 BROADCAST: Notify all company users about the new drive connection
+    if (companyId) {
+      notifySocialConnectionAdded(companyId, {
+        provider: "google-drive",
+        accountEmail,
+        accountId: accountId || undefined,
+        accountName: accountEmail.split("@")[0],
+      });
+    }
 
     // Redirect to frontend with tokens in URL parameters
     const frontendCallback = `${process.env.ADMIN_URL || 'http://localhost:4200'}/auth/oauth2callback?accessToken=${encodeURIComponent(tokens.access_token || '')}&refreshToken=${encodeURIComponent(tokens.refresh_token || '')}&expiryDate=${tokens.expiry_date || ''}&tokenType=${tokens.token_type || 'Bearer'}&success=true`;
@@ -110,31 +190,65 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
 // GET /drive/me/profile
 router.get("/me/profile", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { access_token, refresh_token } = extractTokens(req);
+    let { access_token, refresh_token } = extractTokens(req);
 
     if (!access_token && !refresh_token) {
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;
     }
 
-    // Call Google Drive API's about endpoint
-    const userinfo = await axios.get(
-      "https://www.googleapis.com/drive/v3/about?fields=user,storageQuota",
-      {
-        headers: { Authorization: `Bearer ${access_token}` },
-      }
-    );
+    try {
+      // Try to call Google Drive API with current token
+      const userinfo = await axios.get(
+        "https://www.googleapis.com/drive/v3/about?fields=user,storageQuota",
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+        }
+      );
 
-    res.status(200).json({
-      success: true,
-      user: userinfo.data.user,
-      storageQuota: userinfo.data.storageQuota
-    });
-    return;
+      res.status(200).json({
+        success: true,
+        user: userinfo.data.user,
+        storageQuota: userinfo.data.storageQuota
+      });
+    } catch (apiError: any) {
+      // If token expired (401), try to refresh it
+      if (apiError.response?.status === 401 && refresh_token) {
+        console.log('Access token expired, attempting to refresh...');
+        
+        try {
+          const refreshed = await refreshDriveAccessToken(refresh_token);
+          access_token = refreshed.access_token;
+          
+          // Retry the API call with refreshed token
+          const userinfo = await axios.get(
+            "https://www.googleapis.com/drive/v3/about?fields=user,storageQuota",
+            {
+              headers: { Authorization: `Bearer ${access_token}` },
+            }
+          );
+
+          res.status(200).json({
+            success: true,
+            user: userinfo.data.user,
+            storageQuota: userinfo.data.storageQuota,
+            tokenRefreshed: true
+          });
+        } catch (refreshError: any) {
+          console.error('Token refresh failed:', refreshError.message);
+          res.status(401).json({ 
+            success: false, 
+            message: "Token expired and refresh failed. Please re-authenticate.",
+            requiresReauth: true
+          });
+        }
+      } else {
+        throw apiError;
+      }
+    }
   } catch (error: any) {
     console.error('Failed to get profile:', error.message);
     res.status(500).json({ success: false, message: error.message || "Failed to get profile" });
-    return;
   }
 });
 
@@ -479,6 +593,36 @@ router.get("/debug", async (_req: Request, res: Response): Promise<void> => {
     res.status(200).json({ success: true, expectedRedirectUri, clientIdStart: clientId.slice(0, 10) + "…", scopes });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message || "Failed to read config" });
+  }
+});
+
+// GET /drive/company/:companyId/drives
+// Get all connected Google Drive accounts for a company
+router.get("/company/:companyId/drives", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const companyId = req.params.companyId;
+
+    if (!companyId) {
+      res.status(400).json({ success: false, message: "Missing companyId" });
+      return;
+    }
+
+    // Fetch all connected drives for this company from database
+    const drives = await getConnectedDrivesByCompanyId(companyId);
+
+    res.status(200).json({
+      success: true,
+      data: drives || [],
+      message: drives && drives.length > 0 ? "Connected drives found" : "No connected drives"
+    });
+    return;
+  } catch (error: any) {
+    console.error('Failed to fetch company drives:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || "Failed to fetch company drives" 
+    });
+    return;
   }
 });
 

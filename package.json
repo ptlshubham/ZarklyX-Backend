@@ -39,6 +39,7 @@
     "qs": "^6.14.0",
     "sequelize": "^6.37.7",
     "sequelize-cli": "^6.6.2",
+    "socket.io": "^4.7.2",
     "speakeasy": "^2.0.0",
     "uuid": "^13.0.0",
     "winston": "^3.8.2",

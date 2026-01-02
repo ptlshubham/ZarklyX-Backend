@@ -5,6 +5,7 @@ import connectMySQL from "./config/dbSQL"; // Importing MySQL Connection
 import { connectDatabases } from "./config/db"; // MongoDB connection
 import { initControlDBConnection } from "./db/core/control-db";
 import { initTokenStore } from "./services/token-store.service";
+import { initializeSocket } from "./services/socket-service";
 import http from "http";
 import cors from 'cors';
 import { ConsoleSpinner } from "./services/console-info";
@@ -34,23 +35,32 @@ const bodyParser = require('body-parser');
 const cookieSession = require('cookie-session');
 
 import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
+import itTicketsRoutes from './routes/api-webapp/it-Management/it-Tickets/it-Tickets-api';
 
 import path from "path";
 const app = express();
 dotenv.config();
+
+// CORS must be applied FIRST, before other middleware
+app.use(cors({
+  origin: 'http://localhost:4200', // Angular app origin
+  credentials: true,               // Allow credentials (cookies)
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Access-Token', 'X-Refresh-Token']
+}));
+
+// Body parser middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Session middleware AFTER CORS, BEFORE routes
 app.use(cookieSession({
   name: 'session',
   keys: [process.env.COOKIE_SECRET || 'default_secret_key'],
-  maxAge: 24 * 60 * 60 * 1000 // 24 hours
-}));
-
-//Rinkal 
-app.use(cors({
-  origin: 'http://localhost:4200', // Angular app  origin
-  credentials: true,               // only if you want to send cookies
+  maxAge: 24 * 60 * 60 * 1000, // 24 hours
+  httpOnly: true,
+  secure: false, // Set to true if using HTTPS
+  sameSite: 'lax' // Important for OAuth redirects
 }));
 
 // console.log("FB APP ID:", process.env.FACEBOOK_APP_ID);
@@ -77,6 +87,7 @@ app.use("/twitter", twitterRoutes);
 app.use("/tiktok", tiktokRoutes);
 app.use("/roles", rolesRoutes);
 app.use("/influencer", influencerRoutes);
+app.use("/itManagement/itTickets", itTicketsRoutes);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
@@ -125,6 +136,15 @@ app.use("/employee", employeeRoutes);
 })();
 
 const server = http.createServer(app);
+
+// Initialize Socket.io
+(async () => {
+  try {
+    await initializeSocket(server);
+  } catch (err) {
+    console.error("Socket.io initialization error:", err);
+  }
+})();
 
 // Allow overriding the port with the PORT environment variable (useful in dev or CI)
 const unsecurePort = Number(process.env.PORT) || 9005;
