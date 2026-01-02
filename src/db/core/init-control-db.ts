@@ -1,4 +1,6 @@
 import type { Sequelize } from "sequelize";
+
+// Models for Web -app
 import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
 import { UserCompany, initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
@@ -9,12 +11,17 @@ import { PremiumModule } from "../../routes/api-webapp/superAdmin/generalSetup/p
 import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
+import { ItTickets } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-model";
+// import { Role } from "../../routes/api-webapp/roles/role-model";
+// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
-import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
-import { Role } from "../../routes/api-webapp/roles/role-model";
-import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 
+// import { Role } from "../../routes/api-webapp/roles/role-model";
+// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// Use a relative path to the route-local Google token model to avoid module alias issues
+// import { GoogleToken } from "../../routes/api-webapp/agency/social-Integration/google/google-token.model";
 export {
   User,
   Company,
@@ -28,10 +35,12 @@ export {
   BusinessSubcategory,
   SocialToken,
   Employee,
-  Influencer,
+  ItTickets,
   // GoogleToken
 };
 export function initControlDB(sequelize: Sequelize) {
+  // For web App
+  // User.initModel(sequelize);
   User.initModel(sequelize);
   Company.initModel(sequelize);
   PremiumModule.initModel(sequelize);
@@ -40,17 +49,17 @@ export function initControlDB(sequelize: Sequelize) {
   Employee.initModel(sequelize);
   Otp.initModel(sequelize);
   LoginHistory.initModel(sequelize);
+  ItTickets.initModel(sequelize);
   // Roles
-  Role.initModel(sequelize);
-  SubRole.initModel(sequelize);
+  // Role.initModel(sequelize);
+  // SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
   SocialToken.initModel(sequelize);
+  // Role.initModel(sequelize);
+  // SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
-  SocialToken.initModel(sequelize);
-  Influencer.initModel(sequelize);
-
   // GoogleToken.initModel(sequelize); 
   //  initCategoryModel(sequelize);
   //  initPremiumModuleModel(sequelize);
@@ -175,6 +184,27 @@ export function initControlDB(sequelize: Sequelize) {
     as: "user",
   });
 
+  /*** User <-> ItTickets */
+  User.hasMany(ItTickets, {
+    foreignKey: "userId",
+    as: "itTickets",
+  });
+  ItTickets.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
+
+  /*** Company <-> ItTickets */
+  Company.hasMany(ItTickets, {
+    foreignKey: "companyId",
+    as: "itTickets",
+  });
+  ItTickets.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
   // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
@@ -198,11 +228,15 @@ export function initControlDB(sequelize: Sequelize) {
     Clients,
     BusinessType,
     BusinessSubcategory,
-    SocialToken,
-    Role,
-    SubRole,
-    Influencer,
+    // Role,
+    // SubRole,
+    SocialToken
+    ,    // LoginHistory
     Employee,
-
+    ItTickets,
+    // Role,
+    // SubRole,
+    // GoogleToken,
+    // LoginHistory
   };
 }
