@@ -29,11 +29,18 @@ export function getDriveOAuthClient(redirectUri?: string) {
 
 export function generateDriveAuthUrl(
   scopes: string[] = DEFAULT_SCOPES,
+  state?: string,
   accessType: "online" | "offline" = "offline",
   prompt: "consent" | "none" = "consent"
 ) {
   const oauth2Client = getDriveOAuthClient();
-  return oauth2Client.generateAuthUrl({ access_type: accessType, scope: scopes, prompt });
+  const authUrl = oauth2Client.generateAuthUrl({ 
+    access_type: accessType, 
+    scope: scopes, 
+    prompt,
+    state
+  });
+  return authUrl;
 }
 
 export async function exchangeDriveCodeForTokens(code: string, redirectUri?: string) {
