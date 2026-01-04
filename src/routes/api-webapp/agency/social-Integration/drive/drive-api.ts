@@ -4,8 +4,8 @@ import jwt from "jsonwebtoken";
 import axios from "axios";
 import { sendEmailWithAttachments } from "../../../../../services/gmail-service";
 import multer from "multer";
-import { saveOrUpdateToken, updateAccessToken, getConnectedDrivesByCompanyId } from "../../../../../services/token-store.service";
-import { notifySocialConnectionAdded } from "../../../../../services/socket-service";
+import { saveOrUpdateToken, updateAccessToken, getConnectedDrivesByCompanyId, deleteTokensByCompanyIdAndProvider } from "../../../../../services/token-store.service";
+import { notifySocialConnectionAdded, notifySocialConnectionRemoved } from "../../../../../services/socket-service";
 import { v4 as uuidv4 } from "uuid";
 
 // Server-side temporary store for OAuth state (alternative to session)
@@ -36,7 +36,26 @@ function extractTokens(req: Request) {
 // Multer memory upload for sending data directly to Drive
 const memoryUpload = multer({ storage: multer.memoryStorage() });
 
-// GET /drive/auth/url
+/**
+ * 📋 API DOCUMENTATION - GOOGLE DRIVE INTEGRATION ENDPOINTS
+ * ========================================================
+ * All endpoints require tokens (access_token or refresh_token) via headers, query params, or body
+ * Token sources: x-access-token, x-refresh-token headers OR access_token, refresh_token query params/body
+ */
+
+/**
+ * 🔐 AUTHENTICATION ENDPOINTS
+ */
+
+/**
+ * ✅ GET /drive/auth/url
+ * Purpose: Generate OAuth authorization URL for Google Drive authentication
+ * Params: 
+ *   - companyId (required, query): Company ID to associate with the drive account
+ *   - scopes (optional, query): Comma-separated OAuth scopes (default: drive.readonly)
+ * Returns: { success, url, scopes, expectedRedirectUri, clientId, companyId }
+ * Usage: Frontend redirects user to returned 'url' for Google login
+ */
 router.get("/auth/url", async (req: Request, res: Response): Promise<void> => {
   try {
     // Prefer unified GOOGLE_SCOPES, then DRIVE_SCOPES; allow override via ?scopes=csv
@@ -87,7 +106,16 @@ router.get("/auth/url", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// GET /drive/oauth2callback
+/**
+ * ✅ GET /drive/oauth2callback
+ * Purpose: OAuth callback endpoint - receives auth code from Google and exchanges for tokens
+ * Params:
+ *   - code (required, query): Authorization code from Google OAuth
+ *   - state (required, query): State parameter linking to companyId
+ * Returns: Redirects to frontend with tokens in URL parameters
+ * Stores: Saves tokens to database and broadcasts connection to company users
+ * Note: Automatically handles token extraction and company notification
+ */
 router.get("/oauth2callback", async (req: Request, res: Response): Promise<void> => {
   try {
     const code = req.query.code as string;
@@ -187,7 +215,18 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
   }
 });
 
-// GET /drive/me/profile
+/**
+ * 👤 USER/PROFILE ENDPOINTS
+ */
+
+/**
+ * ✅ GET /drive/me/profile
+ * Purpose: Get authenticated user's Google Drive profile and storage quota info
+ * Params: Tokens via headers/query (x-access-token, x-refresh-token)
+ * Returns: { success, user: {displayName, emailAddress, ...}, storageQuota: {limit, usage} }
+ * Auto-refresh: Automatically refreshes expired access tokens using refresh_token
+ * Usage: Display user info and storage usage in frontend dashboard
+ */
 router.get("/me/profile", async (req: Request, res: Response): Promise<void> => {
   try {
     let { access_token, refresh_token } = extractTokens(req);
@@ -252,7 +291,21 @@ router.get("/me/profile", async (req: Request, res: Response): Promise<void> => 
   }
 });
 
-// GET /drive/me/files
+/**
+ * 📁 FILE/FOLDER LISTING ENDPOINTS
+ */
+
+/**
+ * ✅ GET /drive/me/files
+ * Purpose: List all files in user's Google Drive with pagination and search
+ * Params:
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ *   - pageToken (optional, query): Token for next page of results
+ *   - pageSize (optional, query): Number of files per page (default: 25)
+ *   - q (optional, query): Search query to filter files
+ * Returns: { success, data: {files: [], nextPageToken?, ...} }
+ * Usage: Display file list, implement pagination, search functionality
+ */
 router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
   try {
     const { access_token, refresh_token } = extractTokens(req);
@@ -274,7 +327,15 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// GET /drive/file/:id
+/**
+ * ✅ GET /drive/file/:id
+ * Purpose: Get metadata of a specific file by ID
+ * Params:
+ *   - id (required, URL): File ID
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, data: {id, name, mimeType, size, createdTime, modifiedTime, ...} }
+ * Usage: Fetch file details before download/share operations
+ */
 router.get("/file/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const access_token = (req.headers["x-access-token"] as string) || (req.query.access_token as string) || "";
@@ -293,7 +354,19 @@ router.get("/file/:id", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// POST /drive/token/refresh
+/**
+ * 🔄 TOKEN MANAGEMENT ENDPOINTS
+ */
+
+/**
+ * ✅ POST /drive/token/refresh
+ * Purpose: Refresh expired access token using refresh_token
+ * Params:
+ *   - refresh_token (required): Token from body, headers, or query
+ *   - accountEmail (optional): Account email to update in token store
+ * Returns: { success, tokens: {access_token, refresh_token?, expiry_date, token_type} }
+ * Usage: Manual token refresh when access_token expires
+ */
 router.post("/token/refresh", async (req: Request, res: Response): Promise<void> => {
   try {
     const refresh_token = (req.body?.refresh_token as string) || (req.headers["x-refresh-token"] as string) || (req.query.refresh_token as string);
@@ -315,7 +388,14 @@ router.post("/token/refresh", async (req: Request, res: Response): Promise<void>
   }
 });
 
-// GET /drive/tokeninfo
+/**
+ * ✅ GET /drive/tokeninfo
+ * Purpose: Get detailed information about an access token (scope, expiry, user)
+ * Params:
+ *   - access_token (required): Token from headers or query (x-access-token)
+ * Returns: { success, tokenInfo: {issued_at, expires_in, scope, token_type, ...} }
+ * Usage: Verify token validity before operations
+ */
 router.get("/tokeninfo", async (req: Request, res: Response): Promise<void> => {
   try {
     const access_token = (req.headers["x-access-token"] as string) || (req.query.access_token as string);
@@ -332,7 +412,21 @@ router.get("/tokeninfo", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// POST /drive/me/files/upload  (multipart/form-data; field "file")
+/**
+ * 📤 FILE UPLOAD/CREATE ENDPOINTS
+ */
+
+/**
+ * ✅ POST /drive/me/files/upload
+ * Purpose: Upload a file to user's Google Drive
+ * Params:
+ *   - file (required, multipart): File in form field 'file'
+ *   - parentId (optional): Folder ID to upload file into
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Content-Type: multipart/form-data
+ * Returns: { success, file: {id, name, mimeType, webViewLink, ...} }
+ * Usage: Upload documents, images, or any file to Drive
+ */
 router.post("/me/files/upload", memoryUpload.single("file"), async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
@@ -359,7 +453,17 @@ router.post("/me/files/upload", memoryUpload.single("file"), async (req: Request
   }
 });
 
-// POST /drive/me/folders  { name, parentId? }
+/**
+ * ✅ POST /drive/me/folders
+ * Purpose: Create a new folder in Google Drive
+ * Params:
+ *   - name (required, body/query): Folder name
+ *   - parentId (optional, body/query): Parent folder ID (default: root)
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { name, parentId? }
+ * Returns: { success, folder: {id, name, webViewLink, ...} }
+ * Usage: Create folder structure for organizing files
+ */
 router.post("/me/folders", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
@@ -380,7 +484,18 @@ router.post("/me/folders", async (req: Request, res: Response): Promise<void> =>
   }
 });
 
-// GET /drive/me/folders/:id/children
+/**
+ * ✅ GET /drive/me/folders/:id/children
+ * Purpose: List contents (files/folders) inside a specific folder
+ * Params:
+ *   - id (required, URL): Folder ID
+ *   - pageToken (optional, query): For pagination
+ *   - pageSize (optional, query): Items per page (default: 25)
+ *   - q (optional, query): Search filter
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, data: {files: [...], nextPageToken?, ...} }
+ * Usage: Browse folder contents, implement file tree navigation
+ */
 router.get("/me/folders/:id/children", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
@@ -399,7 +514,21 @@ router.get("/me/folders/:id/children", async (req: Request, res: Response): Prom
   }
 });
 
-// POST /drive/me/files/:id/move  { newParentId }
+/**
+ * 🔧 FILE MANAGEMENT ENDPOINTS
+ */
+
+/**
+ * ✅ POST /drive/me/files/:id/move
+ * Purpose: Move a file or folder to a different location
+ * Params:
+ *   - id (required, URL): File/Folder ID to move
+ *   - newParentId (required, body/query): Destination folder ID
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { newParentId }
+ * Returns: { success, result: {id, parents, ...} }
+ * Usage: Reorganize files, move files between folders
+ */
 router.post("/me/files/:id/move", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
@@ -420,7 +549,25 @@ router.post("/me/files/:id/move", async (req: Request, res: Response): Promise<v
   }
 });
 
-// POST /drive/me/files/:id/share  { role, type, emailAddress?, domain?, allowFileDiscovery? }
+/**
+ * 🔗 FILE SHARING ENDPOINTS
+ */
+
+/**
+ * ✅ POST /drive/me/files/:id/share
+ * Purpose: Share a file with specific users/groups/domain
+ * Params:
+ *   - id (required, URL): File ID to share
+ *   - role (required, body): 'viewer', 'commenter', or 'writer'
+ *   - type (required, body): 'user', 'group', 'domain', or 'anyone'
+ *   - emailAddress (optional, body): Email for user/group type
+ *   - domain (optional, body): Domain for domain type
+ *   - allowFileDiscovery (optional, body): Allow file discovery via search
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { role, type, emailAddress?, domain?, allowFileDiscovery? }
+ * Returns: { success, permission: {id, type, role, ...} }
+ * Usage: Share files with team members, external users, or entire domain
+ */
 router.post("/me/files/:id/share", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
@@ -441,9 +588,24 @@ router.post("/me/files/:id/share", async (req: Request, res: Response): Promise<
   }
 });
 
-// POST /drive/me/files/:id/send-email
-// Body: { from, to, subject, text?, html? }
-// Headers: x-gmail-access-token/x-gmail-refresh-token OR generic x-access-token/x-refresh-token with Gmail scopes
+/**
+ * ✅ POST /drive/me/files/:id/send-email
+ * Purpose: Send a Drive file as email attachment via Gmail
+ * Params:
+ *   - id (required, URL): File ID to attach and send
+ *   - from (required, body): Sender email
+ *   - to (required, body): Recipient email(s)
+ *   - subject (required, body): Email subject
+ *   - text (optional, body): Plain text email body
+ *   - html (optional, body): HTML email body
+ * Headers:
+ *   - Drive tokens: x-drive-access-token, x-drive-refresh-token (for reading file)
+ *   - Gmail tokens: x-gmail-access-token, x-gmail-refresh-token (for sending)
+ *   - Fallback: x-access-token, x-refresh-token if specific headers not provided
+ * Body: { from, to, subject, text?, html? }
+ * Returns: { success, messageId, labelIds }
+ * Usage: Send Drive files via email, automated document distribution
+ */
 router.post("/me/files/:id/send-email", async (req: Request, res: Response): Promise<void> => {
   try {
     // Drive tokens for reading the file (fallback to generic)
@@ -481,7 +643,21 @@ router.post("/me/files/:id/send-email", async (req: Request, res: Response): Pro
   }
 });
 
-// Convenience: export a Google Doc to PDF quickly
+/**
+ * 📥 FILE DOWNLOAD/EXPORT ENDPOINTS
+ */
+
+/**
+ * ✅ GET /drive/me/files/export-pdf/:id
+ * Purpose: Quickly export a Google Doc (Docs, Sheets, Slides, etc.) as PDF
+ * Params:
+ *   - id (required, URL): Google Docs file ID
+ *   - filename (optional, query): Output filename (default: fileId)
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: Binary PDF file stream
+ * Content-Type: application/pdf
+ * Usage: Export Google Docs/Sheets/Slides to PDF format
+ */
 router.get("/me/files/export-pdf/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
@@ -502,7 +678,19 @@ router.get("/me/files/export-pdf/:id", async (req: Request, res: Response): Prom
   }
 });
 
-// GET /drive/me/files/download/:id?disposition=inline|attachment&filename=...
+/**
+ * ✅ GET /drive/me/files/download/:id
+ * Purpose: Download a regular file from Google Drive (not Google Docs types)
+ * Params:
+ *   - id (required, URL): File ID to download
+ *   - disposition (optional, query): 'inline' or 'attachment' (default: inline)
+ *   - filename (optional, query): Custom filename for download
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: Binary file stream with appropriate Content-Type
+ * Headers: Content-Disposition, Content-Type set dynamically
+ * Note: For Google Docs types, use /export endpoint instead
+ * Usage: Download regular files (.pdf, .docx, .xlsx, .png, etc.)
+ */
 router.get("/me/files/download/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
@@ -541,8 +729,19 @@ router.get("/me/files/download/:id", async (req: Request, res: Response): Promis
   }
 });
 
-// GET /drive/me/files/export/:id?mimeType=application/pdf&disposition=attachment&filename=
-// drive/me/files/export/15fVKkZa7bfmg5Tcw-y-H0MiVqZv6USoC?mineType=text/x-sql/pdf&disposition=attachment&filename=company.sql
+/**
+ * ✅ GET /drive/me/files/export/:id
+ * Purpose: Export Google Docs types to custom format (PDF, XLSX, DOCX, TXT, etc.)
+ * Params:
+ *   - id (required, URL): Google Docs file ID
+ *   - mimeType (required, query): Target MIME type (e.g., application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document)
+ *   - disposition (optional, query): 'inline' or 'attachment' (default: inline)
+ *   - filename (optional, query): Custom output filename
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: Binary file stream in requested format
+ * Example: /drive/me/files/export/15fVKkZa7bfmg5Tcw-y-H0MiVqZv6USoC?mimeType=text/plain&disposition=attachment&filename=doc.txt
+ * Usage: Convert Google Docs to various formats, export with custom filenames
+ */
 router.get("/me/files/export/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
@@ -577,7 +776,17 @@ router.get("/me/files/export/:id", async (req: Request, res: Response): Promise<
   }
 });
 
-// GET /drive/debug -> show effective config
+/**
+ * 🔧 UTILITY/DEBUG ENDPOINTS
+ */
+
+/**
+ * ✅ GET /drive/debug
+ * Purpose: Display current OAuth and API configuration (for debugging)
+ * Params: None
+ * Returns: { success, expectedRedirectUri, clientIdStart, scopes }
+ * Usage: Verify OAuth configuration is correct before integration
+ */
 router.get("/debug", async (_req: Request, res: Response): Promise<void> => {
   try {
     const expectedRedirectUri = (
@@ -596,8 +805,19 @@ router.get("/debug", async (_req: Request, res: Response): Promise<void> => {
   }
 });
 
-// GET /drive/company/:companyId/drives
-// Get all connected Google Drive accounts for a company
+/**
+ * 🏢 COMPANY/MULTI-USER ENDPOINTS
+ */
+
+/**
+ * ✅ GET /drive/company/:companyId/drives
+ * Purpose: Get all connected Google Drive accounts for a specific company
+ * Params:
+ *   - companyId (required, URL): Company ID
+ * Returns: { success, data: [...connected drives...], message }
+ * Data includes: accountEmail, accountId, expiryDate, scopes for each connected drive
+ * Usage: List all company's connected Google Drive accounts in admin panel
+ */
 router.get("/company/:companyId/drives", async (req: Request, res: Response): Promise<void> => {
   try {
     const companyId = req.params.companyId;
@@ -621,6 +841,57 @@ router.get("/company/:companyId/drives", async (req: Request, res: Response): Pr
     res.status(500).json({ 
       success: false, 
       message: error.message || "Failed to fetch company drives" 
+    });
+    return;
+  }
+});
+
+/**
+ * ✅ POST /drive/company/:companyId/disconnect
+ * Purpose: Disconnect and remove all Google Drive connections for a company
+ * Params:
+ *   - companyId (required, URL): Company ID whose drives to disconnect
+ * Returns: { success, message, disconnectedCount }
+ * Side effects: Deletes all Google Drive tokens for company, broadcasts disconnect notification
+ * Usage: Remove company's Drive access during offboarding, revoke permissions
+ */
+router.post("/company/:companyId/disconnect", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const companyId = req.params.companyId;
+
+    if (!companyId) {
+      res.status(400).json({ success: false, message: "Missing companyId" });
+      return;
+    }
+
+    // Get all connected drives for this company first
+    const drives = await getConnectedDrivesByCompanyId(companyId);
+
+    if (!drives || drives.length === 0) {
+      res.status(200).json({
+        success: true,
+        message: "No connected drives to disconnect"
+      });
+      return;
+    }
+
+    // Delete all token records for this company where provider is 'google'
+    const deletedCount = await deleteTokensByCompanyIdAndProvider(companyId, "google");
+
+    // 🔥 BROADCAST: Notify all company users about the drive disconnection
+    notifySocialConnectionRemoved(companyId, "google-drive");
+
+    res.status(200).json({
+      success: true,
+      message: "Google Drive disconnected successfully",
+      disconnectedCount: deletedCount || drives.length
+    });
+    return;
+  } catch (error: any) {
+    console.error('Failed to disconnect Google Drive:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || "Failed to disconnect Google Drive" 
     });
     return;
   }
