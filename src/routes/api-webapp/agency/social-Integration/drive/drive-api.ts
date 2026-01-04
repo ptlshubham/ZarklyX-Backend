@@ -304,6 +304,7 @@ router.get("/me/profile", async (req: Request, res: Response): Promise<void> => 
  *   - pageSize (optional, query): Number of files per page (default: 25)
  *   - q (optional, query): Search query to filter files
  * Returns: { success, data: {files: [], nextPageToken?, ...} }
+ * Logic: If query has mimeType filter, use it as-is. Otherwise, fetch folders first, then files.
  * Usage: Display file list, implement pagination, search functionality
  */
 router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
@@ -311,13 +312,64 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
     const { access_token, refresh_token } = extractTokens(req);
     const pageToken = (req.query.pageToken as string) || undefined;
     const pageSize = parseInt((req.query.pageSize as string) || "25", 10);
-    const q = (req.query.q as string) || undefined; // optional search query
+    let q = (req.query.q as string) || undefined; // optional search query
 
     if (!access_token && !refresh_token) {
-      res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
+      res.status(401).json({ success: false, message: "No access token provided" });
       return;
     }
 
+    // If query includes mimeType filter, it's a specific request (folders or files only)
+    // Use it as-is for pagination
+    if (q && q.includes("mimeType")) {
+      console.log('📄 Specific query detected (has mimeType filter):', q);
+      const data = await listMyDriveFiles({ access_token, refresh_token }, pageToken, pageSize, q);
+      res.status(200).json({ success: true, data });
+      return;
+    }
+
+    // If no mimeType filter and no pageToken, do two-stage loading: folders first, then files
+    if (!pageToken && !q) {
+      console.log('📂 Two-stage loading: folders first, then files');
+      try {
+        // Stage 1: Get all folders (root level only)
+        const folderQuery = "trashed=false and mimeType='application/vnd.google-apps.folder' and 'root' in parents";
+        console.log('📂 Stage 1 - Fetching FOLDERS:', folderQuery);
+        const foldersData = await listMyDriveFiles({ access_token, refresh_token }, undefined, 500, folderQuery);
+        const folders = foldersData.files || [];
+        console.log('✅ Received FOLDERS:', folders.length);
+
+        // Stage 2: Get files (root level only)
+        const fileQuery = "trashed=false and mimeType!='application/vnd.google-apps.folder'";
+        console.log('📄 Stage 2 - Fetching FILES:', fileQuery);
+        const filesData = await listMyDriveFiles({ access_token, refresh_token }, undefined, pageSize, fileQuery);
+        const files = filesData.files || [];
+        console.log('✅ Received FILES:', files.length);
+
+        // Combine: folders first, then files
+        const combinedFiles = [...folders, ...files];
+        console.log('📊 Combined result:', `${folders.length} folders + ${files.length} files = ${combinedFiles.length} total`);
+
+        res.status(200).json({
+          success: true,
+          data: {
+            files: combinedFiles,
+            nextPageToken: filesData.nextPageToken || undefined,
+            kind: "drive#fileList"
+          }
+        });
+        return;
+      } catch (error: any) {
+        console.error("❌ Error in two-stage loading:", error.message);
+        // Fallback to regular listing if two-stage fails
+        const data = await listMyDriveFiles({ access_token, refresh_token }, pageToken, pageSize, q);
+        res.status(200).json({ success: true, data });
+        return;
+      }
+    }
+
+    // If has pageToken or search query, use regular pagination
+    console.log('📄 Regular pagination: pageToken or search query provided');
     const data = await listMyDriveFiles({ access_token, refresh_token }, pageToken, pageSize, q);
     res.status(200).json({ success: true, data });
     return;
