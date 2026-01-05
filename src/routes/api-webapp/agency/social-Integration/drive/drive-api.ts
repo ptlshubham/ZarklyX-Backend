@@ -37,13 +37,7 @@ function extractTokens(req: Request) {
 // Multer memory upload for sending data directly to Drive
 const memoryUpload = multer({ storage: multer.memoryStorage() });
 
-// 🚨 GLOBAL MIDDLEWARE: Log all incoming requests to this router
-router.use((req: Request, res: Response, next: Function) => {
-  const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
-  console.log(`\n🌐 [DRIVE-API] ${timestamp} - ${req.method} ${req.path}`);
-  console.log(`   Query params:`, Object.keys(req.query).length > 0 ? req.query : 'none');
-  next();
-});
+
 
 /**
  * 📋 API DOCUMENTATION - GOOGLE DRIVE INTEGRATION ENDPOINTS
@@ -313,7 +307,7 @@ router.get("/me/profile", async (req: Request, res: Response): Promise<void> => 
  *   - pageSize (optional, query): Number of files per page (default: 25)
  *   - q (optional, query): Search query to filter files
  * Returns: { success, data: {files: [], nextPageToken?, ...} }
- * Logic: If query has mimeType filter, use it as-is. Otherwise, fetch folders first, then files.
+ * Logic: Smart pagination - prioritize folders first, then files. Total = pageSize items.
  * Usage: Display file list, implement pagination, search functionality
  */
 router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
@@ -337,48 +331,57 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // If no mimeType filter and no pageToken, do two-stage loading: folders first, then files
+    // Smart pagination: prioritize folders first, then files
+    // Total result = pageSize items (e.g., if 10 folders fit, show 10 folders + 40 files)
     if (!pageToken && !q) {
-      console.log('📂 Two-stage loading: folders first, then files');
+      console.log('📂 Smart pagination: Prioritizing folders first');
       try {
-        // Stage 1: Get all folders (root level only)
+        // Get folders for this page (no pageToken - fresh start)
         const folderQuery = "trashed=false and mimeType='application/vnd.google-apps.folder' and 'root' in parents";
-        console.log('📂 Stage 1 - Fetching FOLDERS:', folderQuery);
-        const foldersData = await listMyDriveFiles({ access_token, refresh_token }, undefined, 500, folderQuery);
+        const foldersData = await listMyDriveFiles({ access_token, refresh_token }, undefined, pageSize, folderQuery);
         const folders = foldersData.files || [];
-        console.log('✅ Received FOLDERS:', folders.length);
+        console.log('✅ Folders found:', folders.length);
 
-        // Stage 2: Get files (root level only - IMPORTANT: must include 'root' in parents to filter to root level)
-        const fileQuery = "trashed=false and mimeType!='application/vnd.google-apps.folder' and 'root' in parents";
-        console.log('📄 Stage 2 - Fetching FILES:', fileQuery);
-        const filesData = await listMyDriveFiles({ access_token, refresh_token }, undefined, pageSize, fileQuery);
-        const files = filesData.files || [];
-        console.log('✅ Received FILES:', files.length);
+        // Calculate how many files we need to reach pageSize
+        const remainingSlots = Math.max(0, pageSize - folders.length);
+        console.log('📊 Folders:', folders.length, '+ Files needed:', remainingSlots, '= Total:', pageSize);
 
-        // Combine: folders first, then files
-        const combinedFiles = [...folders, ...files];
-        console.log('📊 Combined result:', `${folders.length} folders + ${files.length} files = ${combinedFiles.length} total`);
+        let files: any[] = [];
+        let nextPageToken: string | undefined = undefined;
+
+        // If we have remaining slots, fetch files
+        if (remainingSlots > 0) {
+          const fileQuery = "trashed=false and mimeType!='application/vnd.google-apps.folder' and 'root' in parents";
+          const filesData = await listMyDriveFiles({ access_token, refresh_token }, undefined, remainingSlots, fileQuery);
+          files = filesData.files || [];
+          nextPageToken = filesData.nextPageToken || undefined;
+          console.log('✅ Files loaded:', files.length);
+        }
+
+        // Combine: folders first, then files (total = pageSize)
+        const combinedFiles = [...folders, ...files].slice(0, pageSize);
+        console.log('📊 Combined result:', combinedFiles.length, 'items (folders prioritized)');
 
         res.status(200).json({
           success: true,
           data: {
             files: combinedFiles,
-            nextPageToken: filesData.nextPageToken || undefined,
+            nextPageToken: nextPageToken,
             kind: "drive#fileList"
           }
         });
         return;
       } catch (error: any) {
-        console.error("❌ Error in two-stage loading:", error.message);
-        // Fallback to regular listing if two-stage fails
+        console.error("❌ Error in smart pagination:", error.message);
+        // Fallback to natural pagination
         const data = await listMyDriveFiles({ access_token, refresh_token }, pageToken, pageSize, q);
         res.status(200).json({ success: true, data });
         return;
       }
     }
 
-    // If has pageToken or search query, use regular pagination
-    console.log('📄 Regular pagination: pageToken or search query provided');
+    // If has pageToken or search query, use natural pagination (no folder prioritization)
+    console.log('📄 Natural pagination (pageToken or search provided)');
     const data = await listMyDriveFiles({ access_token, refresh_token }, pageToken, pageSize, q);
     res.status(200).json({ success: true, data });
     return;
@@ -399,65 +402,31 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
  */
 router.get("/me/files/preview/:id", async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log('\n🎬 [PREVIEW ENDPOINT] Request received');
-    console.log('📍 [PREVIEW] URL:', req.originalUrl);
-    console.log('📝 [PREVIEW] Method:', req.method);
-    
     const tokens = extractTokens(req);
-    console.log('🔐 [PREVIEW] Token extraction:');
-    console.log('   - access_token:', tokens.access_token ? `${tokens.access_token.slice(0, 20)}...` : 'MISSING');
-    console.log('   - refresh_token:', tokens.refresh_token ? `${tokens.refresh_token.slice(0, 20)}...` : 'MISSING');
+    const fileId = req.params.id;
     
     if (!tokens.access_token && !tokens.refresh_token) {
-      console.error('❌ [PREVIEW] No access token provided');
       res.status(401).json({ success: false, message: "No access token provided" });
       return;
     }
 
-    const fileId = req.params.id;
-    console.log('📂 [PREVIEW] File ID:', fileId);
-    
     if (!fileId) {
-      console.error('❌ [PREVIEW] Missing file id');
       res.status(400).json({ success: false, message: "Missing file id" });
       return;
     }
 
-    // Use preview service with intelligent fallback strategies
-    console.log('🚀 [PREVIEW] Calling getPreviewStream() service...');
-    const result = await getPreviewStream(tokens as any, fileId);
-    const { data, mimeType, fileName } = result;
+    const { data, mimeType } = await getPreviewStream(tokens as any, fileId);
     
-    console.log('✅ [PREVIEW] Got result from service:');
-    console.log('   - mimeType:', mimeType);
-    console.log('   - fileName:', fileName);
-    console.log('   - data size:', data ? `${(data as Buffer).length} bytes` : 'MISSING');
-
-    // Set CORS headers and send binary image data
-    console.log('📤 [PREVIEW] Setting response headers...');
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    res.setHeader('Cache-Control', 'public, max-age=3600');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    if (fileName) {
-      res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-    }
-    
-    console.log('📊 [PREVIEW] Response headers set:');
-    console.log('   - Content-Type:', mimeType);
-    console.log('   - Cache-Control: public, max-age=3600');
-    console.log('   - Access-Control-Allow-Origin: *');
-    
-    console.log('📨 [PREVIEW] Sending binary data...');
     res.send(data);
-    console.log('✨ [PREVIEW] Response sent successfully!');
-    return;
   } catch (error: any) {
-    console.error('❌ [PREVIEW] ERROR:', error.message);
-    console.error('❌ [PREVIEW] Stack:', error.stack);
-    res.status(500).json({ success: false, message: error.message || "Failed to fetch preview" });
-    return;
+    console.error('Preview endpoint error:', error.message);
+    res.status(500).json({ success: false, message: error.message || "Failed to generate preview" });
   }
 });
+
 /**
  * ✅ GET /drive/file/:id
  * Purpose: Get metadata of a specific file by ID

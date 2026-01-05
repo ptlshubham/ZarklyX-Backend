@@ -22,12 +22,7 @@ export async function getPreviewStream(
   fileId: string
 ): Promise<{ data: Buffer; mimeType: string; fileName?: string }> {
   try {
-    console.log('\n🎬 [Preview Service] Starting preview fetch');
-    console.log(`📂 [Preview] File ID: ${fileId}`);
-    console.log(`🔐 [Preview] Tokens available - access: ${tokens.access_token ? '✓' : '✗'}, refresh: ${tokens.refresh_token ? '✓' : '✗'}`);
-    
     // Get file metadata to check for thumbnail/preview options
-    console.log('📡 [Preview] Fetching file metadata from Google Drive...');
     const drive = getDriveClientFromTokens(tokens);
     const file = await drive.files.get({
       fileId,
@@ -38,15 +33,8 @@ export async function getPreviewStream(
     const fileName = fileData.name ?? undefined;
     const mimeType = fileData.mimeType || 'application/octet-stream';
 
-    console.log(`✅ [Preview] Metadata retrieved:`);
-    console.log(`   - File: ${fileName}`);
-    console.log(`   - MimeType: ${mimeType}`);
-    console.log(`   - ThumbnailLink: ${fileData.thumbnailLink ? '✓' : '✗'}`);
-    console.log(`   - WebContentLink: ${fileData.webContentLink ? '✓' : '✗'}`);
-
     // Strategy 1: Use thumbnailLink if available (best for images, documents with previews)
     if (fileData.thumbnailLink) {
-      console.log(`\n🔄 [Preview] Strategy 1: Attempting thumbnailLink...`);
       try {
         const response = await axios.get(fileData.thumbnailLink, {
           responseType: 'arraybuffer',
@@ -57,7 +45,6 @@ export async function getPreviewStream(
         });
         
         if (response.status === 200) {
-          console.log(`✨ [Preview] ✓ Strategy 1 SUCCESS - Got ${(response.data as Buffer).length} bytes`);
           return {
             data: response.data,
             mimeType: 'image/jpeg',
@@ -65,15 +52,12 @@ export async function getPreviewStream(
           };
         }
       } catch (err: any) {
-        console.warn(`⚠️  [Preview] Strategy 1 FAILED: ${err.message}`);
+        // Continue to next strategy
       }
-    } else {
-      console.log(`⏭️  [Preview] Strategy 1 SKIPPED - No thumbnailLink available`);
     }
 
     // Strategy 2: For image files, try webContentLink (can be displayed inline)
     if (mimeType.startsWith('image/') && fileData.webContentLink) {
-      console.log(`\n🔄 [Preview] Strategy 2: Attempting webContentLink (image)...`);
       try {
         const response = await axios.get(fileData.webContentLink, {
           responseType: 'arraybuffer',
@@ -85,7 +69,6 @@ export async function getPreviewStream(
         });
         
         if (response.status === 200) {
-          console.log(`✨ [Preview] ✓ Strategy 2 SUCCESS - Got ${(response.data as Buffer).length} bytes`);
           return {
             data: response.data,
             mimeType: mimeType,
@@ -93,16 +76,12 @@ export async function getPreviewStream(
           };
         }
       } catch (err: any) {
-        console.warn(`⚠️  [Preview] Strategy 2 FAILED: ${err.message}`);
+        // Continue to next strategy
       }
-    } else {
-      console.log(`⏭️  [Preview] Strategy 2 SKIPPED - Image check: ${mimeType.startsWith('image/')}, webContentLink: ${!!fileData.webContentLink}`);
     }
 
     // Strategy 3: Generate icon based on MIME type
-    console.log(`\n🔄 [Preview] Strategy 3: Attempting MIME-type icon fallback...`);
     const iconUrl = getMimeTypeIcon(mimeType);
-    console.log(`📍 [Preview] Icon URL: ${iconUrl}`);
     const response = await axios.get(iconUrl, {
       responseType: 'arraybuffer',
       timeout: 5000,
@@ -111,7 +90,6 @@ export async function getPreviewStream(
       }
     });
 
-    console.log(`✨ [Preview] ✓ Strategy 3 SUCCESS - Got ${(response.data as Buffer).length} bytes`);
     return {
       data: response.data,
       mimeType: 'image/png',
@@ -119,13 +97,6 @@ export async function getPreviewStream(
     };
 
   } catch (error: any) {
-    console.error(`\n❌ [Preview] FATAL ERROR for ${fileId}:`);
-    console.error(`   - Message: ${error.message}`);
-    console.error(`   - Code: ${error.code || 'N/A'}`);
-    if (error.response) {
-      console.error(`   - HTTP Status: ${error.response.status}`);
-      console.error(`   - Response Data: ${JSON.stringify(error.response.data).slice(0, 200)}`);
-    }
     throw new Error(`Failed to generate preview: ${error.message}`);
   }
 }
