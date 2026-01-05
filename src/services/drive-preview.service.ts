@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { Readable } from 'stream';
 import { getDriveClientFromTokens, DriveTokens, getDriveFileMetadata } from './drive-service';
 
 /**
@@ -21,11 +20,14 @@ const ICON_URLS = {
 export async function getPreviewStream(
   tokens: DriveTokens,
   fileId: string
-): Promise<{ stream: Readable; mimeType: string; fileName?: string }> {
+): Promise<{ data: Buffer; mimeType: string; fileName?: string }> {
   try {
-    console.log(`[Preview] Fetching preview for file: ${fileId}`);
+    console.log('\n🎬 [Preview Service] Starting preview fetch');
+    console.log(`📂 [Preview] File ID: ${fileId}`);
+    console.log(`🔐 [Preview] Tokens available - access: ${tokens.access_token ? '✓' : '✗'}, refresh: ${tokens.refresh_token ? '✓' : '✗'}`);
     
     // Get file metadata to check for thumbnail/preview options
+    console.log('📡 [Preview] Fetching file metadata from Google Drive...');
     const drive = getDriveClientFromTokens(tokens);
     const file = await drive.files.get({
       fileId,
@@ -36,14 +38,18 @@ export async function getPreviewStream(
     const fileName = fileData.name ?? undefined;
     const mimeType = fileData.mimeType || 'application/octet-stream';
 
-    console.log(`[Preview] File: ${fileName} | MimeType: ${mimeType} | HasThumbnail: ${!!fileData.thumbnailLink}`);
+    console.log(`✅ [Preview] Metadata retrieved:`);
+    console.log(`   - File: ${fileName}`);
+    console.log(`   - MimeType: ${mimeType}`);
+    console.log(`   - ThumbnailLink: ${fileData.thumbnailLink ? '✓' : '✗'}`);
+    console.log(`   - WebContentLink: ${fileData.webContentLink ? '✓' : '✗'}`);
 
     // Strategy 1: Use thumbnailLink if available (best for images, documents with previews)
     if (fileData.thumbnailLink) {
-      console.log(`[Preview] Using thumbnailLink for: ${fileName}`);
+      console.log(`\n🔄 [Preview] Strategy 1: Attempting thumbnailLink...`);
       try {
         const response = await axios.get(fileData.thumbnailLink, {
-          responseType: 'stream',
+          responseType: 'arraybuffer',
           timeout: 5000,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -51,23 +57,26 @@ export async function getPreviewStream(
         });
         
         if (response.status === 200) {
+          console.log(`✨ [Preview] ✓ Strategy 1 SUCCESS - Got ${(response.data as Buffer).length} bytes`);
           return {
-            stream: response.data as Readable,
+            data: response.data,
             mimeType: 'image/jpeg',
             fileName
           };
         }
-      } catch (err) {
-        console.warn(`[Preview] thumbnailLink failed for ${fileName}, trying next strategy`, err);
+      } catch (err: any) {
+        console.warn(`⚠️  [Preview] Strategy 1 FAILED: ${err.message}`);
       }
+    } else {
+      console.log(`⏭️  [Preview] Strategy 1 SKIPPED - No thumbnailLink available`);
     }
 
     // Strategy 2: For image files, try webContentLink (can be displayed inline)
     if (mimeType.startsWith('image/') && fileData.webContentLink) {
-      console.log(`[Preview] Using webContentLink for image: ${fileName}`);
+      console.log(`\n🔄 [Preview] Strategy 2: Attempting webContentLink (image)...`);
       try {
         const response = await axios.get(fileData.webContentLink, {
-          responseType: 'stream',
+          responseType: 'arraybuffer',
           timeout: 5000,
           params: { access_token: tokens.access_token },
           headers: {
@@ -76,36 +85,47 @@ export async function getPreviewStream(
         });
         
         if (response.status === 200) {
+          console.log(`✨ [Preview] ✓ Strategy 2 SUCCESS - Got ${(response.data as Buffer).length} bytes`);
           return {
-            stream: response.data as Readable,
+            data: response.data,
             mimeType: mimeType,
             fileName
           };
         }
-      } catch (err) {
-        console.warn(`[Preview] webContentLink failed for ${fileName}`, err);
+      } catch (err: any) {
+        console.warn(`⚠️  [Preview] Strategy 2 FAILED: ${err.message}`);
       }
+    } else {
+      console.log(`⏭️  [Preview] Strategy 2 SKIPPED - Image check: ${mimeType.startsWith('image/')}, webContentLink: ${!!fileData.webContentLink}`);
     }
 
     // Strategy 3: Generate icon based on MIME type
-    console.log(`[Preview] Using MIME-type icon for: ${fileName}`);
+    console.log(`\n🔄 [Preview] Strategy 3: Attempting MIME-type icon fallback...`);
     const iconUrl = getMimeTypeIcon(mimeType);
+    console.log(`📍 [Preview] Icon URL: ${iconUrl}`);
     const response = await axios.get(iconUrl, {
-      responseType: 'stream',
+      responseType: 'arraybuffer',
       timeout: 5000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
 
+    console.log(`✨ [Preview] ✓ Strategy 3 SUCCESS - Got ${(response.data as Buffer).length} bytes`);
     return {
-      stream: response.data as Readable,
+      data: response.data,
       mimeType: 'image/png',
       fileName
     };
 
   } catch (error: any) {
-    console.error(`[Preview] Error fetching preview for ${fileId}:`, error.message);
+    console.error(`\n❌ [Preview] FATAL ERROR for ${fileId}:`);
+    console.error(`   - Message: ${error.message}`);
+    console.error(`   - Code: ${error.code || 'N/A'}`);
+    if (error.response) {
+      console.error(`   - HTTP Status: ${error.response.status}`);
+      console.error(`   - Response Data: ${JSON.stringify(error.response.data).slice(0, 200)}`);
+    }
     throw new Error(`Failed to generate preview: ${error.message}`);
   }
 }

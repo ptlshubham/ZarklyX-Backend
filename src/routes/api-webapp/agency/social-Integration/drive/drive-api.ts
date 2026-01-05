@@ -1,5 +1,6 @@
 import express, { Request, Response } from "express";
 import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser } from "../../../../../services/drive-service";
+import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
 import { sendEmailWithAttachments } from "../../../../../services/gmail-service";
@@ -35,6 +36,14 @@ function extractTokens(req: Request) {
 
 // Multer memory upload for sending data directly to Drive
 const memoryUpload = multer({ storage: multer.memoryStorage() });
+
+// 🚨 GLOBAL MIDDLEWARE: Log all incoming requests to this router
+router.use((req: Request, res: Response, next: Function) => {
+  const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+  console.log(`\n🌐 [DRIVE-API] ${timestamp} - ${req.method} ${req.path}`);
+  console.log(`   Query params:`, Object.keys(req.query).length > 0 ? req.query : 'none');
+  next();
+});
 
 /**
  * 📋 API DOCUMENTATION - GOOGLE DRIVE INTEGRATION ENDPOINTS
@@ -381,48 +390,70 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
 
 /**
  * ✅ GET /drive/me/files/preview/:id
- * Purpose: Proxy image preview from Google Drive (solves CORS issues)
+ * Purpose: Proxy image preview from Google Drive with intelligent fallback (solves CORS issues)
  * Params:
  *   - id (required, URL): File ID to get preview for
  *   - Tokens: x-access-token, x-refresh-token (headers/query)
  * Returns: Binary image stream with CORS headers
+ * Strategy: thumbnailLink > webContentLink > MIME-type icon
  */
 router.get("/me/files/preview/:id", async (req: Request, res: Response): Promise<void> => {
   try {
+    console.log('\n🎬 [PREVIEW ENDPOINT] Request received');
+    console.log('📍 [PREVIEW] URL:', req.originalUrl);
+    console.log('📝 [PREVIEW] Method:', req.method);
+    
     const tokens = extractTokens(req);
+    console.log('🔐 [PREVIEW] Token extraction:');
+    console.log('   - access_token:', tokens.access_token ? `${tokens.access_token.slice(0, 20)}...` : 'MISSING');
+    console.log('   - refresh_token:', tokens.refresh_token ? `${tokens.refresh_token.slice(0, 20)}...` : 'MISSING');
+    
     if (!tokens.access_token && !tokens.refresh_token) {
+      console.error('❌ [PREVIEW] No access token provided');
       res.status(401).json({ success: false, message: "No access token provided" });
       return;
     }
 
     const fileId = req.params.id;
+    console.log('📂 [PREVIEW] File ID:', fileId);
+    
     if (!fileId) {
+      console.error('❌ [PREVIEW] Missing file id');
       res.status(400).json({ success: false, message: "Missing file id" });
       return;
     }
 
-    // Get file metadata to retrieve thumbnail
-    const meta = await getDriveFileMetadata(tokens, fileId);
+    // Use preview service with intelligent fallback strategies
+    console.log('🚀 [PREVIEW] Calling getPreviewStream() service...');
+    const result = await getPreviewStream(tokens as any, fileId);
+    const { data, mimeType, fileName } = result;
     
-    if (!meta.thumbnailLink) {
-      res.status(404).json({ success: false, message: "No thumbnail available for this file" });
-      return;
-    }
+    console.log('✅ [PREVIEW] Got result from service:');
+    console.log('   - mimeType:', mimeType);
+    console.log('   - fileName:', fileName);
+    console.log('   - data size:', data ? `${(data as Buffer).length} bytes` : 'MISSING');
 
-    // Fetch the thumbnail image from Google Drive
-    const imageResponse = await axios.get(meta.thumbnailLink, {
-      responseType: 'arraybuffer',
-      timeout: 5000
-    });
-
-    // Set CORS headers and return image
-    res.setHeader('Content-Type', imageResponse.headers['content-type'] || 'image/jpeg');
+    // Set CORS headers and send binary image data
+    console.log('📤 [PREVIEW] Setting response headers...');
+    res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.send(imageResponse.data);
+    if (fileName) {
+      res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    }
+    
+    console.log('📊 [PREVIEW] Response headers set:');
+    console.log('   - Content-Type:', mimeType);
+    console.log('   - Cache-Control: public, max-age=3600');
+    console.log('   - Access-Control-Allow-Origin: *');
+    
+    console.log('📨 [PREVIEW] Sending binary data...');
+    res.send(data);
+    console.log('✨ [PREVIEW] Response sent successfully!');
     return;
   } catch (error: any) {
-    console.error('Failed to fetch preview:', error.message);
+    console.error('❌ [PREVIEW] ERROR:', error.message);
+    console.error('❌ [PREVIEW] Stack:', error.stack);
     res.status(500).json({ success: false, message: error.message || "Failed to fetch preview" });
     return;
   }
