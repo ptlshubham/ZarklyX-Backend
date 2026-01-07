@@ -26,8 +26,6 @@ export class Influencer extends Model<
     declare city: string | null;
     declare pincode: string | null;
     declare address: string | null;
-    declare category: string | null;
-    declare platform: string | null;
     declare bio: string | null;
     declare profile_image: string | null;
     declare profile_cover: string | null;

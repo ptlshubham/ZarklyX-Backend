@@ -31,6 +31,9 @@ import tiktokRoutes from './routes/api-webapp/agency/social-Integration/tiktok/t
 import rolesRoutes from './routes/api-webapp/roles/roles-api';
 // const influencerRoutes = require ('./routes/api-webapp/influencer/influencer-api');
 import influencerRoutes from './routes/api-webapp/influencer/influencer-api';
+import influencerCategoryRoutes from './routes/api-webapp/superAdmin/influencer/category/influencerCategory-api';
+import influencerIndustryRoutes from './routes/api-webapp/superAdmin/influencer/industry/influencerIndustry-api';
+import influencerPlatformRoutes from './routes/api-webapp/superAdmin/influencer/platform/influencerPlatform-api';
 const bodyParser = require('body-parser');
 const cookieSession = require('cookie-session');
 
@@ -87,6 +90,9 @@ app.use("/twitter", twitterRoutes);
 app.use("/tiktok", tiktokRoutes);
 app.use("/roles", rolesRoutes);
 app.use("/influencer", influencerRoutes);
+app.use("/influencerCategory", influencerCategoryRoutes);
+app.use("/influencerIndustry", influencerIndustryRoutes);
+app.use("/influencerPlatform", influencerPlatformRoutes);
 app.use("/itManagement/itTickets", itTicketsRoutes);
 
 // Support root-level callback path that some OAuth providers / dev tools use
