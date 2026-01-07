@@ -101,14 +101,6 @@ export class Influencer extends Model<
                     type: DataTypes.STRING,
                     allowNull: true,
                 },
-                category: {
-                    type: DataTypes.STRING,
-                    allowNull: true,
-                },
-                platform: {
-                    type: DataTypes.STRING,
-                    allowNull: true,
-                },
                 bio: {
                     type: DataTypes.STRING,
                     allowNull: true,
