@@ -27,7 +27,10 @@ import { InfluencerCategory } from "../../routes/api-webapp/superAdmin/influence
 import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
 import { Industry } from "../../routes/api-webapp/superAdmin/influencer/industry/influencerIndustry-models";
 import { Platform } from "../../routes/api-webapp/superAdmin/influencer/platform/influencerPlatform-model";
-
+import { ItemCategory } from "../../routes/api-webapp/accounting/item-Category/item-Category-model";
+import { Unit } from "../../routes/api-webapp/accounting/unit/unit-model";
+import { Item } from "../../routes/api-webapp/accounting/item/item-model";
+import { Vendor } from "../../routes/api-webapp/accounting/vendor/vendor-model";
 
 export {
   User,
@@ -47,7 +50,11 @@ export {
   InfluencerCategory,
   Influencer,
   Industry,
-  Platform
+  Platform,
+  ItemCategory,
+  Unit,
+  Item,
+  Vendor,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -79,6 +86,11 @@ export function initControlDB(sequelize: Sequelize) {
   Influencer.initModel(sequelize);
   Industry.initModel(sequelize);
   Platform.initModel(sequelize);
+
+  ItemCategory.initModel(sequelize);
+  Unit.initModel(sequelize);
+  Item.initModel(sequelize);
+  Vendor.initModel(sequelize);
 
 
 
@@ -220,6 +232,56 @@ export function initControlDB(sequelize: Sequelize) {
     as: "company",
   });
 
+  /*** Company <-> Unit */
+  Company.hasMany(Unit, {
+    foreignKey: "companyId",
+    as: "units",
+  });
+  Unit.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> ItemCategory */
+  Company.hasMany(ItemCategory, {
+    foreignKey: "companyId",
+    as: "itemCategories",
+  });
+  ItemCategory.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> Item */
+  Company.hasMany(Item, {
+    foreignKey: "companyId",
+    as: "items",
+  });
+  Item.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Unit <-> Item */
+  Unit.hasMany(Item, {
+    foreignKey: "unitId",
+    as: "items",
+  });
+  Item.belongsTo(Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  });
+
+  /*** Company <-> Vendor */
+  Company.hasMany(Vendor, {
+    foreignKey: "companyId",
+    as: "vendors",
+  });
+  Vendor.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
   /*** InfluencerCategory <-> Influencer (Many-to-Many) */
   InfluencerCategory.belongsToMany(Influencer, {
     through: 'influencer_category_mapping',
@@ -286,19 +348,16 @@ export function initControlDB(sequelize: Sequelize) {
     Clients,
     BusinessType,
     BusinessSubcategory,
-    // Role,
-    // SubRole,
-    SocialToken
-    ,    // LoginHistory
+    SocialToken,
     Employee,
     ItTickets,
     Influencer,
     InfluencerCategory,
     Industry,
     Platform,
-    // Role,
-    // SubRole,
-    // GoogleToken,
-    // LoginHistory
+    ItemCategory,
+    Unit,
+    Item,
+    Vendor,
   };
 }
