@@ -34,9 +34,9 @@ export function generateDriveAuthUrl(
   prompt: "consent" | "none" = "consent"
 ) {
   const oauth2Client = getDriveOAuthClient();
-  const authUrl = oauth2Client.generateAuthUrl({ 
-    access_type: accessType, 
-    scope: scopes, 
+  const authUrl = oauth2Client.generateAuthUrl({
+    access_type: accessType,
+    scope: scopes,
     prompt,
     state
   });
@@ -59,13 +59,13 @@ export function getDriveClientFromTokens(tokens: DriveTokens) {
 
 export async function listMyDriveFiles(tokens: DriveTokens, pageToken?: string, pageSize: number = 25, q?: string) {
   const drive = getDriveClientFromTokens(tokens);
-  const res = await drive.files.list({ pageSize, pageToken, q, fields: "files(id,name,mimeType,modifiedTime,owners,webViewLink,webContentLink),nextPageToken" });
+  const res = await drive.files.list({ pageSize, pageToken, q, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink),nextPageToken" });
   return res.data;
 }
 
 export async function getDriveFileMetadata(tokens: DriveTokens, fileId: string) {
   const drive = getDriveClientFromTokens(tokens);
-  const res = await drive.files.get({ fileId, fields: "id,name,mimeType,size,modifiedTime,owners,webViewLink,webContentLink" });
+  const res = await drive.files.get({ fileId, fields: "id,name,mimeType,size,modifiedTime,owners,webViewLink,webContentLink,thumbnailLink" });
   return res.data;
 }
 
@@ -78,14 +78,13 @@ export async function refreshDriveAccessToken(refreshToken: string) {
 
 export async function getDriveAccessTokenInfo(accessToken: string) {
   const oauth2Client = getDriveOAuthClient();
-const oauth2 = google.oauth2("v2");
-const info = await oauth2.tokeninfo({ access_token: accessToken });
-return info.data;
+  const oauth2 = google.oauth2("v2");
+  const info = await oauth2.tokeninfo({ access_token: accessToken });
+  return info.data;
 }
 
 // Download a binary file (non-Google Docs types) as a stream
-export async function downloadDriveFileStream(tokens: DriveTokens, fileId: string): Promise<{ stream: Readable }>
-{
+export async function downloadDriveFileStream(tokens: DriveTokens, fileId: string): Promise<{ stream: Readable }> {
   const drive = getDriveClientFromTokens(tokens);
   const res: any = await drive.files.get(
     { fileId, alt: "media" },
@@ -95,8 +94,7 @@ export async function downloadDriveFileStream(tokens: DriveTokens, fileId: strin
 }
 
 // Export a Google Docs-type file to a given mimeType (e.g., application/pdf)
-export async function exportDriveFileStream(tokens: DriveTokens, fileId: string, mimeType: string): Promise<{ stream: Readable }>
-{
+export async function exportDriveFileStream(tokens: DriveTokens, fileId: string, mimeType: string): Promise<{ stream: Readable }> {
   const drive = getDriveClientFromTokens(tokens);
   const res: any = await drive.files.export(
     { fileId, mimeType },
@@ -144,7 +142,7 @@ export async function listDriveFolderChildren(tokens: DriveTokens, folderId: str
   const drive = getDriveClientFromTokens(tokens);
   const base = `'${folderId}' in parents and trashed = false`;
   const query = q ? `${base} and (${q})` : base;
-  const res = await drive.files.list({ q: query, pageSize, pageToken, fields: "files(id,name,mimeType,modifiedTime,owners,webViewLink,webContentLink),nextPageToken" });
+  const res = await drive.files.list({ q: query, pageSize, pageToken, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink),nextPageToken" });
   return res.data;
 }
 
@@ -180,8 +178,7 @@ export async function setDriveFilePermission(
 }
 
 // Read a Drive file fully into base64 (for email attachment)
-export async function readDriveFileAsBase64(tokens: DriveTokens, fileId: string): Promise<{ base64: string; mimeType: string; name: string }>
-{
+export async function readDriveFileAsBase64(tokens: DriveTokens, fileId: string): Promise<{ base64: string; mimeType: string; name: string }> {
   const meta = await getDriveFileMetadata(tokens, fileId);
   // For Google Docs types, export to PDF by default
   const isDocs = (meta.mimeType || "").startsWith("application/vnd.google-apps");

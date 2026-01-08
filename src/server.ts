@@ -81,6 +81,16 @@ app.use("/youtube", youtubeRoutes);
 app.use("/google-business", googleBusinessRoutes);
 app.use("/gmail", gmailRoutes);
 app.use("/google", googleRoutes);
+
+// 🔍 DEBUG: Log all /drive requests
+app.use("/drive", (req, res, next) => {
+  console.log(`📍 [DRIVE REQUEST] ${req.method} ${req.path}`, { 
+    hasAccessToken: !!req.query.access_token || !!req.headers['x-access-token'],
+    hasRefreshToken: !!req.query.refresh_token || !!req.headers['x-refresh-token']
+  });
+  next();
+});
+
 app.use("/drive", driveRoutes);
 app.use("/linkedin", linkedinRoutes);
 app.use("/facebook", facebookRoutes);
