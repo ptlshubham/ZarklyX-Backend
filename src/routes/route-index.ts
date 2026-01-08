@@ -35,5 +35,10 @@ export default (app: Application) => {
     // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
 
     // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
+
+    app.use("/influencerCategory", require("./api-webapp/influencer/category/influencerCategory-api"));
+    app.use("/influencerIndustry", require("./api-webapp/influencer/industry/industry-api"));
+    app.use("/influencerPlatform", require("./api-webapp/influencer/platform/platform-api"));
+    
 };
 

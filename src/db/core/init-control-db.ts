@@ -22,6 +22,13 @@ import { Employee } from "../../routes/api-webapp/agency/employee/employee-model
 // import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 // Use a relative path to the route-local Google token model to avoid module alias issues
 // import { GoogleToken } from "../../routes/api-webapp/agency/social-Integration/google/google-token.model";
+
+import { InfluencerCategory } from "../../routes/api-webapp/superAdmin/influencer/category/influencerCategory-model";
+import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
+import { Industry } from "../../routes/api-webapp/superAdmin/influencer/industry/influencerIndustry-models";
+import { Platform } from "../../routes/api-webapp/superAdmin/influencer/platform/influencerPlatform-model";
+
+
 export {
   User,
   Company,
@@ -37,6 +44,10 @@ export {
   Employee,
   ItTickets,
   // GoogleToken
+  InfluencerCategory,
+  Influencer,
+  Industry,
+  Platform
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -64,6 +75,11 @@ export function initControlDB(sequelize: Sequelize) {
   //  initCategoryModel(sequelize);
   //  initPremiumModuleModel(sequelize);
   // LoginHistory.initModel(sequelize);
+  InfluencerCategory.initModel(sequelize);
+  Influencer.initModel(sequelize);
+  Industry.initModel(sequelize);
+  Platform.initModel(sequelize);
+
 
 
   // Relations and associations
@@ -204,6 +220,48 @@ export function initControlDB(sequelize: Sequelize) {
     as: "company",
   });
 
+  /*** InfluencerCategory <-> Influencer (Many-to-Many) */
+  InfluencerCategory.belongsToMany(Influencer, {
+    through: 'influencer_category_mapping',
+    foreignKey: "categoryId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(InfluencerCategory, {
+    through: 'influencer_category_mapping',
+    foreignKey: "influencerId",
+    otherKey: "categoryId",
+    as: "categories",
+  });
+
+  /*** Industry <-> Influencer (Many-to-Many) */
+  Industry.belongsToMany(Influencer, {
+    through: 'influencer_industry_mapping',
+    foreignKey: "industryId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(Industry, {
+    through: 'influencer_industry_mapping',
+    foreignKey: "influencerId",
+    otherKey: "industryId",
+    as: "industries",
+  });
+
+  /*** Platform <-> Influencer (Many-to-Many) */
+  Platform.belongsToMany(Influencer, {
+    through: 'influencer_platform_mapping',
+    foreignKey: "platformId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(Platform, {
+    through: 'influencer_platform_mapping',
+    foreignKey: "influencerId",
+    otherKey: "platformId",
+    as: "platforms",
+  });
+
 
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
@@ -234,6 +292,10 @@ export function initControlDB(sequelize: Sequelize) {
     ,    // LoginHistory
     Employee,
     ItTickets,
+    Influencer,
+    InfluencerCategory,
+    Industry,
+    Platform,
     // Role,
     // SubRole,
     // GoogleToken,
