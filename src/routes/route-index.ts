@@ -39,6 +39,10 @@ export default (app: Application) => {
     app.use("/influencerCategory", require("./api-webapp/influencer/category/influencerCategory-api"));
     app.use("/influencerIndustry", require("./api-webapp/influencer/industry/industry-api"));
     app.use("/influencerPlatform", require("./api-webapp/influencer/platform/platform-api"));
+    app.use("/accounting/item-Category",require("./api-webapp/accounting/item-Category/item-Category-api"));
+    app.use("/accounting/unit",require("./api-webapp/accounting/unit/unit-api"));
+    app.use("/accounting/item",require("./api-webapp/accounting/item/item-api"));
+    app.use("/accounting/vendor",require("./api-webapp/accounting/vendor/vendor-api"));
     
 };
 

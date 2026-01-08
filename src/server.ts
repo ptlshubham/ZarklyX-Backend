@@ -39,6 +39,10 @@ const cookieSession = require('cookie-session');
 
 import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
 import itTicketsRoutes from './routes/api-webapp/it-Management/it-Tickets/it-Tickets-api';
+import  itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/item-Category-api';
+import unitRouter from './routes/api-webapp/accounting/unit/unit-api';
+import itemRouter from './routes/api-webapp/accounting/item/item-api';
+import vendorRouter from './routes/api-webapp/accounting/vendor/vendor-api';
 
 import path from "path";
 const app = express();
@@ -94,6 +98,10 @@ app.use("/influencerCategory", influencerCategoryRoutes);
 app.use("/influencerIndustry", influencerIndustryRoutes);
 app.use("/influencerPlatform", influencerPlatformRoutes);
 app.use("/itManagement/itTickets", itTicketsRoutes);
+app.use("/accounting/item-Category",itemCategoryRoutes);
+app.use("/accounting/unit",unitRouter);
+app.use("/accounting/vendor",vendorRouter);
+app.use("/accounting/item",itemRouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
