@@ -3,6 +3,7 @@ import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, get
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
+import JSZip from "jszip";
 import { sendEmailWithAttachments } from "../../../../../services/gmail-service";
 import multer from "multer";
 import { saveOrUpdateToken, updateAccessToken, getConnectedDrivesByCompanyId, deleteTokensByCompanyIdAndProvider } from "../../../../../services/token-store.service";
@@ -33,6 +34,75 @@ function extractTokens(req: Request) {
   if (refresh_token) tokens.refresh_token = refresh_token;
   return tokens;
 }
+
+// Helper: Ensure access token is valid, refresh if needed
+async function ensureValidAccessToken(tokens: any): Promise<void> {
+  if (!tokens.access_token && tokens.refresh_token) {
+    console.log('🔄 No access token, attempting to refresh using refresh token...');
+    try {
+      const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
+      tokens.access_token = refreshed.access_token;
+      console.log('✅ Token refreshed successfully');
+    } catch (error: any) {
+      console.error('❌ Failed to refresh token:', error.message);
+      throw new Error('Failed to refresh access token');
+    }
+  }
+}
+
+// Helper: Download multiple files with concurrency control
+async function downloadFilesInParallel(
+  files: Array<{ id: string; name: string }>,
+  tokens: any,
+  concurrency: number = 15
+): Promise<Array<{ name: string; buffer: Buffer }>> {
+  const results: Array<{ name: string; buffer: Buffer }> = [];
+  const fileQueue = [...files];
+  const activeDownloads: Promise<void>[] = [];
+
+  const downloadFile = async (file: { id: string; name: string }) => {
+    try {
+      const { stream } = await downloadDriveFileStream(tokens, file.id);
+      const chunks: Buffer[] = [];
+
+      return new Promise<void>((resolve, reject) => {
+        stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+        stream.on("end", () => {
+          const fileBuffer = Buffer.concat(chunks);
+          results.push({ name: file.name, buffer: fileBuffer });
+          resolve();
+        });
+        stream.on("error", reject);
+      });
+    } catch (error: any) {
+      console.warn(`⚠️ Failed to download ${file.name}: ${error.message}`);
+      // Continue with other files
+    }
+  };
+
+  // Process files with concurrency limit
+  while (fileQueue.length > 0 || activeDownloads.length > 0) {
+    // Start new downloads if under concurrency limit
+    while (activeDownloads.length < concurrency && fileQueue.length > 0) {
+      const file = fileQueue.shift()!;
+      const downloadPromise = downloadFile(file).then(() => {
+        activeDownloads.splice(activeDownloads.indexOf(downloadPromise), 1);
+      }).catch((error) => {
+        console.error(`❌ Error downloading ${file.name}:`, error.message);
+        activeDownloads.splice(activeDownloads.indexOf(downloadPromise), 1);
+      });
+      activeDownloads.push(downloadPromise);
+    }
+
+    // Wait for at least one download to complete before continuing
+    if (activeDownloads.length > 0) {
+      await Promise.race(activeDownloads);
+    }
+  }
+
+  return results;
+}
+
 
 // Multer memory upload for sending data directly to Drive
 const memoryUpload = multer({ storage: multer.memoryStorage() });
@@ -877,7 +947,312 @@ router.get("/me/files/export/:id", async (req: Request, res: Response): Promise<
 });
 
 /**
- * 🔧 UTILITY/DEBUG ENDPOINTS
+ * � ZIP DOWNLOAD ENDPOINTS
+ */
+
+/**
+ * ✅ GET /drive/folders/:folderId/download-zip
+ * Purpose: Download a folder and all its contents as a ZIP file
+ * Params:
+ *   - folderId (required, URL): Folder ID to download as ZIP
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: Binary ZIP file stream
+ * Content-Type: application/zip
+ * Usage: Download entire folders with all nested contents
+ */
+router.get("/folders/:folderId/download-zip", async (req: Request, res: Response): Promise<void> => {
+  const startTime = Date.now();
+  
+  try {
+    let tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    // Ensure we have a valid access token
+    await ensureValidAccessToken(tokens);
+
+    const folderId = req.params.folderId;
+    if (!folderId) {
+      res.status(400).json({ success: false, message: "Missing folderId" });
+      return;
+    }
+
+    // Get folder metadata
+    const folderMeta = await getDriveFileMetadata(tokens, folderId);
+    const folderName = folderMeta?.name || "folder";
+
+    // Create new ZIP instance (JSZip is already imported at top)
+    const zip = new JSZip();
+
+    // Recursive function to add files to ZIP with retry logic
+    const addFolderToZip = async (parentId: string, zipFolder: any, parentPath: string = ""): Promise<void> => {
+      try {
+        // List all files in this folder
+        let response;
+        
+        try {
+          response = await axios.get(
+            "https://www.googleapis.com/drive/v3/files",
+            {
+              headers: { Authorization: `Bearer ${tokens.access_token}` },
+              params: {
+                q: `'${parentId}' in parents and trashed=false`,
+                spaces: "drive",
+                fields: "files(id, name, mimeType, size)",
+                pageSize: 1000,
+              },
+            }
+          );
+        } catch (apiError: any) {
+          // If token expired, try to refresh and retry
+          if (apiError.response?.status === 401 && tokens.refresh_token) {
+            console.log('🔄 Access token expired during folder fetch, attempting to refresh...');
+            try {
+              const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
+              tokens.access_token = refreshed.access_token;
+              console.log('✅ Token refreshed, retrying folder fetch...');
+              
+              response = await axios.get(
+                "https://www.googleapis.com/drive/v3/files",
+                {
+                  headers: { Authorization: `Bearer ${tokens.access_token}` },
+                  params: {
+                    q: `'${parentId}' in parents and trashed=false`,
+                    spaces: "drive",
+                    fields: "files(id, name, mimeType, size)",
+                    pageSize: 1000,
+                  },
+                }
+              );
+            } catch (refreshError: any) {
+              console.error('❌ Failed to refresh token:', refreshError.message);
+              throw apiError; // Throw original error if refresh fails
+            }
+          } else {
+            throw apiError;
+          }
+        }
+
+        const files = response.data.files || [];
+
+        // Separate files and folders
+        const filesToDownload: Array<{ id: string; name: string }> = [];
+        const subFolders: Array<{ id: string; name: string; path: string }> = [];
+
+        for (const file of files) {
+          const filePath = parentPath ? `${parentPath}/${file.name}` : file.name;
+          if (file.mimeType === "application/vnd.google-apps.folder") {
+            subFolders.push({ id: file.id, name: file.name, path: filePath });
+          } else {
+            filesToDownload.push({ id: file.id, name: file.name });
+          }
+        }
+
+        // Download all files in parallel (up to 15 concurrent downloads)
+        if (filesToDownload.length > 0) {
+          const downloadedFiles = await downloadFilesInParallel(filesToDownload, tokens, 15);
+          
+          // Add downloaded files to ZIP
+          for (const { name, buffer } of downloadedFiles) {
+            zipFolder.file(name, buffer);
+          }
+        }
+
+        // Process subfolders recursively
+        for (const subfolder of subFolders) {
+          const subFolder = zipFolder.folder(subfolder.name);
+          await addFolderToZip(subfolder.id, subFolder, subfolder.path);
+        }
+      } catch (error: any) {
+        console.error(`❌ Error processing folder ${parentId}:`, error.message);
+        throw error;
+      }
+    };
+
+    // Build ZIP structure
+    await addFolderToZip(folderId, zip);
+
+    // Generate ZIP buffer (STORE = no compression for speed)
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
+
+    // Send ZIP file
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${folderName}.zip"`);
+    res.setHeader("Content-Length", zipBuffer.length);
+    res.send(zipBuffer);
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.log(`✅ ZIP created and sent successfully: ${folderName}.zip (${zipBuffer.length} bytes) in ${duration}s`);
+  } catch (error: any) {
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.error(`❌ Failed to create folder ZIP after ${duration}s:`, error.message || error);
+    console.error("Stack trace:", error.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to create ZIP",
+        error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+      });
+    }
+  }
+});
+
+/**
+ * ✅ POST /drive/items/download-zip
+ * Purpose: Download multiple files/folders as a single ZIP file
+ * Params:
+ *   - itemIds (required, body): Array of file/folder IDs to download
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { itemIds: ["id1", "id2", ...] }
+ * Returns: Binary ZIP file stream
+ * Content-Type: application/zip
+ * Usage: Download multiple selected items at once
+ */
+router.post("/items/download-zip", async (req: Request, res: Response): Promise<void> => {
+  const startTime = Date.now();
+  
+  try {
+    let tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    // Ensure we have a valid access token
+    await ensureValidAccessToken(tokens);
+
+    const itemIds = (req.body?.itemIds as string[]) || [];
+    if (!itemIds || itemIds.length === 0) {
+      res.status(400).json({ success: false, message: "Missing itemIds in request body" });
+      return;
+    }
+
+    // Create new ZIP instance (JSZip is already imported at top)
+    const zip = new JSZip();
+
+    // Helper function to add files recursively
+    const addItemToZip = async (itemId: string, zipFolder: any): Promise<void> => {
+      try {
+        const itemMeta = await getDriveFileMetadata(tokens, itemId);
+        const itemName = itemMeta?.name || itemId;
+
+        if (itemMeta?.mimeType === "application/vnd.google-apps.folder") {
+          // It's a folder - recursively add contents
+          const subFolder = zipFolder.folder(itemName);
+          
+          let response;
+          try {
+            response = await axios.get(
+              "https://www.googleapis.com/drive/v3/files",
+              {
+                headers: { Authorization: `Bearer ${tokens.access_token}` },
+                params: {
+                  q: `'${itemId}' in parents and trashed=false`,
+                  spaces: "drive",
+                  fields: "files(id, name, mimeType)",
+                  pageSize: 1000,
+                },
+              }
+            );
+          } catch (apiError: any) {
+            // If token expired, try to refresh and retry
+            if (apiError.response?.status === 401 && tokens.refresh_token) {
+              console.log('🔄 Access token expired during folder fetch, attempting to refresh...');
+              try {
+                const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
+                tokens.access_token = refreshed.access_token;
+                console.log('✅ Token refreshed, retrying folder fetch...');
+                
+                response = await axios.get(
+                  "https://www.googleapis.com/drive/v3/files",
+                  {
+                    headers: { Authorization: `Bearer ${tokens.access_token}` },
+                    params: {
+                      q: `'${itemId}' in parents and trashed=false`,
+                      spaces: "drive",
+                      fields: "files(id, name, mimeType)",
+                      pageSize: 1000,
+                    },
+                  }
+                );
+              } catch (refreshError: any) {
+                console.error('❌ Failed to refresh token:', refreshError.message);
+                throw apiError; // Throw original error if refresh fails
+              }
+            } else {
+              throw apiError;
+            }
+          }
+
+          const files = response.data.files || [];
+          
+          // Process each file/folder in the parent folder
+          for (const file of files) {
+            await addItemToZip(file.id, subFolder);
+          }
+        } else {
+          // It's a file - download and add to ZIP
+          try {
+            console.log(`📥 Downloading file: ${itemName}`);
+            const { stream } = await downloadDriveFileStream(tokens, itemId);
+            const chunks: Buffer[] = [];
+
+            await new Promise((resolve, reject) => {
+              stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+              stream.on("end", resolve);
+              stream.on("error", reject);
+            });
+
+            const fileBuffer = Buffer.concat(chunks);
+            zipFolder.file(itemName, fileBuffer);
+          } catch (fileError: any) {
+            console.warn(`⚠️ Failed to download file ${itemName}:`, fileError.message);
+          }
+        }
+      } catch (error: any) {
+        console.error(`❌ Error processing item ${itemId}:`, error.message);
+        throw error;
+      }
+    };
+
+    // Process all items in parallel when possible
+    // For top-level items, we can process multiple in parallel
+    const topLevelPromises = itemIds.map(itemId => addItemToZip(itemId, zip));
+    await Promise.all(topLevelPromises);
+
+    // Generate ZIP buffer (STORE = no compression for speed)
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
+
+    // Send ZIP file
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="download.zip"`);
+    res.setHeader("Content-Length", zipBuffer.length);
+    res.send(zipBuffer);
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.log(`✅ ZIP created and sent successfully: download.zip (${zipBuffer.length} bytes) containing ${itemIds.length} item(s) in ${duration}s`);
+  } catch (error: any) {
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.error(`❌ Failed to create items ZIP after ${duration}s:`, error.message || error);
+    console.error("Stack trace:", error.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to create ZIP",
+        error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+      });
+    }
+  }
+});
+
+/**
+ * �🔧 UTILITY/DEBUG ENDPOINTS
  */
 
 /**
