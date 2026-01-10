@@ -34,7 +34,10 @@ const bodyParser = require('body-parser');
 const cookieSession = require('cookie-session');
 
 import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
-
+import influencerIndustry from './routes/api-webapp/superAdmin/influencer/industry/influencer-industry-api'
+import influencerCategory from './routes/api-webapp/superAdmin/influencer/category/influencer-category-api'
+import seoAnalyzer from './routes/api-webapp/seo/index'
+import payrollTransaction from './routes/api-webapp/payroll/payroll-transaction/payroll-transaction-api'
 import path from "path";
 const app = express();
 dotenv.config();
@@ -77,6 +80,10 @@ app.use("/twitter", twitterRoutes);
 app.use("/tiktok", tiktokRoutes);
 app.use("/roles", rolesRoutes);
 app.use("/influencer", influencerRoutes);
+app.use("/influencer/industry",influencerIndustry)
+app.use("/influencer/category",influencerCategory)
+app.use("/seo",seoAnalyzer)
+app.use("/payroll",payrollTransaction)
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it

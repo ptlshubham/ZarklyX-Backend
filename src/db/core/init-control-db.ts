@@ -1,3 +1,4 @@
+// import { InfluencerIndustry } from './../../routes/api-webapp/superAdmin/influencer/industry/influencer-industry-model';
 import type { Sequelize } from "sequelize";
 import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
@@ -14,7 +15,10 @@ import { Influencer } from "../../routes/api-webapp/influencer/influencer-model"
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
 import { Role } from "../../routes/api-webapp/roles/role-model";
 import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
-
+import {InfluencerCategory} from "../../routes/api-webapp/superAdmin/influencer/category/influencer-category-model";
+import {InfluencerIndustry} from "../../routes/api-webapp/superAdmin/influencer/industry/influencer-industry-model";
+import { seo } from "../../routes/api-webapp/seo/seo-model";
+import {PayrollTransaction} from "../../routes/api-webapp/payroll/payroll-transaction/payroll-transactions-model"
 export {
   User,
   Company,
@@ -29,6 +33,10 @@ export {
   SocialToken,
   Employee,
   Influencer,
+  InfluencerCategory,
+  InfluencerIndustry,
+  seo,
+  PayrollTransaction
   // GoogleToken
 };
 export function initControlDB(sequelize: Sequelize) {
@@ -50,6 +58,11 @@ export function initControlDB(sequelize: Sequelize) {
   BusinessSubcategory.initModel(sequelize);
   SocialToken.initModel(sequelize);
   Influencer.initModel(sequelize);
+  InfluencerCategory.initModel(sequelize);
+  InfluencerIndustry.initModel(sequelize);
+  seo.initModel(sequelize);
+  PayrollTransaction.initModel(sequelize);
+
 
   // GoogleToken.initModel(sequelize); 
   //  initCategoryModel(sequelize);
@@ -175,6 +188,29 @@ export function initControlDB(sequelize: Sequelize) {
     as: "user",
   });
 
+    /*** Company <-> PayrollTransaction */
+  Company.hasMany(PayrollTransaction, {
+    foreignKey: "companyId",
+    as: "payrollTransactions", // company.getPayrollTransactions()
+  });
+
+  PayrollTransaction.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company", // payrollTransaction.getCompany()
+  });
+
+  /*** Employee <-> PayrollTransaction */
+  Employee.hasMany(PayrollTransaction, {
+    foreignKey: "employeeId",
+    as: "payrolls", // employee.getPayrolls()
+  });
+
+  PayrollTransaction.belongsTo(Employee, {
+    foreignKey: "employeeId",
+    as: "employee", // payrollTransaction.getEmployee()
+  });
+
+
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
   // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
@@ -203,6 +239,10 @@ export function initControlDB(sequelize: Sequelize) {
     SubRole,
     Influencer,
     Employee,
+    InfluencerCategory,
+    InfluencerIndustry,
+    seo,
+    PayrollTransaction
 
   };
 }

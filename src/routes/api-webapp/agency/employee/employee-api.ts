@@ -41,7 +41,7 @@ const router = express.Router();
  * Step 2: Create employee entry linked to user
  * Required: firstName, lastName, email, contactNumber, companyId, employeeId
  */
-router.post("/register", authMiddleware, employeeFileUpload.fields([
+router.post("/register", employeeFileUpload.fields([
     { name: "profilePhoto", maxCount: 1 },
     { name: "resumeFile", maxCount: 1 },
     { name: "aadharDocument", maxCount: 1 },
@@ -73,7 +73,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             countryCode,
             password,
             // Employee details
-            // companyId,
+            companyId,
             employeeId,
             designation,
             dateOfJoining,
@@ -84,13 +84,13 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             ...restData
         } = req.body;
 
-        const companyId = req.user?.companyId;
+        // const companyId = req.user?.companyId;
 
 
-        if (req.user?.userType != 'agency') {
-            unauthorized(res, "Only Accessiable for agency");
-            return;
-        }
+        // if (req.user?.userType != 'agency') {
+        //     unauthorized(res, "Only Accessiable for agency");
+        //     return;
+        // }
 
         // ✅ Validate required user fields
         if (!firstName || !lastName || !email || !contactNumber || !companyId || !employeeId) {

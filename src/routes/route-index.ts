@@ -18,6 +18,7 @@ export default (app: Application) => {
     app.use("/clients", require("./api-webapp/agency/clients/clients-2fa-api"));
     app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
     app.use("/employee", require("./api-webapp/agency/employee/employee-api"));
+    app.use("/payroll", require("./api-webapp/payroll/payroll-transaction/payroll-transaction-api"));
     app.use("/businessType", require("./api-webapp/superAdmin/generalSetup/businessType/businessType-api"));
     // app.use("/youtube", require("./api-webapp/other/youtube/youtube-api"));
     app.use("/youtube", require("./api-webapp/agency/social-Integration/youtube/youtube-api"));
@@ -31,6 +32,11 @@ export default (app: Application) => {
     app.use("/twitter", require("./api-webapp/agency/social-Integration/twitter/twitter-api"));
     app.use("/tiktok", require("./api-webapp/agency/social-Integration/tiktok/tiktok-api"));
     app.use("/influencer", require("./api-webapp/influencer/influencer-api"));
+    app.use("/influencer/category", require("./api-webapp/superAdmin/influencer/category/influencer-category-api"));
+    app.use("/influencer/industry", require("./api-webapp/superAdmin/influencer/industry/influencer-industry-api"));
+    app.use("/seo",require("./api-webapp/seo/api/index"))
+    app.use("/payroll",require("./api-webapp/payroll/payroll-transaction/payroll-transaction-api"))
+
     // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
 
     // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
