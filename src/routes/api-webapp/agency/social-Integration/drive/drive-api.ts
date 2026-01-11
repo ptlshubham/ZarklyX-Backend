@@ -3,6 +3,7 @@ import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, get
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
+import JSZip from "jszip";
 import { sendEmailWithAttachments } from "../../../../../services/gmail-service";
 import multer from "multer";
 import { saveOrUpdateToken, updateAccessToken, getConnectedDrivesByCompanyId, deleteTokensByCompanyIdAndProvider } from "../../../../../services/token-store.service";
@@ -33,6 +34,133 @@ function extractTokens(req: Request) {
   if (refresh_token) tokens.refresh_token = refresh_token;
   return tokens;
 }
+
+// Helper: Ensure access token is valid, refresh if needed
+async function ensureValidAccessToken(tokens: any): Promise<void> {
+  if (!tokens.access_token && tokens.refresh_token) {
+    console.log('🔄 No access token, attempting to refresh using refresh token...');
+    try {
+      const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
+      tokens.access_token = refreshed.access_token;
+      console.log('✅ Token refreshed successfully');
+    } catch (error: any) {
+      console.error('❌ Failed to refresh token:', error.message);
+      throw new Error('Failed to refresh access token');
+    }
+  }
+}
+
+// Helper: Download multiple files with concurrency control
+async function downloadFilesInParallel(
+  files: Array<{ id: string; name: string; mimeType?: string }>,
+  tokens: any,
+  concurrency: number = 15
+): Promise<Array<{ name: string; buffer: Buffer }>> {
+  const results: Array<{ name: string; buffer: Buffer }> = [];
+  const fileQueue = [...files];
+  const activeDownloads: Promise<void>[] = [];
+
+  // Map Google Docs types to Microsoft formats
+  const googleToMicrosoftMap: { [key: string]: { mimeType: string; extension: string; name: string } } = {
+    'application/vnd.google-apps.document': {
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      extension: '.docx',
+      name: 'Word Document'
+    },
+    'application/vnd.google-apps.spreadsheet': {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      extension: '.xlsx',
+      name: 'Excel Spreadsheet'
+    },
+    'application/vnd.google-apps.presentation': {
+      mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      extension: '.pptx',
+      name: 'PowerPoint Presentation'
+    },
+    'application/vnd.google-apps.drawing': {
+      mimeType: 'application/pdf',
+      extension: '.pdf',
+      name: 'PDF Drawing'
+    },
+    'application/vnd.google-apps.form': {
+      mimeType: 'application/pdf',
+      extension: '.pdf',
+      name: 'PDF Form'
+    }
+  };
+
+  const downloadFile = async (file: { id: string; name: string; mimeType?: string }) => {
+    try {
+      const fileName = file.name;
+      const mimeType = file.mimeType || "";
+      
+      // Check if it's a Google Docs type
+      if (mimeType.startsWith("application/vnd.google-apps")) {
+        const exportConfig = googleToMicrosoftMap[mimeType] || {
+          mimeType: 'application/pdf',
+          extension: '.pdf',
+          name: 'PDF'
+        };
+        
+        console.log(`📥 File is ${exportConfig.name} (${mimeType}), exporting to ${exportConfig.name}...`);
+        const { stream } = await exportDriveFileStream(tokens, file.id, exportConfig.mimeType);
+        const finalName = fileName.replace(/\.[^.]*$/, '') + exportConfig.extension;
+        const chunks: Buffer[] = [];
+
+        return new Promise<void>((resolve, reject) => {
+          stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          stream.on("end", () => {
+            const fileBuffer = Buffer.concat(chunks);
+            results.push({ name: finalName, buffer: fileBuffer });
+            console.log(`✅ Exported ${finalName} (${exportConfig.name})`);
+            resolve();
+          });
+          stream.on("error", reject);
+        });
+      }
+      
+      // Regular file download
+      const { stream } = await downloadDriveFileStream(tokens, file.id);
+      const chunks: Buffer[] = [];
+
+      return new Promise<void>((resolve, reject) => {
+        stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+        stream.on("end", () => {
+          const fileBuffer = Buffer.concat(chunks);
+          results.push({ name: fileName, buffer: fileBuffer });
+          resolve();
+        });
+        stream.on("error", reject);
+      });
+    } catch (error: any) {
+      console.warn(`⚠️ Failed to download ${file.name}: ${error.message}`);
+      // Continue with other files
+    }
+  };
+
+  // Process files with concurrency limit
+  while (fileQueue.length > 0 || activeDownloads.length > 0) {
+    // Start new downloads if under concurrency limit
+    while (activeDownloads.length < concurrency && fileQueue.length > 0) {
+      const file = fileQueue.shift()!;
+      const downloadPromise = downloadFile(file).then(() => {
+        activeDownloads.splice(activeDownloads.indexOf(downloadPromise), 1);
+      }).catch((error) => {
+        console.error(`❌ Error downloading ${file.name}:`, error.message);
+        activeDownloads.splice(activeDownloads.indexOf(downloadPromise), 1);
+      });
+      activeDownloads.push(downloadPromise);
+    }
+
+    // Wait for at least one download to complete before continuing
+    if (activeDownloads.length > 0) {
+      await Promise.race(activeDownloads);
+    }
+  }
+
+  return results;
+}
+
 
 // Multer memory upload for sending data directly to Drive
 const memoryUpload = multer({ storage: multer.memoryStorage() });
@@ -779,6 +907,183 @@ router.get("/me/files/export-pdf/:id", async (req: Request, res: Response): Prom
 });
 
 /**
+ * ✅ GET /drive/files/:id
+ * Purpose: Direct file download (optimized for single file downloads, no progress notification needed)
+ * Params:
+ *   - id (required, URL): File ID to download
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: Binary file stream with appropriate Content-Type
+ * Headers: Content-Disposition set to 'attachment' for automatic download
+ * Content-Type: Set dynamically based on file MIME type
+ * Note: This is optimized for direct downloads (no drawer/progress notification)
+ *       For metadata-heavy operations, use /drive/me/files/download/:id instead
+ * Usage: Download individual files directly without progress notification
+ */
+router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Extract tokens using same pattern as /file/:id endpoint
+    const access_token = (req.headers["x-access-token"] as string) || (req.query.access_token as string) || "";
+    const refresh_token = (req.headers["x-refresh-token"] as string) || (req.query.refresh_token as string) || undefined;
+
+    console.log('📥 File Download Request - Token Debug:', {
+      url: req.url,
+      headersPresent: {
+        'x-access-token': !!req.headers['x-access-token'],
+        'x-refresh-token': !!req.headers['x-refresh-token']
+      },
+      extractedTokens: {
+        hasAccessToken: !!access_token,
+        hasRefreshToken: !!refresh_token
+      }
+    });
+
+    if (!access_token && !refresh_token) {
+      console.error('❌ No tokens found in request');
+      res.status(401).json({
+        success: false,
+        message: "Authentication required: Provide access_token or refresh_token in headers (x-access-token, x-refresh-token) or query params"
+      });
+      return;
+    }
+
+    const fileId = req.params.id;
+    if (!fileId) {
+      res.status(400).json({ success: false, message: "Missing file id" });
+      return;
+    }
+
+    console.log(`📥 Downloading file: ${fileId}`);
+
+    // Get file metadata for name and type check
+    const meta = await getDriveFileMetadata({ access_token, refresh_token }, fileId);
+    console.log(`📥 Got metadata for file: ${meta.name}`);
+    console.log(`📥 File mimeType details:`, {
+      mimeType: meta.mimeType,
+      type: typeof meta.mimeType,
+      isString: typeof meta.mimeType === 'string',
+      startsWithGoogle: (meta.mimeType || '').startsWith('application/vnd.google-apps')
+    });
+
+    // Map Google Docs types to Microsoft formats
+    const googleToMicrosoftMap: { [key: string]: { mimeType: string; extension: string; name: string } } = {
+      'application/vnd.google-apps.document': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        extension: '.docx',
+        name: 'Word Document'
+      },
+      'application/vnd.google-apps.spreadsheet': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        extension: '.xlsx',
+        name: 'Excel Spreadsheet'
+      },
+      'application/vnd.google-apps.presentation': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        extension: '.pptx',
+        name: 'PowerPoint Presentation'
+      },
+      'application/vnd.google-apps.drawing': {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF Drawing'
+      },
+      'application/vnd.google-apps.form': {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF Form'
+      }
+    };
+
+    // Google Docs types must be exported instead of downloaded
+    const mimeType = meta.mimeType || "";
+    if (mimeType.startsWith("application/vnd.google-apps")) {
+      const exportConfig = googleToMicrosoftMap[mimeType] || {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF'
+      };
+
+      console.log(`📥 File is ${exportConfig.name} (${meta.mimeType}), exporting to ${exportConfig.name}...`);
+      
+      // Export Google Docs as Microsoft format
+      const { stream } = await exportDriveFileStream({ access_token, refresh_token }, fileId, exportConfig.mimeType);
+      const filename = (meta.name || fileId) + exportConfig.extension;
+
+      res.setHeader("Content-Type", exportConfig.mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/"/g, '')}"`);
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+      console.log(`✅ Starting export stream: ${filename}`);
+
+      stream.on("error", (err) => {
+        console.error(`❌ Stream error for file ${fileId}:`, err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, message: err?.message || "Stream error" });
+        } else {
+          res.end();
+        }
+      });
+
+      stream.pipe(res);
+      return;
+    }
+
+    // Download regular file (not Google Docs)
+    const { stream } = await downloadDriveFileStream({ access_token, refresh_token }, fileId);
+    const filename = meta.name || fileId;
+
+    // Set headers for direct download (attachment disposition)
+    res.setHeader("Content-Type", meta.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/"/g, '')}"`);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+    console.log(`✅ Starting file stream: ${filename}`);
+
+    // Handle stream errors
+    stream.on("error", (err) => {
+      console.error(`❌ Stream error for file ${fileId}:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: err?.message || "Stream error" });
+      } else {
+        res.end();
+      }
+    });
+
+    // Pipe the file stream to response
+    stream.pipe(res);
+  } catch (error: any) {
+    console.error('❌ File download error:', {
+      message: error.message,
+      code: error.code,
+      errorCode: error?.error?.code,
+      errorMessage: error?.error?.message,
+      stack: error.stack?.split('\n')[0]
+    });
+
+    // Special handling for fileNotDownloadable error (Google Docs)
+    if (error?.error?.code === 403 && error?.error?.errors?.[0]?.reason === 'fileNotDownloadable') {
+      console.error('⚠️ File is not directly downloadable - likely a Google Docs file. Should export instead.');
+      if (!res.headersSent) {
+        res.status(400).json({ 
+          success: false, 
+          message: "This file type requires export. File was likely misidentified as downloadable.",
+          errorCode: 'fileNotDownloadable',
+          suggestion: 'The file may be a Google Docs type that needs to be exported'
+        });
+      }
+      return;
+    }
+
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to download file",
+        errorCode: error.code
+      });
+    }
+  }
+});
+
+/**
  * ✅ GET /drive/me/files/download/:id
  * Purpose: Download a regular file from Google Drive (not Google Docs types)
  * Params:
@@ -877,7 +1182,369 @@ router.get("/me/files/export/:id", async (req: Request, res: Response): Promise<
 });
 
 /**
- * 🔧 UTILITY/DEBUG ENDPOINTS
+ * � ZIP DOWNLOAD ENDPOINTS
+ */
+
+/**
+ * ✅ GET /drive/folders/:folderId/download-zip
+ * Purpose: Download a folder and all its contents as a ZIP file
+ * Params:
+ *   - folderId (required, URL): Folder ID to download as ZIP
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: Binary ZIP file stream
+ * Content-Type: application/zip
+ * Usage: Download entire folders with all nested contents
+ */
+router.get("/folders/:folderId/download-zip", async (req: Request, res: Response): Promise<void> => {
+  const startTime = Date.now();
+  
+  try {
+    let tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    // Ensure we have a valid access token
+    await ensureValidAccessToken(tokens);
+
+    const folderId = req.params.folderId;
+    if (!folderId) {
+      res.status(400).json({ success: false, message: "Missing folderId" });
+      return;
+    }
+
+    // Get folder metadata
+    const folderMeta = await getDriveFileMetadata(tokens, folderId);
+    const folderName = folderMeta?.name || "folder";
+
+    // Create new ZIP instance (JSZip is already imported at top)
+    const zip = new JSZip();
+
+    // Recursive function to add files to ZIP with retry logic
+    const addFolderToZip = async (parentId: string, zipFolder: any, parentPath: string = ""): Promise<void> => {
+      try {
+        // List all files in this folder
+        let response;
+        
+        try {
+          response = await axios.get(
+            "https://www.googleapis.com/drive/v3/files",
+            {
+              headers: { Authorization: `Bearer ${tokens.access_token}` },
+              params: {
+                q: `'${parentId}' in parents and trashed=false`,
+                spaces: "drive",
+                fields: "files(id, name, mimeType, size)",
+                pageSize: 1000,
+              },
+            }
+          );
+        } catch (apiError: any) {
+          // If token expired, try to refresh and retry
+          if (apiError.response?.status === 401 && tokens.refresh_token) {
+            console.log('🔄 Access token expired during folder fetch, attempting to refresh...');
+            try {
+              const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
+              tokens.access_token = refreshed.access_token;
+              console.log('✅ Token refreshed, retrying folder fetch...');
+              
+              response = await axios.get(
+                "https://www.googleapis.com/drive/v3/files",
+                {
+                  headers: { Authorization: `Bearer ${tokens.access_token}` },
+                  params: {
+                    q: `'${parentId}' in parents and trashed=false`,
+                    spaces: "drive",
+                    fields: "files(id, name, mimeType, size)",
+                    pageSize: 1000,
+                  },
+                }
+              );
+            } catch (refreshError: any) {
+              console.error('❌ Failed to refresh token:', refreshError.message);
+              throw apiError; // Throw original error if refresh fails
+            }
+          } else {
+            throw apiError;
+          }
+        }
+
+        const files = response.data.files || [];
+
+        // Separate files and folders
+        const filesToDownload: Array<{ id: string; name: string; mimeType?: string }> = [];
+        const subFolders: Array<{ id: string; name: string; path: string }> = [];
+
+        for (const file of files) {
+          const filePath = parentPath ? `${parentPath}/${file.name}` : file.name;
+          if (file.mimeType === "application/vnd.google-apps.folder") {
+            subFolders.push({ id: file.id, name: file.name, path: filePath });
+          } else {
+            filesToDownload.push({ id: file.id, name: file.name, mimeType: file.mimeType });
+          }
+        }
+
+        // Download all files in parallel (up to 15 concurrent downloads)
+        if (filesToDownload.length > 0) {
+          const downloadedFiles = await downloadFilesInParallel(filesToDownload, tokens, 15);
+          
+          // Add downloaded files to ZIP
+          for (const { name, buffer } of downloadedFiles) {
+            zipFolder.file(name, buffer);
+          }
+        }
+
+        // Process subfolders recursively
+        for (const subfolder of subFolders) {
+          const subFolder = zipFolder.folder(subfolder.name);
+          await addFolderToZip(subfolder.id, subFolder, subfolder.path);
+        }
+      } catch (error: any) {
+        console.error(`❌ Error processing folder ${parentId}:`, error.message);
+        throw error;
+      }
+    };
+
+    // Build ZIP structure
+    await addFolderToZip(folderId, zip);
+
+    // Generate ZIP buffer (STORE = no compression for speed)
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
+
+    // Send ZIP file
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${folderName}.zip"`);
+    res.setHeader("Content-Length", zipBuffer.length);
+    res.send(zipBuffer);
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.log(`✅ ZIP created and sent successfully: ${folderName}.zip (${zipBuffer.length} bytes) in ${duration}s`);
+  } catch (error: any) {
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.error(`❌ Failed to create folder ZIP after ${duration}s:`, error.message || error);
+    console.error("Stack trace:", error.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to create ZIP",
+        error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+      });
+    }
+  }
+});
+
+/**
+ * ✅ POST /drive/items/download-zip
+ * Purpose: Download multiple files/folders as a single ZIP file
+ * Params:
+ *   - itemIds (required, body): Array of file/folder IDs to download
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { itemIds: ["id1", "id2", ...] }
+ * Returns: Binary ZIP file stream
+ * Content-Type: application/zip
+ * Usage: Download multiple selected items at once
+ */
+router.post("/items/download-zip", async (req: Request, res: Response): Promise<void> => {
+  const startTime = Date.now();
+  
+  try {
+    let tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    // Ensure we have a valid access token
+    await ensureValidAccessToken(tokens);
+
+    const itemIds = (req.body?.itemIds as string[]) || [];
+    if (!itemIds || itemIds.length === 0) {
+      res.status(400).json({ success: false, message: "Missing itemIds in request body" });
+      return;
+    }
+
+    // Create new ZIP instance (JSZip is already imported at top)
+    const zip = new JSZip();
+
+    // Map Google Docs types to Microsoft formats
+    const googleToMicrosoftMap: { [key: string]: { mimeType: string; extension: string; name: string } } = {
+      'application/vnd.google-apps.document': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        extension: '.docx',
+        name: 'Word Document'
+      },
+      'application/vnd.google-apps.spreadsheet': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        extension: '.xlsx',
+        name: 'Excel Spreadsheet'
+      },
+      'application/vnd.google-apps.presentation': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        extension: '.pptx',
+        name: 'PowerPoint Presentation'
+      },
+      'application/vnd.google-apps.drawing': {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF Drawing'
+      },
+      'application/vnd.google-apps.form': {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF Form'
+      }
+    };
+
+    // Helper function to add files recursively
+    const addItemToZip = async (itemId: string, zipFolder: any): Promise<void> => {
+      try {
+        const itemMeta = await getDriveFileMetadata(tokens, itemId);
+        const itemName = itemMeta?.name || itemId;
+        const mimeType = itemMeta?.mimeType || "";
+
+        if (mimeType === "application/vnd.google-apps.folder") {
+          // It's a folder - recursively add contents
+          const subFolder = zipFolder.folder(itemName);
+          
+          let response;
+          try {
+            response = await axios.get(
+              "https://www.googleapis.com/drive/v3/files",
+              {
+                headers: { Authorization: `Bearer ${tokens.access_token}` },
+                params: {
+                  q: `'${itemId}' in parents and trashed=false`,
+                  spaces: "drive",
+                  fields: "files(id, name, mimeType)",
+                  pageSize: 1000,
+                },
+              }
+            );
+          } catch (apiError: any) {
+            // If token expired, try to refresh and retry
+            if (apiError.response?.status === 401 && tokens.refresh_token) {
+              console.log('🔄 Access token expired during folder fetch, attempting to refresh...');
+              try {
+                const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
+                tokens.access_token = refreshed.access_token;
+                console.log('✅ Token refreshed, retrying folder fetch...');
+                
+                response = await axios.get(
+                  "https://www.googleapis.com/drive/v3/files",
+                  {
+                    headers: { Authorization: `Bearer ${tokens.access_token}` },
+                    params: {
+                      q: `'${itemId}' in parents and trashed=false`,
+                      spaces: "drive",
+                      fields: "files(id, name, mimeType)",
+                      pageSize: 1000,
+                    },
+                  }
+                );
+              } catch (refreshError: any) {
+                console.error('❌ Failed to refresh token:', refreshError.message);
+                throw apiError; // Throw original error if refresh fails
+              }
+            } else {
+              throw apiError;
+            }
+          }
+
+          const files = response.data.files || [];
+          
+          // Process each file/folder in the parent folder
+          for (const file of files) {
+            await addItemToZip(file.id, subFolder);
+          }
+        } else if (mimeType.startsWith("application/vnd.google-apps")) {
+          // Google Docs type - export to Microsoft format
+          const exportConfig = googleToMicrosoftMap[mimeType] || {
+            mimeType: 'application/pdf',
+            extension: '.pdf',
+            name: 'PDF'
+          };
+
+          try {
+            console.log(`📥 File is ${exportConfig.name} (${mimeType}), exporting...`);
+            const { stream } = await exportDriveFileStream(tokens, itemId, exportConfig.mimeType);
+            const finalName = itemName.replace(/\.[^.]*$/, '') + exportConfig.extension;
+            const chunks: Buffer[] = [];
+
+            await new Promise<void>((resolve, reject) => {
+              stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+              stream.on("end", () => {
+                const fileBuffer = Buffer.concat(chunks);
+                zipFolder.file(finalName, fileBuffer);
+                console.log(`✅ Exported ${finalName} (${exportConfig.name})`);
+                resolve();
+              });
+              stream.on("error", reject);
+            });
+          } catch (fileError: any) {
+            console.warn(`⚠️ Failed to export file ${itemName}:`, fileError.message);
+          }
+        } else {
+          // Regular file - download and add to ZIP
+          try {
+            console.log(`📥 Downloading file: ${itemName}`);
+            const { stream } = await downloadDriveFileStream(tokens, itemId);
+            const chunks: Buffer[] = [];
+
+            await new Promise((resolve, reject) => {
+              stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+              stream.on("end", resolve);
+              stream.on("error", reject);
+            });
+
+            const fileBuffer = Buffer.concat(chunks);
+            zipFolder.file(itemName, fileBuffer);
+          } catch (fileError: any) {
+            console.warn(`⚠️ Failed to download file ${itemName}:`, fileError.message);
+          }
+        }
+      } catch (error: any) {
+        console.error(`❌ Error processing item ${itemId}:`, error.message);
+        throw error;
+      }
+    };
+
+    // Process all items in parallel when possible
+    // For top-level items, we can process multiple in parallel
+    const topLevelPromises = itemIds.map(itemId => addItemToZip(itemId, zip));
+    await Promise.all(topLevelPromises);
+
+    // Generate ZIP buffer (STORE = no compression for speed)
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
+
+    // Send ZIP file
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="download.zip"`);
+    res.setHeader("Content-Length", zipBuffer.length);
+    res.send(zipBuffer);
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.log(`✅ ZIP created and sent successfully: download.zip (${zipBuffer.length} bytes) containing ${itemIds.length} item(s) in ${duration}s`);
+  } catch (error: any) {
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.error(`❌ Failed to create items ZIP after ${duration}s:`, error.message || error);
+    console.error("Stack trace:", error.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to create ZIP",
+        error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+      });
+    }
+  }
+});
+
+/**
+ * �🔧 UTILITY/DEBUG ENDPOINTS
  */
 
 /**

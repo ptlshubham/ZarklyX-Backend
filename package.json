@@ -27,6 +27,7 @@
     "googleapis": "^166.0.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.1",
     "libphonenumber-js": "^1.12.29",
     "log4js": "^6.9.1",
     "mongoose": "^8.13.0",
