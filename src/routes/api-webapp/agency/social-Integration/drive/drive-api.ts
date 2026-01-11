@@ -52,7 +52,7 @@ async function ensureValidAccessToken(tokens: any): Promise<void> {
 
 // Helper: Download multiple files with concurrency control
 async function downloadFilesInParallel(
-  files: Array<{ id: string; name: string }>,
+  files: Array<{ id: string; name: string; mimeType?: string }>,
   tokens: any,
   concurrency: number = 15
 ): Promise<Array<{ name: string; buffer: Buffer }>> {
@@ -60,8 +60,66 @@ async function downloadFilesInParallel(
   const fileQueue = [...files];
   const activeDownloads: Promise<void>[] = [];
 
-  const downloadFile = async (file: { id: string; name: string }) => {
+  // Map Google Docs types to Microsoft formats
+  const googleToMicrosoftMap: { [key: string]: { mimeType: string; extension: string; name: string } } = {
+    'application/vnd.google-apps.document': {
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      extension: '.docx',
+      name: 'Word Document'
+    },
+    'application/vnd.google-apps.spreadsheet': {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      extension: '.xlsx',
+      name: 'Excel Spreadsheet'
+    },
+    'application/vnd.google-apps.presentation': {
+      mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      extension: '.pptx',
+      name: 'PowerPoint Presentation'
+    },
+    'application/vnd.google-apps.drawing': {
+      mimeType: 'application/pdf',
+      extension: '.pdf',
+      name: 'PDF Drawing'
+    },
+    'application/vnd.google-apps.form': {
+      mimeType: 'application/pdf',
+      extension: '.pdf',
+      name: 'PDF Form'
+    }
+  };
+
+  const downloadFile = async (file: { id: string; name: string; mimeType?: string }) => {
     try {
+      const fileName = file.name;
+      const mimeType = file.mimeType || "";
+      
+      // Check if it's a Google Docs type
+      if (mimeType.startsWith("application/vnd.google-apps")) {
+        const exportConfig = googleToMicrosoftMap[mimeType] || {
+          mimeType: 'application/pdf',
+          extension: '.pdf',
+          name: 'PDF'
+        };
+        
+        console.log(`📥 File is ${exportConfig.name} (${mimeType}), exporting to ${exportConfig.name}...`);
+        const { stream } = await exportDriveFileStream(tokens, file.id, exportConfig.mimeType);
+        const finalName = fileName.replace(/\.[^.]*$/, '') + exportConfig.extension;
+        const chunks: Buffer[] = [];
+
+        return new Promise<void>((resolve, reject) => {
+          stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          stream.on("end", () => {
+            const fileBuffer = Buffer.concat(chunks);
+            results.push({ name: finalName, buffer: fileBuffer });
+            console.log(`✅ Exported ${finalName} (${exportConfig.name})`);
+            resolve();
+          });
+          stream.on("error", reject);
+        });
+      }
+      
+      // Regular file download
       const { stream } = await downloadDriveFileStream(tokens, file.id);
       const chunks: Buffer[] = [];
 
@@ -69,7 +127,7 @@ async function downloadFilesInParallel(
         stream.on("data", (chunk: Buffer) => chunks.push(chunk));
         stream.on("end", () => {
           const fileBuffer = Buffer.concat(chunks);
-          results.push({ name: file.name, buffer: fileBuffer });
+          results.push({ name: fileName, buffer: fileBuffer });
           resolve();
         });
         stream.on("error", reject);
@@ -849,6 +907,183 @@ router.get("/me/files/export-pdf/:id", async (req: Request, res: Response): Prom
 });
 
 /**
+ * ✅ GET /drive/files/:id
+ * Purpose: Direct file download (optimized for single file downloads, no progress notification needed)
+ * Params:
+ *   - id (required, URL): File ID to download
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: Binary file stream with appropriate Content-Type
+ * Headers: Content-Disposition set to 'attachment' for automatic download
+ * Content-Type: Set dynamically based on file MIME type
+ * Note: This is optimized for direct downloads (no drawer/progress notification)
+ *       For metadata-heavy operations, use /drive/me/files/download/:id instead
+ * Usage: Download individual files directly without progress notification
+ */
+router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Extract tokens using same pattern as /file/:id endpoint
+    const access_token = (req.headers["x-access-token"] as string) || (req.query.access_token as string) || "";
+    const refresh_token = (req.headers["x-refresh-token"] as string) || (req.query.refresh_token as string) || undefined;
+
+    console.log('📥 File Download Request - Token Debug:', {
+      url: req.url,
+      headersPresent: {
+        'x-access-token': !!req.headers['x-access-token'],
+        'x-refresh-token': !!req.headers['x-refresh-token']
+      },
+      extractedTokens: {
+        hasAccessToken: !!access_token,
+        hasRefreshToken: !!refresh_token
+      }
+    });
+
+    if (!access_token && !refresh_token) {
+      console.error('❌ No tokens found in request');
+      res.status(401).json({
+        success: false,
+        message: "Authentication required: Provide access_token or refresh_token in headers (x-access-token, x-refresh-token) or query params"
+      });
+      return;
+    }
+
+    const fileId = req.params.id;
+    if (!fileId) {
+      res.status(400).json({ success: false, message: "Missing file id" });
+      return;
+    }
+
+    console.log(`📥 Downloading file: ${fileId}`);
+
+    // Get file metadata for name and type check
+    const meta = await getDriveFileMetadata({ access_token, refresh_token }, fileId);
+    console.log(`📥 Got metadata for file: ${meta.name}`);
+    console.log(`📥 File mimeType details:`, {
+      mimeType: meta.mimeType,
+      type: typeof meta.mimeType,
+      isString: typeof meta.mimeType === 'string',
+      startsWithGoogle: (meta.mimeType || '').startsWith('application/vnd.google-apps')
+    });
+
+    // Map Google Docs types to Microsoft formats
+    const googleToMicrosoftMap: { [key: string]: { mimeType: string; extension: string; name: string } } = {
+      'application/vnd.google-apps.document': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        extension: '.docx',
+        name: 'Word Document'
+      },
+      'application/vnd.google-apps.spreadsheet': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        extension: '.xlsx',
+        name: 'Excel Spreadsheet'
+      },
+      'application/vnd.google-apps.presentation': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        extension: '.pptx',
+        name: 'PowerPoint Presentation'
+      },
+      'application/vnd.google-apps.drawing': {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF Drawing'
+      },
+      'application/vnd.google-apps.form': {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF Form'
+      }
+    };
+
+    // Google Docs types must be exported instead of downloaded
+    const mimeType = meta.mimeType || "";
+    if (mimeType.startsWith("application/vnd.google-apps")) {
+      const exportConfig = googleToMicrosoftMap[mimeType] || {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF'
+      };
+
+      console.log(`📥 File is ${exportConfig.name} (${meta.mimeType}), exporting to ${exportConfig.name}...`);
+      
+      // Export Google Docs as Microsoft format
+      const { stream } = await exportDriveFileStream({ access_token, refresh_token }, fileId, exportConfig.mimeType);
+      const filename = (meta.name || fileId) + exportConfig.extension;
+
+      res.setHeader("Content-Type", exportConfig.mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/"/g, '')}"`);
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+      console.log(`✅ Starting export stream: ${filename}`);
+
+      stream.on("error", (err) => {
+        console.error(`❌ Stream error for file ${fileId}:`, err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, message: err?.message || "Stream error" });
+        } else {
+          res.end();
+        }
+      });
+
+      stream.pipe(res);
+      return;
+    }
+
+    // Download regular file (not Google Docs)
+    const { stream } = await downloadDriveFileStream({ access_token, refresh_token }, fileId);
+    const filename = meta.name || fileId;
+
+    // Set headers for direct download (attachment disposition)
+    res.setHeader("Content-Type", meta.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/"/g, '')}"`);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+    console.log(`✅ Starting file stream: ${filename}`);
+
+    // Handle stream errors
+    stream.on("error", (err) => {
+      console.error(`❌ Stream error for file ${fileId}:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: err?.message || "Stream error" });
+      } else {
+        res.end();
+      }
+    });
+
+    // Pipe the file stream to response
+    stream.pipe(res);
+  } catch (error: any) {
+    console.error('❌ File download error:', {
+      message: error.message,
+      code: error.code,
+      errorCode: error?.error?.code,
+      errorMessage: error?.error?.message,
+      stack: error.stack?.split('\n')[0]
+    });
+
+    // Special handling for fileNotDownloadable error (Google Docs)
+    if (error?.error?.code === 403 && error?.error?.errors?.[0]?.reason === 'fileNotDownloadable') {
+      console.error('⚠️ File is not directly downloadable - likely a Google Docs file. Should export instead.');
+      if (!res.headersSent) {
+        res.status(400).json({ 
+          success: false, 
+          message: "This file type requires export. File was likely misidentified as downloadable.",
+          errorCode: 'fileNotDownloadable',
+          suggestion: 'The file may be a Google Docs type that needs to be exported'
+        });
+      }
+      return;
+    }
+
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to download file",
+        errorCode: error.code
+      });
+    }
+  }
+});
+
+/**
  * ✅ GET /drive/me/files/download/:id
  * Purpose: Download a regular file from Google Drive (not Google Docs types)
  * Params:
@@ -1038,7 +1273,7 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
         const files = response.data.files || [];
 
         // Separate files and folders
-        const filesToDownload: Array<{ id: string; name: string }> = [];
+        const filesToDownload: Array<{ id: string; name: string; mimeType?: string }> = [];
         const subFolders: Array<{ id: string; name: string; path: string }> = [];
 
         for (const file of files) {
@@ -1046,7 +1281,7 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
           if (file.mimeType === "application/vnd.google-apps.folder") {
             subFolders.push({ id: file.id, name: file.name, path: filePath });
           } else {
-            filesToDownload.push({ id: file.id, name: file.name });
+            filesToDownload.push({ id: file.id, name: file.name, mimeType: file.mimeType });
           }
         }
 
@@ -1134,13 +1369,43 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
     // Create new ZIP instance (JSZip is already imported at top)
     const zip = new JSZip();
 
+    // Map Google Docs types to Microsoft formats
+    const googleToMicrosoftMap: { [key: string]: { mimeType: string; extension: string; name: string } } = {
+      'application/vnd.google-apps.document': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        extension: '.docx',
+        name: 'Word Document'
+      },
+      'application/vnd.google-apps.spreadsheet': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        extension: '.xlsx',
+        name: 'Excel Spreadsheet'
+      },
+      'application/vnd.google-apps.presentation': {
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        extension: '.pptx',
+        name: 'PowerPoint Presentation'
+      },
+      'application/vnd.google-apps.drawing': {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF Drawing'
+      },
+      'application/vnd.google-apps.form': {
+        mimeType: 'application/pdf',
+        extension: '.pdf',
+        name: 'PDF Form'
+      }
+    };
+
     // Helper function to add files recursively
     const addItemToZip = async (itemId: string, zipFolder: any): Promise<void> => {
       try {
         const itemMeta = await getDriveFileMetadata(tokens, itemId);
         const itemName = itemMeta?.name || itemId;
+        const mimeType = itemMeta?.mimeType || "";
 
-        if (itemMeta?.mimeType === "application/vnd.google-apps.folder") {
+        if (mimeType === "application/vnd.google-apps.folder") {
           // It's a folder - recursively add contents
           const subFolder = zipFolder.folder(itemName);
           
@@ -1194,8 +1459,35 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
           for (const file of files) {
             await addItemToZip(file.id, subFolder);
           }
+        } else if (mimeType.startsWith("application/vnd.google-apps")) {
+          // Google Docs type - export to Microsoft format
+          const exportConfig = googleToMicrosoftMap[mimeType] || {
+            mimeType: 'application/pdf',
+            extension: '.pdf',
+            name: 'PDF'
+          };
+
+          try {
+            console.log(`📥 File is ${exportConfig.name} (${mimeType}), exporting...`);
+            const { stream } = await exportDriveFileStream(tokens, itemId, exportConfig.mimeType);
+            const finalName = itemName.replace(/\.[^.]*$/, '') + exportConfig.extension;
+            const chunks: Buffer[] = [];
+
+            await new Promise<void>((resolve, reject) => {
+              stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+              stream.on("end", () => {
+                const fileBuffer = Buffer.concat(chunks);
+                zipFolder.file(finalName, fileBuffer);
+                console.log(`✅ Exported ${finalName} (${exportConfig.name})`);
+                resolve();
+              });
+              stream.on("error", reject);
+            });
+          } catch (fileError: any) {
+            console.warn(`⚠️ Failed to export file ${itemName}:`, fileError.message);
+          }
         } else {
-          // It's a file - download and add to ZIP
+          // Regular file - download and add to ZIP
           try {
             console.log(`📥 Downloading file: ${itemName}`);
             const { stream } = await downloadDriveFileStream(tokens, itemId);
