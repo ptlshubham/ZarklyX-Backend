@@ -50,7 +50,7 @@
     "@types/crypto-js": "^4.2.2",
     "@types/express": "^5.0.1",
     "@types/multer": "^1.4.13",
-    "@types/node": "^22.13.17",
+    "@types/node": "^22.19.3",
     "@types/nodemailer": "^6.4.17",
     "@types/qrcode": "^1.5.6",
     "@types/sequelize": "^4.28.20",
@@ -62,7 +62,7 @@
     "nodemon": "^3.1.10",
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.2",
+    "typescript": "^5.9.3",
     "zod": "^3.21.4"
   }
 }

@@ -30,6 +30,9 @@ import tiktokRoutes from './routes/api-webapp/agency/social-Integration/tiktok/t
 import rolesRoutes from './routes/api-webapp/roles/roles-api';
 // const influencerRoutes = require ('./routes/api-webapp/influencer/influencer-api');
 import influencerRoutes from './routes/api-webapp/influencer/influencer-api';
+import warehouseRoutes from './routes/api-webapp/inventory Management/warehouse/warehouse-api';
+
+
 const bodyParser = require('body-parser');
 const cookieSession = require('cookie-session');
 
@@ -77,6 +80,8 @@ app.use("/twitter", twitterRoutes);
 app.use("/tiktok", tiktokRoutes);
 app.use("/roles", rolesRoutes);
 app.use("/influencer", influencerRoutes);
+// app.use("/inventory-category", invetoryCategoryRoutes); 
+app.use("/inventory/warehouse", warehouseRoutes);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
@@ -148,8 +153,3 @@ server.listen(unsecurePort)
 app.get("/api/health", (req: Request, res: Response) => {
   res.json({ message: "API is working fine!" });
 });
-
-
-
-
-

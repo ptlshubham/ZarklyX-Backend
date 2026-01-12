@@ -14,6 +14,7 @@ import { Influencer } from "../../routes/api-webapp/influencer/influencer-model"
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
 import { Role } from "../../routes/api-webapp/roles/role-model";
 import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+import { Warehouse } from "../../routes/api-webapp/inventory Management/warehouse/warehouse-model";
 
 export {
   User,
@@ -30,6 +31,7 @@ export {
   Employee,
   Influencer,
   // GoogleToken
+  Warehouse,
 };
 export function initControlDB(sequelize: Sequelize) {
   User.initModel(sequelize);
@@ -50,8 +52,9 @@ export function initControlDB(sequelize: Sequelize) {
   BusinessSubcategory.initModel(sequelize);
   SocialToken.initModel(sequelize);
   Influencer.initModel(sequelize);
+  Warehouse.initModel(sequelize);
 
-  // GoogleToken.initModel(sequelize); 
+  // GoogleToken.initModel(sequelize);
   //  initCategoryModel(sequelize);
   //  initPremiumModuleModel(sequelize);
   // LoginHistory.initModel(sequelize);
@@ -175,6 +178,17 @@ export function initControlDB(sequelize: Sequelize) {
     as: "user",
   });
 
+  // Company <-> Warehouse
+  Company.hasMany(Warehouse, {
+    foreignKey: "companyId",
+    as: "warehouses",
+  });
+  Warehouse.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
   // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
@@ -203,6 +217,6 @@ export function initControlDB(sequelize: Sequelize) {
     SubRole,
     Influencer,
     Employee,
-
+    Warehouse,
   };
 }
