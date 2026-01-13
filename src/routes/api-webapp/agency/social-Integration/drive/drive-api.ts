@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor } from "../../../../../services/drive-service";
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -42,7 +42,6 @@ async function ensureValidAccessToken(tokens: any): Promise<void> {
     try {
       const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
       tokens.access_token = refreshed.access_token;
-      console.log('✅ Token refreshed successfully');
     } catch (error: any) {
       console.error('❌ Failed to refresh token:', error.message);
       throw new Error('Failed to refresh access token');
@@ -102,7 +101,6 @@ async function downloadFilesInParallel(
           name: 'PDF'
         };
         
-        console.log(`📥 File is ${exportConfig.name} (${mimeType}), exporting to ${exportConfig.name}...`);
         const { stream } = await exportDriveFileStream(tokens, file.id, exportConfig.mimeType);
         const finalName = fileName.replace(/\.[^.]*$/, '') + exportConfig.extension;
         const chunks: Buffer[] = [];
@@ -112,7 +110,6 @@ async function downloadFilesInParallel(
           stream.on("end", () => {
             const fileBuffer = Buffer.concat(chunks);
             results.push({ name: finalName, buffer: fileBuffer });
-            console.log(`✅ Exported ${finalName} (${exportConfig.name})`);
             resolve();
           });
           stream.on("error", reject);
@@ -406,11 +403,23 @@ router.get("/me/profile", async (req: Request, res: Response): Promise<void> => 
           });
         } catch (refreshError: any) {
           console.error('Token refresh failed:', refreshError.message);
-          res.status(401).json({
-            success: false,
-            message: "Token expired and refresh failed. Please re-authenticate.",
-            requiresReauth: true
-          });
+          
+          // Check if this is an invalid_grant error (revoked/expired refresh token)
+          const errorMsg = refreshError.message || '';
+          if (errorMsg.includes('invalid_grant')) {
+            res.status(401).json({
+              success: false,
+              message: "Your Google Drive connection has expired. Please reconnect.",
+              errorCode: 'INVALID_GRANT',
+              requiresReauth: true
+            });
+          } else {
+            res.status(401).json({
+              success: false,
+              message: "Token expired and refresh failed. Please re-authenticate.",
+              requiresReauth: true
+            });
+          }
         }
       } else {
         throw apiError;
@@ -453,7 +462,6 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
     // If query includes mimeType filter, it's a specific request (folders or files only)
     // Use it as-is for pagination
     if (q && q.includes("mimeType")) {
-      console.log('📄 Specific query detected (has mimeType filter):', q);
       const data = await listMyDriveFiles({ access_token, refresh_token }, pageToken, pageSize, q);
       res.status(200).json({ success: true, data });
       return;
@@ -462,17 +470,15 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
     // Smart pagination: prioritize folders first, then files
     // Total result = pageSize items (e.g., if 10 folders fit, show 10 folders + 40 files)
     if (!pageToken && !q) {
-      console.log('📂 Smart pagination: Prioritizing folders first');
       try {
         // Get folders for this page (no pageToken - fresh start)
         const folderQuery = "trashed=false and mimeType='application/vnd.google-apps.folder' and 'root' in parents";
         const foldersData = await listMyDriveFiles({ access_token, refresh_token }, undefined, pageSize, folderQuery);
         const folders = foldersData.files || [];
-        console.log('✅ Folders found:', folders.length);
 
         // Calculate how many files we need to reach pageSize
         const remainingSlots = Math.max(0, pageSize - folders.length);
-        console.log('📊 Folders:', folders.length, '+ Files needed:', remainingSlots, '= Total:', pageSize);
+        // console.log('📊 Folders:', folders.length, '+ Files needed:', remainingSlots, '= Total:', pageSize);
 
         let files: any[] = [];
         let nextPageToken: string | undefined = undefined;
@@ -483,12 +489,10 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
           const filesData = await listMyDriveFiles({ access_token, refresh_token }, undefined, remainingSlots, fileQuery);
           files = filesData.files || [];
           nextPageToken = filesData.nextPageToken || undefined;
-          console.log('✅ Files loaded:', files.length);
         }
 
         // Combine: folders first, then files (total = pageSize)
         const combinedFiles = [...folders, ...files].slice(0, pageSize);
-        console.log('📊 Combined result:', combinedFiles.length, 'items (folders prioritized)');
 
         res.status(200).json({
           success: true,
@@ -509,12 +513,24 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
     }
 
     // If has pageToken or search query, use natural pagination (no folder prioritization)
-    console.log('📄 Natural pagination (pageToken or search provided)');
     const data = await listMyDriveFiles({ access_token, refresh_token }, pageToken, pageSize, q);
     res.status(200).json({ success: true, data });
     return;
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "Failed to list Drive files" });
+    console.error('❌ Failed to list files:', error.message);
+    
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      res.status(401).json({
+        success: false,
+        message: "Your Google Drive connection has expired. Please reconnect.",
+        errorCode: 'INVALID_GRANT',
+        requiresReauth: true
+      });
+    } else {
+      res.status(500).json({ success: false, message: error.message || "Failed to list Drive files" });
+    }
     return;
   }
 });
@@ -551,7 +567,19 @@ router.get("/me/files/preview/:id", async (req: Request, res: Response): Promise
     res.send(data);
   } catch (error: any) {
     console.error('Preview endpoint error:', error.message);
-    res.status(500).json({ success: false, message: error.message || "Failed to generate preview", debug: process.env.NODE_ENV === 'development' ? error.toString() : undefined });
+    
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      res.status(401).json({
+        success: false,
+        message: "Your Google Drive connection has expired. Please reconnect.",
+        errorCode: 'INVALID_GRANT',
+        requiresReauth: true
+      });
+    } else {
+      res.status(500).json({ success: false, message: error.message || "Failed to generate preview", debug: process.env.NODE_ENV === 'development' ? error.toString() : undefined });
+    }
   }
 });
 
@@ -577,7 +605,20 @@ router.get("/file/:id", async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({ success: true, data });
     return;
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "Failed to get file metadata" });
+    console.error('Failed to get file metadata:', error.message);
+    
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      res.status(401).json({
+        success: false,
+        message: "Your Google Drive connection has expired. Please reconnect.",
+        errorCode: 'INVALID_GRANT',
+        requiresReauth: true
+      });
+    } else {
+      res.status(500).json({ success: false, message: error.message || "Failed to get file metadata" });
+    }
     return;
   }
 });
@@ -611,6 +652,36 @@ router.post("/token/refresh", async (req: Request, res: Response): Promise<void>
     res.status(200).json({ success: true, tokens: creds });
     return;
   } catch (error: any) {
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      
+      // Extract company ID from request context if available
+      const companyId = (req.body?.companyId as string) || (req.headers["x-company-id"] as string) || (req.query.companyId as string);
+      
+      // Clear invalid tokens from database
+      if (companyId) {
+        try {
+          // @ts-ignore - deleteTokensByCompanyIdAndProvider may exist in your DB service
+          if (typeof deleteTokensByCompanyIdAndProvider === 'function') {
+            await deleteTokensByCompanyIdAndProvider(companyId, "drive");
+            console.log('🗑️ Invalid tokens cleared for company:', companyId);
+          }
+        } catch (dbError: any) {
+          console.warn('⚠️ Failed to clear tokens from DB:', dbError.message);
+        }
+      }
+      
+      res.status(401).json({
+        success: false,
+        message: "Your Google Drive connection has expired. Please reconnect.",
+        errorCode: 'INVALID_GRANT',
+        shouldReauth: true
+      });
+      return;
+    }
+    
+    // Generic error handling
     res.status(500).json({ success: false, message: error.message || "Failed to refresh access token" });
     return;
   }
@@ -902,7 +973,22 @@ router.get("/me/files/export-pdf/:id", async (req: Request, res: Response): Prom
     });
     stream.pipe(res);
   } catch (error: any) {
-    if (!res.headersSent) res.status(500).json({ success: false, message: error.message || "Failed to export PDF" });
+    console.error('Failed to export PDF:', error.message);
+    
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      if (!res.headersSent) {
+        res.status(401).json({
+          success: false,
+          message: "Your Google Drive connection has expired. Please reconnect.",
+          errorCode: 'INVALID_GRANT',
+          requiresReauth: true
+        });
+      }
+    } else if (!res.headersSent) {
+      res.status(500).json({ success: false, message: error.message || "Failed to export PDF" });
+    }
   }
 });
 
@@ -925,18 +1011,6 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
     const access_token = (req.headers["x-access-token"] as string) || (req.query.access_token as string) || "";
     const refresh_token = (req.headers["x-refresh-token"] as string) || (req.query.refresh_token as string) || undefined;
 
-    console.log('📥 File Download Request - Token Debug:', {
-      url: req.url,
-      headersPresent: {
-        'x-access-token': !!req.headers['x-access-token'],
-        'x-refresh-token': !!req.headers['x-refresh-token']
-      },
-      extractedTokens: {
-        hasAccessToken: !!access_token,
-        hasRefreshToken: !!refresh_token
-      }
-    });
-
     if (!access_token && !refresh_token) {
       console.error('❌ No tokens found in request');
       res.status(401).json({
@@ -952,17 +1026,9 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    console.log(`📥 Downloading file: ${fileId}`);
 
     // Get file metadata for name and type check
     const meta = await getDriveFileMetadata({ access_token, refresh_token }, fileId);
-    console.log(`📥 Got metadata for file: ${meta.name}`);
-    console.log(`📥 File mimeType details:`, {
-      mimeType: meta.mimeType,
-      type: typeof meta.mimeType,
-      isString: typeof meta.mimeType === 'string',
-      startsWithGoogle: (meta.mimeType || '').startsWith('application/vnd.google-apps')
-    });
 
     // Map Google Docs types to Microsoft formats
     const googleToMicrosoftMap: { [key: string]: { mimeType: string; extension: string; name: string } } = {
@@ -1002,7 +1068,6 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
         name: 'PDF'
       };
 
-      console.log(`📥 File is ${exportConfig.name} (${meta.mimeType}), exporting to ${exportConfig.name}...`);
       
       // Export Google Docs as Microsoft format
       const { stream } = await exportDriveFileStream({ access_token, refresh_token }, fileId, exportConfig.mimeType);
@@ -1012,7 +1077,7 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
       res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/"/g, '')}"`);
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-      console.log(`✅ Starting export stream: ${filename}`);
+      // console.log(`✅ Starting export stream: ${filename}`);
 
       stream.on("error", (err) => {
         console.error(`❌ Stream error for file ${fileId}:`, err.message);
@@ -1036,7 +1101,6 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
     res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/"/g, '')}"`);
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-    console.log(`✅ Starting file stream: ${filename}`);
 
     // Handle stream errors
     stream.on("error", (err) => {
@@ -1068,6 +1132,20 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
           message: "This file type requires export. File was likely misidentified as downloadable.",
           errorCode: 'fileNotDownloadable',
           suggestion: 'The file may be a Google Docs type that needs to be exported'
+        });
+      }
+      return;
+    }
+
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      if (!res.headersSent) {
+        res.status(401).json({
+          success: false,
+          message: "Your Google Drive connection has expired. Please reconnect.",
+          errorCode: 'INVALID_GRANT',
+          requiresReauth: true
         });
       }
       return;
@@ -1128,7 +1206,20 @@ router.get("/me/files/download/:id", async (req: Request, res: Response): Promis
     });
     stream.pipe(res);
   } catch (error: any) {
-    if (!res.headersSent) {
+    console.error('Failed to download file:', error.message);
+    
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      if (!res.headersSent) {
+        res.status(401).json({
+          success: false,
+          message: "Your Google Drive connection has expired. Please reconnect.",
+          errorCode: 'INVALID_GRANT',
+          requiresReauth: true
+        });
+      }
+    } else if (!res.headersSent) {
       res.status(500).json({ success: false, message: error.message || "Failed to download file" });
     }
   }
@@ -1175,7 +1266,20 @@ router.get("/me/files/export/:id", async (req: Request, res: Response): Promise<
     });
     stream.pipe(res);
   } catch (error: any) {
-    if (!res.headersSent) {
+    console.error('Failed to export file:', error.message);
+    
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      if (!res.headersSent) {
+        res.status(401).json({
+          success: false,
+          message: "Your Google Drive connection has expired. Please reconnect.",
+          errorCode: 'INVALID_GRANT',
+          requiresReauth: true
+        });
+      }
+    } else if (!res.headersSent) {
       res.status(500).json({ success: false, message: error.message || "Failed to export file" });
     }
   }
@@ -1247,8 +1351,6 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
             try {
               const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
               tokens.access_token = refreshed.access_token;
-              console.log('✅ Token refreshed, retrying folder fetch...');
-              
               response = await axios.get(
                 "https://www.googleapis.com/drive/v3/files",
                 {
@@ -1320,13 +1422,24 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
-    console.log(`✅ ZIP created and sent successfully: ${folderName}.zip (${zipBuffer.length} bytes) in ${duration}s`);
   } catch (error: any) {
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     console.error(`❌ Failed to create folder ZIP after ${duration}s:`, error.message || error);
     console.error("Stack trace:", error.stack);
-    if (!res.headersSent) {
+    
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      if (!res.headersSent) {
+        res.status(401).json({
+          success: false,
+          message: "Your Google Drive connection has expired. Please reconnect.",
+          errorCode: 'INVALID_GRANT',
+          requiresReauth: true
+        });
+      }
+    } else if (!res.headersSent) {
       res.status(500).json({ 
         success: false, 
         message: error.message || "Failed to create ZIP",
@@ -1426,11 +1539,9 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
           } catch (apiError: any) {
             // If token expired, try to refresh and retry
             if (apiError.response?.status === 401 && tokens.refresh_token) {
-              console.log('🔄 Access token expired during folder fetch, attempting to refresh...');
               try {
                 const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
                 tokens.access_token = refreshed.access_token;
-                console.log('✅ Token refreshed, retrying folder fetch...');
                 
                 response = await axios.get(
                   "https://www.googleapis.com/drive/v3/files",
@@ -1468,7 +1579,6 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
           };
 
           try {
-            console.log(`📥 File is ${exportConfig.name} (${mimeType}), exporting...`);
             const { stream } = await exportDriveFileStream(tokens, itemId, exportConfig.mimeType);
             const finalName = itemName.replace(/\.[^.]*$/, '') + exportConfig.extension;
             const chunks: Buffer[] = [];
@@ -1533,7 +1643,19 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     console.error(`❌ Failed to create items ZIP after ${duration}s:`, error.message || error);
     console.error("Stack trace:", error.stack);
-    if (!res.headersSent) {
+    
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      if (!res.headersSent) {
+        res.status(401).json({
+          success: false,
+          message: "Your Google Drive connection has expired. Please reconnect.",
+          errorCode: 'INVALID_GRANT',
+          requiresReauth: true
+        });
+      }
+    } else if (!res.headersSent) {
       res.status(500).json({ 
         success: false, 
         message: error.message || "Failed to create ZIP",
@@ -1569,6 +1691,45 @@ router.get("/debug", async (_req: Request, res: Response): Promise<void> => {
     res.status(200).json({ success: true, expectedRedirectUri, clientIdStart: clientId.slice(0, 10) + "…", scopes });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message || "Failed to read config" });
+  }
+});
+
+/**
+ * ✅ PATCH /drive/me/files/:id/color
+ * Purpose: Update a folder's color in Google Drive
+ * Params:
+ *   - id (required, URL): Folder ID to change color
+ *   - color (required, body): Color name ('slate', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink')
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { color }
+ * Returns: { success, result: {id, name, folderColorRgb} }
+ * Usage: Update folder color in Drive view to help organize folders
+ */
+router.patch("/me/files/:id/color", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      console.error('❌ No tokens provided');
+      res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    await ensureValidAccessToken(tokens);
+
+    const folderId = req.params.id;
+    const { color } = req.body || {};
+
+    if (!folderId || !color) {
+      console.error('❌ Missing folder id or color');
+      res.status(400).json({ success: false, message: "Missing folder id or color" });
+      return;
+    }
+
+    const result = await updateFolderColor(tokens, folderId, color);
+    res.status(200).json({ success: true, result });
+  } catch (error: any) {
+    console.error('❌ Error updating folder color:', error.message);
+    res.status(500).json({ success: false, message: error.message || "Failed to update folder color" });
   }
 });
 
