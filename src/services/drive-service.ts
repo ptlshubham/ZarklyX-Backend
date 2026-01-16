@@ -59,13 +59,13 @@ export function getDriveClientFromTokens(tokens: DriveTokens) {
 
 export async function listMyDriveFiles(tokens: DriveTokens, pageToken?: string, pageSize: number = 25, q?: string) {
   const drive = getDriveClientFromTokens(tokens);
-  const res = await drive.files.list({ pageSize, pageToken, q, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb),nextPageToken" });
+  const res = await drive.files.list({ pageSize, pageToken, q, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred),nextPageToken" });
   return res.data;
 }
 
 export async function getDriveFileMetadata(tokens: DriveTokens, fileId: string) {
   const drive = getDriveClientFromTokens(tokens);
-  const res = await drive.files.get({ fileId, fields: "id,name,mimeType,size,modifiedTime,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb" });
+  const res = await drive.files.get({ fileId, fields: "id,name,mimeType,size,modifiedTime,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred" });
   return res.data;
 }
 
@@ -157,7 +157,7 @@ export async function listDriveFolderChildren(tokens: DriveTokens, folderId: str
   const drive = getDriveClientFromTokens(tokens);
   const base = `'${folderId}' in parents and trashed = false`;
   const query = q ? `${base} and (${q})` : base;
-  const res = await drive.files.list({ q: query, pageSize, pageToken, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb),nextPageToken" });
+  const res = await drive.files.list({ q: query, pageSize, pageToken, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred),nextPageToken" });
   return res.data;
 }
 
@@ -228,6 +228,27 @@ export async function updateFolderColor(tokens: DriveTokens, folderId: string, c
     return res.data;
   } catch (error: any) {
     console.error('❌ Error updating folder color:', error.message);
+    throw error;
+  }
+}
+
+// Update item starred status
+export async function updateItemStarred(tokens: DriveTokens, fileId: string, starred: boolean) {
+  try {
+    const drive = getDriveClientFromTokens(tokens);
+    
+    const res = await drive.files.update({
+      fileId: fileId,
+      requestBody: {
+        starred: starred
+      },
+      fields: "id,name,starred",
+    });
+    
+    console.log(`✅ Item ${fileId} starred status updated to ${starred}`);
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ Error updating item starred status:', error.message);
     throw error;
   }
 }

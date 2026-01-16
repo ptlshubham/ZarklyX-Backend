@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred } from "../../../../../services/drive-service";
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -1730,6 +1730,45 @@ router.patch("/me/files/:id/color", async (req: Request, res: Response): Promise
   } catch (error: any) {
     console.error('❌ Error updating folder color:', error.message);
     res.status(500).json({ success: false, message: error.message || "Failed to update folder color" });
+  }
+});
+
+/**
+ * ✅ PATCH /drive/me/files/:id/starred
+ * Purpose: Toggle star/unstar status for files and folders in Google Drive
+ * Params:
+ *   - id (required, URL): File/Folder ID to star/unstar
+ *   - starred (required, body): Boolean value (true to star, false to unstar)
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { starred: true|false }
+ * Returns: { success, result: {id, name, starred} }
+ * Usage: Star/unstar files and folders to mark them as important in Drive view
+ */
+router.patch("/me/files/:id/starred", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      console.error('❌ No tokens provided');
+      res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    await ensureValidAccessToken(tokens);
+
+    const fileId = req.params.id;
+    const { starred } = req.body || {};
+
+    if (!fileId || starred === undefined || starred === null) {
+      console.error('❌ Missing file id or starred value');
+      res.status(400).json({ success: false, message: "Missing file id or starred value" });
+      return;
+    }
+
+    const result = await updateItemStarred(tokens, fileId, starred);
+    res.status(200).json({ success: true, result });
+  } catch (error: any) {
+    console.error('❌ Error updating item starred status:', error.message);
+    res.status(500).json({ success: false, message: error.message || "Failed to update starred status" });
   }
 });
 
