@@ -56,7 +56,8 @@ router.post("/createCreditNote", async (req: Request, res: Response): Promise<an
 // GET /accounting/credit-note/getCreditNoteById/:id?companyId=
 router.get("/getCreditNoteById/:id", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { id } = req.params;
+    let { id } = req.params;
+    if (Array.isArray(id)) id = id[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -88,7 +89,8 @@ router.get("/getCreditNoteById/:id", async (req: Request, res: Response): Promis
 // GET /accounting/credit-note/getCreditNoteByCompanyId/:companyId
 router.get("/getCreditNoteByCompanyId/:companyId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { companyId } = req.params;
+    let { companyId } = req.params;
+    if (Array.isArray(companyId)) companyId = companyId[0];
 
     const creditNotes = await getCreditNotesByCompany(companyId);
 
@@ -105,7 +107,8 @@ router.get("/getCreditNoteByCompanyId/:companyId", async (req: Request, res: Res
 // GET /accounting/credit-note/getCreditNoteByClientId/:clientId?companyId=
 router.get("/getCreditNoteByClientId/:clientId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { clientId } = req.params;
+    let { clientId } = req.params;
+    if (Array.isArray(clientId)) clientId = clientId[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -130,7 +133,8 @@ router.get("/getCreditNoteByClientId/:clientId", async (req: Request, res: Respo
 // GET /accounting/credit-note/getCreditNoteByInvoiceId/:invoiceId
 router.get("/getCreditNoteByInvoiceId/:invoiceId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { invoiceId } = req.params;
+    let { invoiceId } = req.params;
+    if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -226,7 +230,8 @@ router.get("/searchCreditNote", async (req: Request, res: Response): Promise<any
 router.put("/updateCreditNote/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const { id } = req.params;
+    let { id } = req.params;
+    if (Array.isArray(id)) id = id[0];
     const {
       companyId,
       clientId,
@@ -271,7 +276,8 @@ router.put("/updateCreditNote/:id", async (req: Request, res: Response): Promise
 router.delete("/deleteCreditNote/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const { id } = req.params;
+    let { id } = req.params;
+    if (Array.isArray(id)) id = id[0];
     const { companyId } = req.query;
 
     if (!companyId) {

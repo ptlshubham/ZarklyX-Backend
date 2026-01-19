@@ -48,8 +48,10 @@ router.get("/getPurchaseOrderByCompany", async (req: Request, res: Response): Pr
 // GET /accounting/purchaseOrder/getPurchaseOrderById/:id?companyId=
 router.get("/getPurchaseOrderById/:id", async (req: Request, res: Response): Promise<any> => {
   try {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const data = await getPurchaseOrderById(
-      req.params.id,
+      id,
       req.query.companyId as string
     );
     if (!data) {
@@ -134,8 +136,10 @@ router.get("/searchPurchaseOrder", async (req: Request, res: Response): Promise<
 router.patch("/updatePurchaseOrder/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const [affectedRows] = await updatePurchaseOrder(
-      req.params.id,
+      id,
       req.query.companyId as string,
       req.body,
       t
@@ -163,8 +167,10 @@ router.patch("/updatePurchaseOrder/:id", async (req: Request, res: Response): Pr
 router.delete("/deletePurchaseOrder/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const [affectedRows] = await deletePurchaseOrder(
-      req.params.id,
+      id,
       req.query.companyId as string,
       t
     );
@@ -191,7 +197,8 @@ router.post("/convertToBill/:id", async (req: Request, res: Response): Promise<a
   const t = await dbInstance.transaction();
   try {
     const { companyId } = req.query;
-    const poId = req.params.id;
+    let poId = req.params.id;
+    if (Array.isArray(poId)) poId = poId[0];
     const billData = req.body;
     if (!companyId) {
       await t.rollback();

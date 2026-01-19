@@ -53,8 +53,10 @@ router.post("/createQuote", async (req: Request, res: Response): Promise<any> =>
 // GET /accounting/quote/getQuoteById/:id?companyId=
 router.get("/getQuoteById/:id", async (req: Request, res: Response): Promise<any> => {
   try {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const data = await getQuoteById(
-      req.params.id,
+      id,
       req.query.companyId as string
     );
 
@@ -75,7 +77,9 @@ router.get("/getQuoteById/:id", async (req: Request, res: Response): Promise<any
 // GET /accounting/quote/getQuoteByCompanyId/:companyId
 router.get("/getQuoteByCompanyId/:companyId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const data = await getQuotesByCompany(req.params.companyId);
+    let companyId = req.params.companyId;
+    if (Array.isArray(companyId)) companyId = companyId[0];
+    const data = await getQuotesByCompany(companyId);
 
     res.json({
       success: true,
@@ -91,8 +95,10 @@ router.get("/getQuoteByCompanyId/:companyId", async (req: Request, res: Response
 // GET /accounting/quote/getQuoteByClientId/:clientId?companyId=
 router.get("/getQuoteByClientId/:clientId", async (req: Request, res: Response): Promise<any> => {
   try {
+    let clientId = req.params.clientId;
+    if (Array.isArray(clientId)) clientId = clientId[0];
     const data = await getQuotesByClient(
-      req.params.clientId,
+      clientId,
       req.query.companyId as string
     );
 
@@ -129,8 +135,10 @@ router.patch("/updateQuote/:id", async (req: Request, res: Response): Promise<an
       });
     }
 
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const [affectedRows] = await updateQuote(
-      req.params.id,
+      id,
       req.query.companyId as string,
       req.body,
       t
@@ -160,8 +168,10 @@ router.patch("/updateQuote/:id", async (req: Request, res: Response): Promise<an
 router.delete("/deleteQuote/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const [affectedRows] = await deleteQuote(
-      req.params.id,
+      id,
       req.query.companyId as string,
       t
     );
@@ -191,7 +201,8 @@ router.post("/convertFromQuote/:quoteId", async (req: Request, res: Response): P
   const t = await dbInstance.transaction();
   try {
     const { companyId } = req.query;
-    const { quoteId } = req.params;
+    let { quoteId } = req.params;
+    if (Array.isArray(quoteId)) quoteId = quoteId[0];
     const {
       invoiceType,
       invoiceNo,

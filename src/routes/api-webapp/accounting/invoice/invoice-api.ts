@@ -94,8 +94,10 @@ router.post("/createInvoice", async (req: Request, res: Response): Promise<any> 
 // GET /accounting/invoice/getInvoiceById/:id?companyId=
 router.get("/getInvoiceById/:id", async (req: Request, res: Response): Promise<any> => {
   try {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const data = await getInvoiceById(
-      req.params.id,
+      id,
       req.query.companyId as string
     );
 
@@ -131,8 +133,10 @@ router.get("/getInvoiceByCompanyId", async (req: Request, res: Response): Promis
 // GET /accounting/invoice/getInvoiceByClientId/:clientId?companyId=
 router.get("/getInvoiceByClientId/:clientId", async (req: Request, res: Response): Promise<any> => {
     try {
+      let clientId = req.params.clientId;
+      if (Array.isArray(clientId)) clientId = clientId[0];
       const data = await getInvoicesByClient(
-        req.params.clientId,
+        clientId,
         req.query.companyId as string
       );
 
@@ -249,8 +253,10 @@ router.patch("/updateInvoice/:id", async (req: Request, res: Response): Promise<
         }
       }
 
+      let id = req.params.id;
+      if (Array.isArray(id)) id = id[0];
       const data = await updateInvoice(
-        req.params.id,
+        id,
         req.query.companyId as string,
         req.body,
         t
@@ -275,8 +281,10 @@ router.patch("/updateInvoice/:id", async (req: Request, res: Response): Promise<
 router.delete("/deleteInvoice/:id",async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+      let id = req.params.id;
+      if (Array.isArray(id)) id = id[0];
       const [affectedRows] = await deleteInvoice(
-        req.params.id,
+        id,
         req.query.companyId as string,
         t
       );
@@ -309,7 +317,8 @@ router.post("/convertToPayment/:id",async (req: Request, res: Response): Promise
     console.log("company id:  ",req.query)
     console.log("company id:  ",req.query)
     const { companyId } = req.query;
-    const { invoiceId } = req.params;
+    let { invoiceId } = req.params;
+    if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
     const invoiceData = req.body;
     if(!companyId) {
       await t.rollback();
