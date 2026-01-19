@@ -168,7 +168,8 @@ router.get("/me/messages/full", async (req: Request, res: Response): Promise<voi
 // GET /gmail/me/messages/:id  -> fetch full Gmail message
 router.get("/me/messages/:id", async (req: Request, res: Response): Promise<void> => {
   try {
-    const messageId = req.params.id;
+    let messageId = req.params.id;
+    if (Array.isArray(messageId)) messageId = messageId[0];
     const tokens = extractTokens(req);
 
     if (!messageId) {
@@ -197,8 +198,10 @@ router.get("/me/messages/:id", async (req: Request, res: Response): Promise<void
 router.get("/me/messages/:id/attachments/:attachmentId", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
-    const messageId = req.params.id;
-    const attachmentId = req.params.attachmentId;
+    let messageId = req.params.id;
+    let attachmentId = req.params.attachmentId;
+    if (Array.isArray(messageId)) messageId = messageId[0];
+    if (Array.isArray(attachmentId)) attachmentId = attachmentId[0];
     const download = String(req.query.download || "").toLowerCase() === "1";
     if (!tokens.access_token && !tokens.refresh_token) {
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
@@ -235,7 +238,8 @@ router.get("/me/messages/:id/attachments/:attachmentId", async (req: Request, re
 router.get("/me/threads/:threadId", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
-    const threadId = req.params.threadId;
+    let threadId = req.params.threadId;
+    if (Array.isArray(threadId)) threadId = threadId[0];
     if (!tokens.access_token && !tokens.refresh_token) {
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;

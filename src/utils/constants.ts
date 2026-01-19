@@ -23,7 +23,7 @@ export const GLOBAL_CONSTANTS = {
   // },
       email: {
     SENDER_EMAIL_HOST: "smtp.hostinger.com",
-    SENDER_EMAIL_PORT: 465,
+    SENDER_EMAIL_PORT: 587,
     SENDER_EMAIL_ID: "zarklyxconnection@gmail.com",
     SENDER_EMAIL_PASSWORD: "iysmcygimxwwxreq",
   },

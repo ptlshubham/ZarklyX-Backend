@@ -325,7 +325,8 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
  */
 router.get("/id/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { id } = req.params;
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
 
         const employee = await getEmployeeById(id);
 
@@ -357,7 +358,8 @@ router.get("/id/:id", tokenMiddleWare, async (req: Request, res: Response): Prom
  */
 router.get("/employeeId/:employeeId", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { employeeId } = req.params;
+        let { employeeId } = req.params;
+        if (Array.isArray(employeeId)) employeeId = employeeId[0];
         const { companyId } = req.query;
 
         if (!companyId) {
@@ -398,7 +400,8 @@ router.get("/employeeId/:employeeId", tokenMiddleWare, async (req: Request, res:
  */
 router.get("/email/:email", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { email } = req.params;
+        let { email } = req.params;
+        if (Array.isArray(email)) email = email[0];
         const { companyId } = req.query;
 
         if (!companyId) {
@@ -439,7 +442,8 @@ router.get("/email/:email", tokenMiddleWare, async (req: Request, res: Response)
  */
 router.get("/by-department/:departmentId", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { departmentId } = req.params;
+        let { departmentId } = req.params;
+        if (Array.isArray(departmentId)) departmentId = departmentId[0];
         const { companyId } = req.query;
 
         if (!companyId) {
@@ -476,7 +480,8 @@ router.get(
     tokenMiddleWare,
     async (req: Request, res: Response): Promise<void> => {
         try {
-            const { managerId } = req.params;
+            let { managerId } = req.params;
+            if (Array.isArray(managerId)) managerId = managerId[0];
             const { companyId } = req.query;
 
             if (!companyId) {
@@ -511,7 +516,8 @@ router.get(
  */
 router.get("/by-status/:status", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { status } = req.params;
+        let { status } = req.params;
+        if (Array.isArray(status)) status = status[0];
         const { companyId, limit, offset } = req.query;
 
         if (!companyId) {
@@ -587,7 +593,8 @@ router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): 
     const t = await dbInstance.transaction();
 
     try {
-        const { id } = req.params;
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const updateData = req.body;
 
         const copmany = (req as any).user;
@@ -626,7 +633,9 @@ router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): 
         const { aadharNumber, panNumber } = updateData || {};
 
         if (aadharNumber && aadharNumber !== employee.aadharNumber) {
-            const existingAadhar = await checkAadharExists(aadharNumber, id);
+            let finalId = id;
+            if (Array.isArray(finalId)) finalId = finalId[0];
+            const existingAadhar = await checkAadharExists(aadharNumber, finalId);
             if (existingAadhar) {
                 await t.rollback();
                 res.status(409).json({ success: false, message: "Aadhar number already registered" });
@@ -635,7 +644,9 @@ router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): 
         }
 
         if (panNumber && panNumber !== employee.panNumber) {
-            const existingPan = await checkPanExists(panNumber, id);
+            let finalId2 = id;
+            if (Array.isArray(finalId2)) finalId2 = finalId2[0];
+            const existingPan = await checkPanExists(panNumber, finalId2);
             if (existingPan) {
                 await t.rollback();
                 res.status(409).json({ success: false, message: "PAN already registered" });
@@ -644,9 +655,11 @@ router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): 
         }
 
         // ✅ Update employee
-        await updateEmployee(id, updateData as EmployeePayload, t);
+        let updateId = id;
+        if (Array.isArray(updateId)) updateId = updateId[0];
+        await updateEmployee(updateId, updateData as EmployeePayload, t);
 
-        const updatedEmployee = await getEmployeeById(id);
+        const updatedEmployee = await getEmployeeById(updateId);
 
         await t.commit();
 
@@ -676,7 +689,8 @@ router.patch("/update-status/:id",
         const t = await dbInstance.transaction();
 
         try {
-            const { id } = req.params;
+            let id = req.params.id;
+            if (Array.isArray(id)) id = id[0];
             const { status, companyId } = req.body;
 
             if (!status) {
@@ -750,7 +764,8 @@ router.delete("/delete/:id", tokenMiddleWare, async (req: Request, res: Response
     const t = await dbInstance.transaction();
 
     try {
-        const { id } = req.params;
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const user = (req as any).user;
 
         if (!user || !user.companyId) {
@@ -874,7 +889,8 @@ router.get("/by-employment-type/:type",
     tokenMiddleWare,
     async (req: Request, res: Response): Promise<void> => {
         try {
-            const { type } = req.params;
+            let { type } = req.params;
+            if (Array.isArray(type)) type = type[0];
             const { companyId } = req.query;
 
             if (!companyId) {

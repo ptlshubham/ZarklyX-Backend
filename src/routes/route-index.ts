@@ -43,6 +43,14 @@ export default (app: Application) => {
     app.use("/accounting/unit",require("./api-webapp/accounting/unit/unit-api"));
     app.use("/accounting/item",require("./api-webapp/accounting/item/item-api"));
     app.use("/accounting/vendor",require("./api-webapp/accounting/vendor/vendor-api"));
+    app.use("/accounting/invoice/tds-tcs",require("./api-webapp/accounting/invoice/tds-tcs/invoice-tds-tcs-api"));
+    app.use("/accounting/invoice",require("./api-webapp/accounting/invoice/invoice-api"));
+    app.use("/accounting/quote/tds-tcs",require("./api-webapp/accounting/quote/tds-tcs/quote-tds-tcs-api"));
+    app.use("/accounting/quote",require("./api-webapp/accounting/quote/quote-api"));
+    app.use("/accounting/credit-note",require("./api-webapp/accounting/credit-Note/credit-note-api"));
+    app.use("/accounting/purchase-bill/tds-tcs",require("./api-webapp/accounting/purchase-Bill/tds-tcs/pb-tds-tcs-api"));
+    app.use("/accounting/purchase-bill",require("./api-webapp/accounting/purchase-Bill/purchase-bill-api"));
+    app.use("accounting/purchaseOrder",require("./api-webapp/accounting/purchaseOrder/purchase-order-api"));
     
 };
 
