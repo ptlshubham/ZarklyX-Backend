@@ -59,14 +59,14 @@ export function getDriveClientFromTokens(tokens: DriveTokens) {
 
 export async function listMyDriveFiles(tokens: DriveTokens, pageToken?: string, pageSize: number = 25, q?: string) {
   const drive = getDriveClientFromTokens(tokens);
-  const res = await drive.files.list({ pageSize, pageToken, q, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred),nextPageToken" });
+  const res = await drive.files.list({ pageSize, pageToken, q, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred,iconLink),nextPageToken" });
   return res.data;
 }
 
 export async function getDriveFileMetadata(tokens: DriveTokens, fileId: string) {
   const drive = getDriveClientFromTokens(tokens);
-  const res = await drive.files.get({ fileId, fields: "id,name,mimeType,size,modifiedTime,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred" });
-  return res.data;
+  const folder = await drive.files.get({ fileId, fields: "id,name,mimeType,size,modifiedTime,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred,iconLink" });
+  return folder.data;
 }
 
 export async function refreshDriveAccessToken(refreshToken: string) {
