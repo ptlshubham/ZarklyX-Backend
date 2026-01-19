@@ -252,7 +252,26 @@ export async function updateItemStarred(tokens: DriveTokens, fileId: string, sta
     throw error;
   }
 }
-
+// Rename a file or folder
+export async function renameDriveItem(tokens: DriveTokens, fileId: string, newName: string) {
+  try {
+    const drive = getDriveClientFromTokens(tokens);
+    
+    const res = await drive.files.update({
+      fileId: fileId,
+      requestBody: {
+        name: newName
+      },
+      fields: "id,name,mimeType,iconLink",
+    });
+    
+    console.log(`✅ Item ${fileId} renamed to: ${newName}`);
+    return res.data;
+  } catch (error: any) {
+    console.error(`❌ Failed to rename item:`, error.message);
+    throw new Error(`Failed to rename item: ${error.message}`);
+  }
+}
 // Helper: Convert color name to hex value for Google Drive
 // All 25 official Google Drive folder colors
 function getColorHex(color: string): string {

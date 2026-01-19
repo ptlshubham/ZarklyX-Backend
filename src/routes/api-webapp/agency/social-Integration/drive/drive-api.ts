@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred, renameDriveItem } from "../../../../../services/drive-service";
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -1876,6 +1876,63 @@ router.post("/company/:companyId/disconnect", async (req: Request, res: Response
     res.status(500).json({
       success: false,
       message: error.message || "Failed to disconnect Google Drive"
+    });
+    return;
+  }
+});
+
+/**
+ * ✅ POST /drive/me/files/:id/rename
+ * Purpose: Rename a file or folder on Google Drive
+ * Params:
+ *   - id (required, URL): File/Folder ID to rename
+ *   - newName (required, body): New name for the file/folder
+ * Returns: { success, data: { id, name, mimeType, iconLink }, message }
+ * Usage: User renames a file/folder from the UI
+ */
+router.post("/me/files/:id/rename", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { newName } = req.body;
+
+    if (!fileId || !newName) {
+      res.status(400).json({ 
+        success: false, 
+        message: "Missing fileId or newName" 
+      });
+      return;
+    }
+
+    // Extract tokens from headers or query
+    const tokens = extractTokens(req);
+    
+    // Ensure valid access token
+    await ensureValidAccessToken(tokens);
+
+    if (!tokens.access_token) {
+      res.status(401).json({ 
+        success: false, 
+        message: "No valid access token found" 
+      });
+      return;
+    }
+
+    // Rename the file/folder
+    const result = await renameDriveItem(tokens, fileId, newName);
+
+    console.log(`✅ File/Folder ${fileId} renamed to ${newName}`);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "File/Folder renamed successfully"
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Failed to rename file/folder:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to rename file/folder"
     });
     return;
   }
