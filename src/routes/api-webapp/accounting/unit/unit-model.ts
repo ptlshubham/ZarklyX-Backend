@@ -35,12 +35,10 @@ export class Unit extends Model<
                 unitName: {
                     type: DataTypes.STRING(100),
                     allowNull: false,
-                    unique: true,
                 },
                 unitCode: {
                     type: DataTypes.STRING(100),
                     allowNull: false,
-                    unique: true,
                 },
                 isActive: {
                     type: DataTypes.BOOLEAN,
@@ -68,6 +66,16 @@ export class Unit extends Model<
                 modelName: "unit",
                 tableName: "unit",
                 timestamps: true,
+                indexes: [
+                    {
+                        fields: ["companyId", "unitName"],
+                        unique: true,
+                    },
+                    {
+                        fields: ["companyId", "unitCode"],
+                        unique: true,
+                    },
+                ],
             }
         );
         return Unit;

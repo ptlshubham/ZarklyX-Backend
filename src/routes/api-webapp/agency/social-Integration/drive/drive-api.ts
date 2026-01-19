@@ -547,7 +547,8 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
 router.get("/me/files/preview/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = extractTokens(req);
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
 
     if (!tokens.access_token && !tokens.refresh_token) {
       res.status(401).json({ success: false, message: "No access token provided" });
@@ -596,7 +597,8 @@ router.get("/file/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const access_token = (req.headers["x-access-token"] as string) || (req.query.access_token as string) || "";
     const refresh_token = (req.headers["x-refresh-token"] as string) || (req.query.refresh_token as string) || undefined;
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     if (!fileId) {
       res.status(400).json({ success: false, message: "Missing file id" });
       return;
@@ -802,7 +804,8 @@ router.get("/me/folders/:id/children", async (req: Request, res: Response): Prom
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;
     }
-    const folderId = req.params.id;
+    let folderId = req.params.id;
+    if (Array.isArray(folderId)) folderId = folderId[0];
     const pageToken = (req.query.pageToken as string) || undefined;
     const pageSize = parseInt((req.query.pageSize as string) || "25", 10);
     const q = (req.query.q as string) || undefined;
@@ -835,7 +838,8 @@ router.post("/me/files/:id/move", async (req: Request, res: Response): Promise<v
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;
     }
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     const newParentId = (req.body?.newParentId as string) || (req.query?.newParentId as string);
     if (!fileId || !newParentId) {
       res.status(400).json({ success: false, message: "Missing file id or newParentId" });
@@ -874,7 +878,8 @@ router.post("/me/files/:id/share", async (req: Request, res: Response): Promise<
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;
     }
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     const { role, type, emailAddress, domain, allowFileDiscovery } = req.body || {};
     if (!fileId || !role || !type) {
       res.status(400).json({ success: false, message: "Missing fileId, role or type" });
@@ -924,7 +929,8 @@ router.post("/me/files/:id/send-email", async (req: Request, res: Response): Pro
       refresh_token: ((req.headers["x-gmail-refresh-token"] as string) || (req.query["gmail_refresh_token"] as string) || (req.headers["x-refresh-token"] as string) || (req.query["refresh_token"] as string) || "").trim(),
     } as any;
 
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     const { from, to, subject, text, html } = req.body || {};
     if (!fileId || !from || !to || !subject) {
       res.status(400).json({ success: false, message: "Missing fileId, from, to or subject" });
@@ -964,7 +970,8 @@ router.get("/me/files/export-pdf/:id", async (req: Request, res: Response): Prom
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;
     }
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     const { stream } = await exportDriveFileStream(tokens, fileId, "application/pdf");
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${(req.query.filename as string) || fileId}.pdf"`);
@@ -1020,7 +1027,8 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     if (!fileId) {
       res.status(400).json({ success: false, message: "Missing file id" });
       return;
@@ -1181,7 +1189,8 @@ router.get("/me/files/download/:id", async (req: Request, res: Response): Promis
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;
     }
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     if (!fileId) {
       res.status(400).json({ success: false, message: "Missing file id" });
       return;
@@ -1245,7 +1254,8 @@ router.get("/me/files/export/:id", async (req: Request, res: Response): Promise<
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;
     }
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     const mimeType = (req.query.mimeType as string) || "";
     if (!fileId || !mimeType) {
       res.status(400).json({ success: false, message: "Missing file id or mimeType" });
@@ -1312,7 +1322,8 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
     // Ensure we have a valid access token
     await ensureValidAccessToken(tokens);
 
-    const folderId = req.params.folderId;
+    let folderId = req.params.folderId;
+    if (Array.isArray(folderId)) folderId = folderId[0];
     if (!folderId) {
       res.status(400).json({ success: false, message: "Missing folderId" });
       return;
@@ -1409,7 +1420,9 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
     };
 
     // Build ZIP structure
-    await addFolderToZip(folderId, zip);
+    let localFolderId = folderId;
+    if (Array.isArray(localFolderId)) localFolderId = localFolderId[0];
+    await addFolderToZip(localFolderId, zip);
 
     // Generate ZIP buffer (STORE = no compression for speed)
     const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
@@ -1716,7 +1729,8 @@ router.patch("/me/files/:id/color", async (req: Request, res: Response): Promise
 
     await ensureValidAccessToken(tokens);
 
-    const folderId = req.params.id;
+    let folderId = req.params.id;
+    if (Array.isArray(folderId)) folderId = folderId[0];
     const { color } = req.body || {};
 
     if (!folderId || !color) {
@@ -1755,7 +1769,8 @@ router.patch("/me/files/:id/starred", async (req: Request, res: Response): Promi
 
     await ensureValidAccessToken(tokens);
 
-    const fileId = req.params.id;
+    let fileId = req.params.id;
+    if (Array.isArray(fileId)) fileId = fileId[0];
     const { starred } = req.body || {};
 
     if (!fileId || starred === undefined || starred === null) {
@@ -1787,7 +1802,8 @@ router.patch("/me/files/:id/starred", async (req: Request, res: Response): Promi
  */
 router.get("/company/:companyId/drives", async (req: Request, res: Response): Promise<void> => {
   try {
-    const companyId = req.params.companyId;
+    let companyId = req.params.companyId;
+    if (Array.isArray(companyId)) companyId = companyId[0];
 
     if (!companyId) {
       res.status(400).json({ success: false, message: "Missing companyId" });
@@ -1824,7 +1840,8 @@ router.get("/company/:companyId/drives", async (req: Request, res: Response): Pr
  */
 router.post("/company/:companyId/disconnect", async (req: Request, res: Response): Promise<void> => {
   try {
-    const companyId = req.params.companyId;
+    let companyId = req.params.companyId;
+    if (Array.isArray(companyId)) companyId = companyId[0];
 
     if (!companyId) {
       res.status(400).json({ success: false, message: "Missing companyId" });

@@ -89,7 +89,8 @@ router.get("/:companyId/details",
   async (req: Request, res: Response): Promise<any> => {
     try {
       const userId: any = (req as any).user?.id;
-      const { companyId } = req.params;
+      let { companyId } = req.params;
+      if (Array.isArray(companyId)) companyId = companyId[0];
 
       if (!userId) {
         return serverError(res, "User ID not found in token");
@@ -140,7 +141,8 @@ router.post("/switch/:companyId",
   async (req: Request, res: Response): Promise<any>=> {
     try {
       const userId: any = (req as any).user?.id;
-      const { companyId } = req.params;
+      let { companyId } = req.params;
+      if (Array.isArray(companyId)) companyId = companyId[0];
 
       if (!userId) {
         return serverError(res, "User ID not found in token");
@@ -327,7 +329,8 @@ router.put("/:companyId/update",
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
-      const { companyId } = req.params;
+      let { companyId } = req.params;
+      if (Array.isArray(companyId)) companyId = companyId[0];
 
       if (!userId) {
         await t.rollback();
@@ -380,7 +383,8 @@ router.post("/:companyId/add-user",
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
-      const { companyId } = req.params;
+      let { companyId } = req.params;
+      if (Array.isArray(companyId)) companyId = companyId[0];
       const { targetUserId, role = "employee", isOwner = false } = req.body;
 
       if (!userId) {
@@ -456,7 +460,9 @@ router.delete("/:companyId/remove-user/:targetUserId",
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
-      const { companyId, targetUserId } = req.params;
+      let { companyId, targetUserId } = req.params;
+      if (Array.isArray(companyId)) companyId = companyId[0];
+      if (Array.isArray(targetUserId)) targetUserId = targetUserId[0];
 
       if (!userId) {
         await t.rollback();
