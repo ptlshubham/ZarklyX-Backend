@@ -43,6 +43,11 @@ import  itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/it
 import unitRouter from './routes/api-webapp/accounting/unit/unit-api';
 import itemRouter from './routes/api-webapp/accounting/item/item-api';
 import vendorRouter from './routes/api-webapp/accounting/vendor/vendor-api';
+import invoiceRouter from './routes/api-webapp/accounting/invoice/invoice-api';
+import quoteRouter from './routes/api-webapp/accounting/quote/quote-api';
+import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-note-api';
+import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
+import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
 
 import path from "path";
 const app = express();
@@ -112,6 +117,11 @@ app.use("/accounting/item-Category",itemCategoryRoutes);
 app.use("/accounting/unit",unitRouter);
 app.use("/accounting/vendor",vendorRouter);
 app.use("/accounting/item",itemRouter);
+app.use("/accounting/invoice",invoiceRouter);
+app.use("/accounting/quote",quoteRouter);
+app.use("/accounting/credit-note",creditNoteRouter);
+app.use("/accounting/purchase-bill",purchaseBillRouter);
+app.use("/accounting/purchaseOrder",purchaseOrderRouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
