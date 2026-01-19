@@ -37,8 +37,10 @@ router.post("/createItemCategory/", async (req: Request, res: Response): Promise
 
 //GET /accounting/item-Category/getItemCategoryById:id
 router.get("/getItemCategoryById/:id", async (req: Request, res: Response): Promise<any> => {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const data = await getItemCategoryById(
-        req.params.id,
+        id,
         req.query.companyId as string
     );
     res.json({ success: true, data });
@@ -59,8 +61,10 @@ router.get("/getActiveItemCategoriesByCompany", async (req, res): Promise<any> =
 router.patch("/updateItemCategory/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const updatedCategory = await updateItemCategory(
-            req.params.id,
+            id,
             req.query.companyId as string,
             req.body,
             t
@@ -91,8 +95,10 @@ router.patch("/updateItemCategory/:id", async (req: Request, res: Response): Pro
 router.patch("/deactivateItemCategory/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const data = await deactivateItemCategory(
-            req.params.id,
+            id,
             req.query.companyId as string,
             t
         );
@@ -122,8 +128,10 @@ router.patch("/deactivateItemCategory/:id", async (req: Request, res: Response):
 router.delete("/deleteItemCategory/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const data = await deleteItemCategory(
-            req.params.id,
+            id,
             req.query.companyId as string,
             t
         );
