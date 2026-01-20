@@ -16,8 +16,7 @@ import {
 const router = express.Router();
 
 // Create a new expense
-router.post(
-  "/create",(async (req: Request, res: Response) => {
+router.post("/createExpense", async (req: Request, res: Response) => {
     const companyId = req.body.user.companyId;
     const expense = await createExpense(req.body, companyId);
 
@@ -26,14 +25,13 @@ router.post(
       message: "Expense created successfully",
       data: expense,
     });
-  })
+  }
 );
 
 // Get expense by ID
-router.get(
-  "/:id",
-  async (req: Request, res: Response): Promise<any> => {
-    const { id } = req.params;
+router.get("/getExpenseById/:id", async (req: Request, res: Response): Promise<any> => {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const companyId = req.body.user.companyId;
 
     const expense = await getExpenseById(id, companyId);
@@ -54,8 +52,7 @@ router.get(
 );
 
 // Get all expenses for company
-router.get(
-  "/",(async (req: Request, res: Response) => {
+router.get("/getAllExpensesByCompanyId", async (req: Request, res: Response) => {
     const companyId = req.body.user.companyId;
     const expenses = await getExpensesByCompany(companyId);
 
@@ -64,13 +61,13 @@ router.get(
       message: "Expenses retrieved successfully",
       data: expenses,
     });
-  })
+  }
 );
 
 // Get expenses by vendor
-router.get(
-  "/vendor/:vendorId",(async (req: Request, res: Response) => {
-    const { vendorId } = req.params;
+router.get("/getExpensesByVendorId/:vendorId",(async (req: Request, res: Response) => {
+    let vendorId = req.params.vendorId;
+    if (Array.isArray(vendorId)) vendorId = vendorId[0];
     const companyId = req.body.user.companyId;
 
     const expenses = await getExpensesByVendor(vendorId, companyId);
@@ -84,9 +81,9 @@ router.get(
 );
 
 // Get expenses by client
-router.get(
-  "/client/:clientId",(async (req: Request, res: Response) => {
-    const { clientId } = req.params;
+router.get("/getExpensesByClientId/:clientId",(async (req: Request, res: Response) => {
+    let clientId = req.params.clientId;
+    if (Array.isArray(clientId)) clientId = clientId[0];
     const companyId = req.body.user.companyId;
 
     const expenses = await getExpensesByClient(clientId, companyId);
@@ -100,9 +97,9 @@ router.get(
 );
 
 // Get expenses by payment method
-router.get(
-  "/payment-method/:paymentMethod",(async (req: Request, res: Response) => {
-    const { paymentMethod } = req.params;
+router.get("/getExpensesByPaymentMethod/:paymentMethod",(async (req: Request, res: Response) => {
+    let paymentMethod = req.params.paymentMethod;
+    if (Array.isArray(paymentMethod)) paymentMethod = paymentMethod[0];
     const companyId = req.body.user.companyId;
 
     const expenses = await getExpensesByPaymentMethod(companyId, paymentMethod);
@@ -116,9 +113,9 @@ router.get(
 );
 
 // Update expense
-router.put(
-  "/:id",(async (req: Request, res: Response) => {
-    const { id } = req.params;
+router.put("/updateExpenses/:id",(async (req: Request, res: Response) => {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const companyId = req.body.user.companyId;
 
     const expense = await updateExpense(id, companyId, req.body);
@@ -132,9 +129,9 @@ router.put(
 );
 
 // Delete expense (soft delete)
-router.delete(
-  "/:id",(async (req: Request, res: Response) => {
-    const { id } = req.params;
+router.delete("/deleteExpenses/:id",(async (req: Request, res: Response) => {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const companyId = req.body.user.companyId;
 
     await deleteExpense(id, companyId);
@@ -147,8 +144,7 @@ router.delete(
 );
 
 // Search expenses with filters
-router.post(
-  "/search",(async (req: Request, res: Response) => {
+router.post("/searchExpenses",async (req: Request, res: Response) => {
     const companyId = req.body.user.companyId;
     const filters: SearchExpenseFilters = {
       companyId,
@@ -162,12 +158,11 @@ router.post(
       message: "Expenses retrieved successfully",
       data: expenses,
     });
-  })
+  }
 );
 
 // Get expense summary
-router.post(
-  "/summary",(async (req: Request, res: Response) => {
+router.post("/getExpensesSummary",(async (req: Request, res: Response) => {
     const companyId = req.body.user.companyId;
     const { startDate, endDate } = req.body;
 
