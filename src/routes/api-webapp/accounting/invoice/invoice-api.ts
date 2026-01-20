@@ -283,13 +283,13 @@ router.delete("/deleteInvoice/:id",async (req: Request, res: Response): Promise<
     try {
       let id = req.params.id;
       if (Array.isArray(id)) id = id[0];
-      const [affectedRows] = await deleteInvoice(
+      const deleteResult = await deleteInvoice(
         id,
         req.query.companyId as string,
         t
       );
 
-      if (affectedRows === 0) {
+      if (!deleteResult) {
         await t.rollback();
         return res.status(404).json({
           success: false,
@@ -314,17 +314,17 @@ router.delete("/deleteInvoice/:id",async (req: Request, res: Response): Promise<
 router.post("/convertToPayment/:id",async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    console.log("company id:  ",req.query)
-    console.log("company id:  ",req.query)
-    const { companyId } = req.query;
-    let { invoiceId } = req.params;
+    let companyId = req.query.companyId;
+    let invoiceId  = req.params.id;
     if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
+    if (Array.isArray(companyId)) companyId = companyId[0];
+    companyId = companyId as string;
     const invoiceData = req.body;
     if(!companyId) {
       await t.rollback();
       return res.status(400).json({ success: false, message: "companyId is required" });
     }
-    const result = await convertInvoiceToPayment(companyId as string, invoiceId, invoiceData, t);
+    const result = await convertInvoiceToPayment(invoiceId, companyId, invoiceData, t);
     await t.commit();
     return res.status(201).json({
       success: true,
