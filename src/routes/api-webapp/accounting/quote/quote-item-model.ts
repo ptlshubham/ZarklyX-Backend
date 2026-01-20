@@ -28,6 +28,8 @@ export class QuoteItem extends Model<
     declare taxable: number | null; // Taxable amount (after discount, before tax)
     declare taxAmount: number;
     declare totalAmount: number;
+    declare isActive: boolean;
+    declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -102,6 +104,16 @@ export class QuoteItem extends Model<
                 totalAmount: {
                     type: DataTypes.DECIMAL(10, 2),
                     allowNull: false,
+                },
+                isActive: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: true,
+                },
+                isDeleted: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
                 },
                 createdAt: {
                     type: DataTypes.DATE,
