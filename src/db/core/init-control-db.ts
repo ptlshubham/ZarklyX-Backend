@@ -3,14 +3,48 @@ import type { Sequelize } from "sequelize";
 // Models for Web -app
 import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
-import { UserCompany ,initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
+import { UserCompany, initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
 import { LoginHistory } from "../../routes/api-webapp/loginHistory/loginHistory-model";
-import { Category, initCategoryModel } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
-import { PremiumModule ,initPremiumModuleModel } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
+import { Category } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
+import { PremiumModule } from "../../routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-model";
 import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
+import { ItTickets } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-model";
+// import { Role } from "../../routes/api-webapp/roles/role-model";
+// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// Use a relative path to the route-local Google token model to avoid module alias issues
+import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
+import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
+
+// import { Role } from "../../routes/api-webapp/roles/role-model";
+// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// Use a relative path to the route-local Google token model to avoid module alias issues
+// import { GoogleToken } from "../../routes/api-webapp/agency/social-Integration/google/google-token.model";
+
+import { InfluencerCategory } from "../../routes/api-webapp/superAdmin/influencer/category/influencerCategory-model";
+import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
+import { Industry } from "../../routes/api-webapp/superAdmin/influencer/industry/influencerIndustry-models";
+import { Platform } from "../../routes/api-webapp/superAdmin/influencer/platform/influencerPlatform-model";
+import { ItemCategory } from "../../routes/api-webapp/accounting/item-Category/item-Category-model";
+import { Unit } from "../../routes/api-webapp/accounting/unit/unit-model";
+import { Item } from "../../routes/api-webapp/accounting/item/item-model";
+import { Vendor } from "../../routes/api-webapp/accounting/vendor/vendor-model";
+import { Invoice } from "../../routes/api-webapp/accounting/invoice/invoice-model";
+import { InvoiceItem } from "../../routes/api-webapp/accounting/invoice/invoice-item-model";
+import { InvoiceTdsTcs } from "../../routes/api-webapp/accounting/invoice/tds-tcs/invoice-tds-tcs-model";
+import { Quote } from "../../routes/api-webapp/accounting/quote/quote-model";
+import { QuoteItem } from "../../routes/api-webapp/accounting/quote/quote-item-model";
+import { QuoteTdsTcs } from "../../routes/api-webapp/accounting/quote/tds-tcs/quote-tds-tcs-model";
+import { CreditNote } from "../../routes/api-webapp/accounting/credit-Note/credit-note-model";
+import { CreditNoteItem } from "../../routes/api-webapp/accounting/credit-Note/credit-note-item-model";
+import { PurchaseBill } from "../../routes/api-webapp/accounting/purchase-Bill/purchase-bill-model";
+import { PurchaseBillItem } from "../../routes/api-webapp/accounting/purchase-Bill/purcharse-bill-item-model";
+import { PurchaseBillTdsTcs } from "../../routes/api-webapp/accounting/purchase-Bill/tds-tcs/pb-tds-tcs-model";
+import { PurchaseOrder } from "../../routes/api-webapp/accounting/purchaseOrder/purchase-order-model";
+import { PurchaseOrderItem } from "../../routes/api-webapp/accounting/purchaseOrder/purchase-order-item-model";
+import { Payments } from "../../routes/api-webapp/accounting/payments/payments-model";
 
 export {
   User,
@@ -23,6 +57,32 @@ export {
   Clients,
   BusinessType,
   BusinessSubcategory,
+  SocialToken,
+  Employee,
+  ItTickets,
+  // GoogleToken
+  InfluencerCategory,
+  Influencer,
+  Industry,
+  Platform,
+  ItemCategory,
+  Unit,
+  Item,
+  Vendor,
+  Invoice,
+  InvoiceItem,
+  InvoiceTdsTcs,
+  Quote,
+  QuoteItem,
+  QuoteTdsTcs,
+  CreditNote,
+  CreditNoteItem,
+  PurchaseBill,
+  PurchaseBillItem,
+  PurchaseBillTdsTcs,
+  PurchaseOrder,
+  PurchaseOrderItem,
+  Payments,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -31,15 +91,49 @@ export function initControlDB(sequelize: Sequelize) {
   Company.initModel(sequelize);
   PremiumModule.initModel(sequelize);
   Category.initModel(sequelize);
-  Clients.initModel(sequelize);  
-  Otp.initModel(sequelize);  
+  Clients.initModel(sequelize);
+  Employee.initModel(sequelize);
+  Otp.initModel(sequelize);
   LoginHistory.initModel(sequelize);
+  ItTickets.initModel(sequelize);
+  // Roles
+  // Role.initModel(sequelize);
+  // SubRole.initModel(sequelize);
+  initUserCompanyModel(sequelize);
+  SocialToken.initModel(sequelize);
+  // Role.initModel(sequelize);
+  // SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
-//  initCategoryModel(sequelize);
-//  initPremiumModuleModel(sequelize);
-// LoginHistory.initModel(sequelize);
+  // GoogleToken.initModel(sequelize); 
+  //  initCategoryModel(sequelize);
+  //  initPremiumModuleModel(sequelize);
+  // LoginHistory.initModel(sequelize);
+  InfluencerCategory.initModel(sequelize);
+  Influencer.initModel(sequelize);
+  Industry.initModel(sequelize);
+  Platform.initModel(sequelize);
+
+  ItemCategory.initModel(sequelize);
+  Unit.initModel(sequelize);
+  Item.initModel(sequelize);
+  Vendor.initModel(sequelize);
+  Invoice.initModel(sequelize);
+  InvoiceItem.initModel(sequelize);
+  InvoiceTdsTcs.initModel(sequelize);
+  Quote.initModel(sequelize);
+  QuoteItem.initModel(sequelize);
+  QuoteTdsTcs.initModel(sequelize);
+  CreditNote.initModel(sequelize);
+  CreditNoteItem.initModel(sequelize);
+  PurchaseBill.initModel(sequelize);
+  PurchaseBillItem.initModel(sequelize);
+  PurchaseBillTdsTcs.initModel(sequelize);
+  PurchaseOrder.initModel(sequelize);
+  PurchaseOrderItem.initModel(sequelize);
+  Payments.initModel(sequelize);
+
 
 
   // Relations and associations
@@ -65,31 +159,31 @@ export function initControlDB(sequelize: Sequelize) {
   UserCompany.belongsTo(Company, {
     foreignKey: "companyId",
   });
-  
+
 
   /***user <-> otp */
-//   User.hasMany(Otp, {
-//     foreignKey: "userId",
-//     as: "otps",
-//   });
-//   Otp.belongsTo(User, {
-//     foreignKey: "userId",
-//     as : "user"
-//   });
- 
-// /*** clients <-> otp */
-Clients.hasMany(Otp, {
-  foreignKey: "clientId",
-  as: "Otps",
-  constraints: false,
-});
-Otp.belongsTo(Clients, {
-  foreignKey: "clientId",
-  as: "client",
-  constraints: false,
-});
+  //   User.hasMany(Otp, {
+  //     foreignKey: "userId",
+  //     as: "otps",
+  //   });
+  //   Otp.belongsTo(User, {
+  //     foreignKey: "userId",
+  //     as : "user"
+  //   });
 
- /*** User <-> Clients  */
+  // /*** clients <-> otp */
+  Clients.hasMany(Otp, {
+    foreignKey: "clientId",
+    as: "Otps",
+    constraints: false,
+  });
+  Otp.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /*** User <-> Clients  */
   User.hasMany(Clients, {
     foreignKey: "userId",
     as: "clients",          // user.getClients()
@@ -109,7 +203,37 @@ Otp.belongsTo(Clients, {
     as: "company",          // client.getCompany()
   });
 
-   /*** BusinessType <-> BusinessSubcategory */
+  /*** User <-> Employee */
+  User.hasMany(Employee, {
+    foreignKey: "userId",
+    as: "employees",        // user.getEmployees()
+  });
+  Employee.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",             // employee.getUser()
+  });
+
+  /*** Company <-> Employee */
+  Company.hasMany(Employee, {
+    foreignKey: "companyId",
+    as: "employees",        // company.getEmployees()
+  });
+  Employee.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",          // employee.getCompany()
+  });
+
+  /*** Employee <-> Employee (Self-referencing for reporting manager) */
+  Employee.belongsTo(Employee, {
+    foreignKey: "reportingManagerId",
+    as: "reportingManager", // employee.getReportingManager()
+  });
+  Employee.hasMany(Employee, {
+    foreignKey: "reportingManagerId",
+    as: "subordinates",     // manager.getSubordinates()
+  });
+
+  /*** BusinessType <-> BusinessSubcategory */
   BusinessType.hasMany(BusinessSubcategory, {
     foreignKey: "businessTypeId",
     as: "subcategories",
@@ -130,13 +254,544 @@ Otp.belongsTo(Clients, {
     as: "user",
   });
 
-// User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
-// Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
+  /*** User <-> ItTickets */
+  User.hasMany(ItTickets, {
+    foreignKey: "userId",
+    as: "itTickets",
+  });
+  ItTickets.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
 
-// Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
-// Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
-// Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
-// Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
+  /*** Company <-> ItTickets */
+  Company.hasMany(ItTickets, {
+    foreignKey: "companyId",
+    as: "itTickets",
+  });
+  ItTickets.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> Unit */
+  Company.hasMany(Unit, {
+    foreignKey: "companyId",
+    as: "units",
+  });
+  Unit.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> ItemCategory */
+  Company.hasMany(ItemCategory, {
+    foreignKey: "companyId",
+    as: "itemCategories",
+  });
+  ItemCategory.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> Item */
+  Company.hasMany(Item, {
+    foreignKey: "companyId",
+    as: "items",
+  });
+  Item.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Unit <-> Item */
+  Unit.hasMany(Item, {
+    foreignKey: "unitId",
+    as: "items",
+  });
+  Item.belongsTo(Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  });
+
+  /*** Company <-> Vendor */
+  Company.hasMany(Vendor, {
+    foreignKey: "companyId",
+    as: "vendors",
+  });
+  Vendor.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> Invoice */
+  Company.hasMany(Invoice, {
+    foreignKey: "companyId",
+    as: "invoices",
+    constraints: false,
+  });
+  Invoice.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /*** Clients <-> Invoice */
+  Clients.hasMany(Invoice, {
+    foreignKey: "clientId",
+    as: "invoices",
+    constraints: false,
+  });
+  Invoice.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /*** Invoice <-> Item (Many-to-Many through InvoiceItem) */
+  Invoice.belongsToMany(Item, {
+    through: InvoiceItem,
+    foreignKey: "invoiceId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(Invoice, {
+    through: InvoiceItem,
+    foreignKey: "itemId",
+    otherKey: "invoiceId",
+    as: "invoices",
+  });
+
+  /*** Invoice <-> InvoiceItem */
+  Invoice.hasMany(InvoiceItem, {
+    foreignKey: "invoiceId",
+    as: "invoiceItems",
+  });
+  InvoiceItem.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+  });
+
+  /*** Item <-> InvoiceItem */
+  Item.hasMany(InvoiceItem, {
+    foreignKey: "itemId",
+    as: "invoiceItems",
+  });
+  InvoiceItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+
+  /*** Invoice <-> TdsTcs (One-to-Many) */
+  Invoice.hasMany(InvoiceTdsTcs, {
+    foreignKey: "invoiceId",
+    as: "tdsTcsEntries",
+  });
+  InvoiceTdsTcs.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+  });
+
+  /*** Quote <-> Company */
+  Company.hasMany(Quote, {
+    foreignKey: "companyId",
+    as: "quotes",
+    constraints: false,
+  });
+  Quote.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /*** Quote <-> Clients */
+  Clients.hasMany(Quote, {
+    foreignKey: "clientId",
+    as: "quotes",
+    constraints: false,
+  });
+  Quote.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /*** Quote <-> Item (Many-to-Many through QuoteItem) */
+  Quote.belongsToMany(Item, {
+    through: QuoteItem,
+    foreignKey: "quoteId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(Quote, {
+    through: QuoteItem,
+    foreignKey: "itemId",
+    otherKey: "quoteId",
+    as: "quotes",
+  });
+
+  /*** Quote <-> QuoteItem */
+  Quote.hasMany(QuoteItem, {
+    foreignKey: "quoteId",
+    as: "quoteItems",
+  });
+  QuoteItem.belongsTo(Quote, {
+    foreignKey: "quoteId",
+    as: "quote",
+  });
+
+  /*** Item <-> QuoteItem */
+  Item.hasMany(QuoteItem, {
+    foreignKey: "itemId",
+    as: "quoteItems",
+  });
+  QuoteItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+
+  /*** Quote <-> QuoteTdsTcs (One-to-Many) */
+  Quote.hasMany(QuoteTdsTcs, {
+    foreignKey: "quoteId",
+    as: "tdsTcsEntries",
+  });
+  QuoteTdsTcs.belongsTo(Quote, {
+    foreignKey: "quoteId",
+    as: "quote",
+  });
+
+  /*** CreditNote <-> Company */
+  Company.hasMany(CreditNote, {
+    foreignKey: "companyId",
+    as: "creditNotes",
+    constraints: false,
+  });
+  CreditNote.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /*** CreditNote <-> Clients */
+  Clients.hasMany(CreditNote, {
+    foreignKey: "clientId",
+    as: "creditNotes",
+    constraints: false,
+  });
+  CreditNote.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /*** CreditNote <-> Invoice */
+  Invoice.hasMany(CreditNote, {
+    foreignKey: "invoiceId",
+    as: "creditNotes",
+    constraints: false,
+  });
+  CreditNote.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+    constraints: false,
+  });
+
+  /*** CreditNote <-> Item (Many-to-Many through CreditNoteItem) */
+  CreditNote.belongsToMany(Item, {
+    through: CreditNoteItem,
+    foreignKey: "creditNoteId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(CreditNote, {
+    through: CreditNoteItem,
+    foreignKey: "itemId",
+    otherKey: "creditNoteId",
+    as: "creditNotes",
+  });
+
+  /*** CreditNote <-> CreditNoteItem */
+  CreditNote.hasMany(CreditNoteItem, {
+    foreignKey: "creditNoteId",
+    as: "creditNoteItems",
+  });
+  CreditNoteItem.belongsTo(CreditNote, {
+    foreignKey: "creditNoteId",
+    as: "creditNote",
+  });
+
+  /*** Item <-> CreditNoteItem */
+  Item.hasMany(CreditNoteItem, {
+    foreignKey: "itemId",
+    as: "creditNoteItems",
+  });
+  CreditNoteItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+
+  /*** PurchaseBill <-> Company */
+  Company.hasMany(PurchaseBill, {
+    foreignKey: "companyId",
+    as: "purchaseBills",
+    constraints: false,
+  });
+  PurchaseBill.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /*** PurchaseBill <-> Vendor */
+  Vendor.hasMany(PurchaseBill, {
+    foreignKey: "vendorId",
+    as: "purchaseBills",
+    constraints: false,
+  });
+  PurchaseBill.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
+
+  /*** PurchaseBill <-> Item (Many-to-Many through PurchaseBillItem) */
+  PurchaseBill.belongsToMany(Item, {
+    through: PurchaseBillItem,
+    foreignKey: "purchaseBillId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(PurchaseBill, {
+    through: PurchaseBillItem,
+    foreignKey: "itemId",
+    otherKey: "purchaseBillId",
+    as: "purchaseBills",
+  });
+
+  /*** PurchaseBill <-> PurchaseBillItem */
+  PurchaseBill.hasMany(PurchaseBillItem, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBillItems",
+  });
+  PurchaseBillItem.belongsTo(PurchaseBill, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBill",
+  });
+
+  /*** Item <-> PurchaseBillItem */
+  Item.hasMany(PurchaseBillItem, {
+    foreignKey: "itemId",
+    as: "purchaseBillItems",
+  });
+  PurchaseBillItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+
+  /*** PurchaseBill <-> PurchaseBillTdsTcs (One-to-Many) */
+  PurchaseBill.hasMany(PurchaseBillTdsTcs, {
+    foreignKey: "purchaseBillId",
+    as: "tdsTcsEntries",
+  });
+  PurchaseBillTdsTcs.belongsTo(PurchaseBill, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBill",
+  });
+
+  /*** PurchaseOrder <-> Company */
+  Company.hasMany(PurchaseOrder, {
+    foreignKey: "companyId",
+    as: "purchaseOrders",
+    constraints: false,
+  });
+  PurchaseOrder.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /*** PurchaseOrder <-> Vendor */
+  Vendor.hasMany(PurchaseOrder, {
+    foreignKey: "vendorId",
+    as: "purchaseOrders",
+    constraints: false,
+  });
+  PurchaseOrder.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
+
+  /*** PurchaseOrder <-> Unit */
+  Unit.hasMany(PurchaseOrder, {
+    foreignKey: "unitId",
+    as: "purchaseOrders",
+    constraints: false,
+  });
+  PurchaseOrder.belongsTo(Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+    constraints: false,
+  });
+
+  /*** PurchaseOrder <-> Item (Many-to-Many through PurchaseOrderItem) */
+  PurchaseOrder.belongsToMany(Item, {
+    through: PurchaseOrderItem,
+    foreignKey: "poId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(PurchaseOrder, {
+    through: PurchaseOrderItem,
+    foreignKey: "itemId",
+    otherKey: "poId",
+    as: "purchaseOrders",
+  });
+
+  /*** PurchaseOrder <-> PurchaseOrderItem */
+  PurchaseOrder.hasMany(PurchaseOrderItem, {
+    foreignKey: "poId",
+    as: "purchaseOrderItems",
+  });
+  PurchaseOrderItem.belongsTo(PurchaseOrder, {
+    foreignKey: "poId",
+    as: "purchaseOrder",
+  });
+
+  /*** Item <-> PurchaseOrderItem */
+  Item.hasMany(PurchaseOrderItem, {
+    foreignKey: "itemId",
+    as: "purchaseOrderItems",
+  });
+  PurchaseOrderItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+
+  /*** Unit <-> PurchaseOrderItem */
+  Unit.hasMany(PurchaseOrderItem, {
+    foreignKey: "unitId",
+    as: "purchaseOrderItems",
+  });
+  PurchaseOrderItem.belongsTo(Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  });
+
+  /*** Payments <-> Company */
+  Company.hasMany(Payments, {
+    foreignKey: "companyId",
+    as: "payments",
+    constraints: false,
+  });
+  Payments.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /*** Payments <-> Clients */
+  Clients.hasMany(Payments, {
+    foreignKey: "clientId",
+    as: "payments",
+    constraints: false,
+  });
+  Payments.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /*** Payments <-> Vendor */
+  Vendor.hasMany(Payments, {
+    foreignKey: "vendorId",
+    as: "payments",
+    constraints: false,
+  });
+  Payments.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
+
+  /*** Payments <-> Invoice */
+  Invoice.hasMany(Payments, {
+    foreignKey: "invoiceId",
+    as: "payments",
+    constraints: false,
+  });
+  Payments.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+    constraints: false,
+  });
+
+  /*** Payments <-> PurchaseBill */
+  PurchaseBill.hasMany(Payments, {
+    foreignKey: "purchaseBillId",
+    as: "payments",
+    constraints: false,
+  });
+  Payments.belongsTo(PurchaseBill, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBill",
+    constraints: false,
+  });
+
+  /*** InfluencerCategory <-> Influencer (Many-to-Many) */
+  InfluencerCategory.belongsToMany(Influencer, {
+    through: 'influencer_category_mapping',
+    foreignKey: "categoryId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(InfluencerCategory, {
+    through: 'influencer_category_mapping',
+    foreignKey: "influencerId",
+    otherKey: "categoryId",
+    as: "categories",
+  });
+
+  /*** Industry <-> Influencer (Many-to-Many) */
+  Industry.belongsToMany(Influencer, {
+    through: 'influencer_industry_mapping',
+    foreignKey: "industryId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(Industry, {
+    through: 'influencer_industry_mapping',
+    foreignKey: "influencerId",
+    otherKey: "industryId",
+    as: "industries",
+  });
+
+  /*** Platform <-> Influencer (Many-to-Many) */
+  Platform.belongsToMany(Influencer, {
+    through: 'influencer_platform_mapping',
+    foreignKey: "platformId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(Platform, {
+    through: 'influencer_platform_mapping',
+    foreignKey: "influencerId",
+    otherKey: "platformId",
+    as: "platforms",
+  });
+
+
+  // Role <-> SubRole
+  // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
+  // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+
+  // User.hasMany(Otp, { foreignKey: "userId", as: "userOtps" });
+  // Otp.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  // Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
+  // Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
+  // Clients.hasMany(Otp, { foreignKey: "clientId", as: "clientOtps" });
+  // Otp.belongsTo(Clients, { foreignKey: "clientId", as: "client" });
 
   return {
     User,
@@ -148,7 +803,29 @@ Otp.belongsTo(Clients, {
     PremiumModule,
     Clients,
     BusinessType,
-    BusinessSubcategory
-,    // LoginHistory
+    BusinessSubcategory,
+    SocialToken,
+    Employee,
+    ItTickets,
+    Influencer,
+    InfluencerCategory,
+    Industry,
+    Platform,
+    ItemCategory,
+    Unit,
+    Item,
+    Vendor,
+    Invoice,
+    InvoiceItem,
+    InvoiceTdsTcs,
+    Quote,
+    QuoteItem,
+    QuoteTdsTcs,
+    PurchaseBill,
+    PurchaseBillItem,
+    PurchaseBillTdsTcs,
+    PurchaseOrder,
+    PurchaseOrderItem,
+    Payments,
   };
 }
