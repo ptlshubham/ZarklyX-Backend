@@ -38,7 +38,6 @@ function extractTokens(req: Request) {
 // Helper: Ensure access token is valid, refresh if needed
 async function ensureValidAccessToken(tokens: any): Promise<void> {
   if (!tokens.access_token && tokens.refresh_token) {
-    console.log('🔄 No access token, attempting to refresh using refresh token...');
     try {
       const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
       tokens.access_token = refreshed.access_token;
@@ -381,8 +380,6 @@ router.get("/me/profile", async (req: Request, res: Response): Promise<void> => 
     } catch (apiError: any) {
       // If token expired (401), try to refresh it
       if (apiError.response?.status === 401 && refresh_token) {
-        console.log('Access token expired, attempting to refresh...');
-
         try {
           const refreshed = await refreshDriveAccessToken(refresh_token);
           access_token = refreshed.access_token;
@@ -1358,7 +1355,6 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
         } catch (apiError: any) {
           // If token expired, try to refresh and retry
           if (apiError.response?.status === 401 && tokens.refresh_token) {
-            console.log('🔄 Access token expired during folder fetch, attempting to refresh...');
             try {
               const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
               tokens.access_token = refreshed.access_token;
