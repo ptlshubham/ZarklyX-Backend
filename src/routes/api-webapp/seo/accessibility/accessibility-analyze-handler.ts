@@ -1,5 +1,6 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
-
+import { generateSeoIssues } from '../../../../services/gemini-seo-issues';
+import {appendAnalyzeState} from '../storeinfile/storeFile-handler';
 interface ViewportMeta {
     exists: boolean;
     content: string;
@@ -41,7 +42,46 @@ interface PerformanceMetrics {
 }
 
 interface AnalysisResult {
-    responsiveDesign: {
+    accessibilityScore: number;
+    mobileUsabilityScore: number;
+    touchTargetScore: number;
+    readabilityScore: number;
+    
+    fluidLayout: { value: boolean; impact: string };
+    gridSystem: { value: string; impact: string };
+    mediaQueriesCount: { value: number; impact: string };
+    orientationSupport: { value: boolean; impact: string };
+    
+    layoutAdaptation: { status: string; impact: string };
+    imageScaling: { status: string; impact: string };
+    typographyScaling: { status: string; impact: string };
+    componentBehavior: { status: string; impact: string };
+    contentRearrangement: { status: string; impact: string };
+    horizontalScroll: { status: string; impact: string };
+    
+    viewportExists: { value: boolean; impact: string };
+    viewportContent: { value: string; impact: string };
+    properlyConfigured: { value: boolean; impact: string };
+    userScalableIssue: { value: boolean; impact: string };
+    
+    swipeNavigation: { status: string; impact: string };
+    pinchZoom: { status: string; impact: string };
+    doubleTapZoom: { status: string; impact: string };
+    longPressSupport: { status: string; impact: string };
+    smoothScrolling: { status: string; impact: string };
+    momentumScrolling: { status: string; impact: string };
+    scrollSnap: { status: string; impact: string };
+    
+    maxZoomScale: { status: string; impact: string };
+    viewportRestriction: { status: string; impact: string };
+    touchHighlight: { status: string; impact: string };
+    activeStates: { status: string; impact: string };
+    
+    visualFeedback: { status: string; impact: string };
+    hapticFeedback: { status: string; impact: string };
+    interactionScore: { status: number; impact: string };
+    
+    accessibilityDesign: {
         viewports: {
             supported: string[];
             breakpoints: Record<string, string>;
@@ -106,20 +146,20 @@ interface AnalysisResult {
         };
         score: number;
     };
-    performance: {
-        coreWebVitals: {
-            lcp: string;
-            fid: string;
-            cls: string;
-            inp: string;
-        };
-        loading: {
-            timeToFirstByte: string;
-            firstContentfulPaint: string;
-            largestContentfulPaint: string;
-            speedIndex: string;
-        };
-    };
+    // performance: {
+    //     coreWebVitals: {
+    //         lcp: string;
+    //         fid: string;
+    //         cls: string;
+    //         inp: string;
+    //     };
+    //     loading: {
+    //         timeToFirstByte: string;
+    //         firstContentfulPaint: string;
+    //         largestContentfulPaint: string;
+    //         speedIndex: string;
+    //     };
+    // };
 }
 
 interface AnalyzerContext {
@@ -147,7 +187,7 @@ async function initializeBrowser(ctx: AnalyzerContext): Promise<void> {
     await ctx.page.setViewport({ width: 375, height: 667, isMobile: true });
 }
 
-async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult> {
+async function analyzeMobileAccessibility(url: string): Promise<AnalysisResult> {
     const ctx = createAnalyzerContext();
     await initializeBrowser(ctx);
 
@@ -188,7 +228,7 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
                         if (mediaText.includes('max-width')) hasMaxWidth = true;
                         if (mediaText.includes('orientation')) hasOrientation = true;
 
-                        var matches = mediaText.match(/(\\d+)px/g) || [];
+                        var matches = mediaText.match(/(\\\\d+)px/g) || [];
                         matches.forEach(function(match) {
                             var value = parseInt(match);
                             if (!isNaN(value)) breakpoints.add(value);
@@ -227,8 +267,9 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
 
         var tapTargetSizes = [];
         var tapTargetIssues = [];
+        var tapTargetSpacings = [];
 
-        interactiveElements.forEach(function(el) {
+        interactiveElements.forEach(function(el, index) {
             var rect = el.getBoundingClientRect();
             var area = rect.width * rect.height;
             tapTargetSizes.push(area);
@@ -238,11 +279,23 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
                 var id = el.id ? '#' + el.id : '';
                 tapTargetIssues.push(tagName + id + ' (' + Math.round(rect.width) + '×' + Math.round(rect.height) + 'px)');
             }
+
+            if (index < interactiveElements.length - 1) {
+                var nextRect = interactiveElements[index + 1].getBoundingClientRect();
+                var spacing = Math.abs(nextRect.top - rect.bottom);
+                if (spacing > 0 && spacing < 100) {
+                    tapTargetSpacings.push(spacing);
+                }
+            }
         });
 
         var averageTapSize = tapTargetSizes.length > 0
             ? Math.round(Math.sqrt(tapTargetSizes.reduce(function(a, b) { return a + b; }, 0) / tapTargetSizes.length))
             : 0;
+
+        var averageSpacing = tapTargetSpacings.length > 0
+            ? Math.round(tapTargetSpacings.reduce(function(a, b) { return a + b; }, 0) / tapTargetSpacings.length)
+            : 8;
 
         var textElements = Array.from(document.querySelectorAll(
             'p, h1, h2, h3, h4, h5, h6, span, div'
@@ -250,6 +303,8 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
 
         var fontSizes = [];
         var hasRelativeUnits = false;
+        var lineHeights = [];
+        var contrastRatios = [];
 
         textElements.forEach(function(el) {
             var fontSize = getStyle(el, 'font-size');
@@ -259,11 +314,39 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
             if (fontSize.includes('em') || fontSize.includes('rem') || fontSize.includes('%')) {
                 hasRelativeUnits = true;
             }
+
+            var lineHeight = getStyle(el, 'line-height');
+            var lineHeightValue = parseFloat(lineHeight);
+            if (!isNaN(lineHeightValue) && !isNaN(numValue) && numValue > 0) {
+                lineHeights.push(lineHeightValue / numValue);
+            }
+
+            var color = getStyle(el, 'color');
+            var bgColor = getStyle(el, 'background-color');
+            var colorMatch = color.match(/\\d+/g);
+            var bgMatch = bgColor.match(/\\d+/g);
+            
+            if (colorMatch && bgMatch && colorMatch.length >= 3 && bgMatch.length >= 3) {
+                var colorLum = (0.299 * parseInt(colorMatch[0]) + 0.587 * parseInt(colorMatch[1]) + 0.114 * parseInt(colorMatch[2])) / 255;
+                var bgLum = (0.299 * parseInt(bgMatch[0]) + 0.587 * parseInt(bgMatch[1]) + 0.114 * parseInt(bgMatch[2])) / 255;
+                var ratio = colorLum > bgLum 
+                    ? (colorLum + 0.05) / (bgLum + 0.05)
+                    : (bgLum + 0.05) / (colorLum + 0.05);
+                contrastRatios.push(ratio);
+            }
         });
 
         var averageFontSize = fontSizes.length > 0
             ? Math.round(fontSizes.reduce(function(a, b) { return a + b; }, 0) / fontSizes.length)
             : 16;
+
+        var averageLineHeight = lineHeights.length > 0
+            ? parseFloat((lineHeights.reduce(function(a, b) { return a + b; }, 0) / lineHeights.length).toFixed(2))
+            : 1.5;
+
+        var averageContrast = contrastRatios.length > 0
+            ? (contrastRatios.reduce(function(a, b) { return a + b; }, 0) / contrastRatios.length).toFixed(1)
+            : '4.5';
 
         var htmlStyle = getStyle(document.documentElement, 'scroll-behavior');
         var hasSmoothScroll = htmlStyle === 'smooth' ||
@@ -275,6 +358,69 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
             Array.from(document.querySelectorAll('*')).slice(0, 50).some(function(el) {
                 return getStyle(el, 'scroll-snap-type') !== 'none';
             });
+
+        var hasMomentumScrolling = getStyle(document.body, '-webkit-overflow-scrolling') === 'touch' ||
+            Array.from(document.querySelectorAll('*')).slice(0, 50).some(function(el) {
+                return getStyle(el, '-webkit-overflow-scrolling') === 'touch';
+            });
+
+        var hasTouchHighlight = getStyle(document.body, '-webkit-tap-highlight-color') !== 'rgba(0, 0, 0, 0)' ||
+            Array.from(document.querySelectorAll('a, button')).slice(0, 20).some(function(el) {
+                return getStyle(el, '-webkit-tap-highlight-color') !== 'rgba(0, 0, 0, 0)';
+            });
+
+        var hasActiveStates = false;
+        try {
+            var styles = document.styleSheets;
+            for (var i = 0; i < Math.min(styles.length, 10); i++) {
+                try {
+                    var rules = styles[i].cssRules || [];
+                    for (var j = 0; j < rules.length; j++) {
+                        var rule = rules[j];
+                        if (rule.selectorText && (rule.selectorText.includes(':active') || rule.selectorText.includes(':hover'))) {
+                            hasActiveStates = true;
+                            break;
+                        }
+                    }
+                } catch (e) {}
+                if (hasActiveStates) break;
+            }
+        } catch (e) {
+            hasActiveStates = false;
+        }
+
+        var hasLongPress = false;
+        try {
+            hasLongPress = document.querySelector('[contextmenu]') !== null ||
+                document.querySelector('[oncontextmenu]') !== null;
+        } catch (e) {
+            hasLongPress = false;
+        }
+
+        var hasSwipeNav = false;
+        try {
+            var carousels = Array.from(document.querySelectorAll('[class*="carousel"], [class*="slider"], [class*="swipe"]'));
+            hasSwipeNav = carousels.length > 0;
+        } catch (e) {
+            hasSwipeNav = false;
+        }
+
+        var hasGestureConflicts = viewportContent.includes('user-scalable=no') && hasSwipeNav;
+
+        var maxScale = 5.0;
+        var maxScaleMatch = viewportContent.match(/maximum-scale=([\\d.]+)/);
+        if (maxScaleMatch) {
+            maxScale = parseFloat(maxScaleMatch[1]) || 5.0;
+        }
+
+        var maxContentWidth = '100%';
+        var mainContent = document.querySelector('main, .container, .content, #content, [role="main"]');
+        if (mainContent) {
+            var maxWidth = getStyle(mainContent, 'max-width');
+            if (maxWidth && maxWidth !== 'none') {
+                maxContentWidth = maxWidth;
+            }
+        }
 
         var responsiveImages = Array.from(document.querySelectorAll('img')).filter(function(img) {
             return img.hasAttribute('srcset') || img.hasAttribute('sizes');
@@ -311,6 +457,27 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
             return Math.min(score, 100);
         };
 
+        var calculateAccessibilityScore = function() {
+            var score = 70;
+            if (averageFontSize >= 16) score += 15;
+            if (tapTargetIssues.length === 0) score += 15;
+            return Math.min(score, 100);
+        };
+
+        var calculateReadabilityScore = function() {
+            var score = 50;
+            if (averageFontSize >= 16) score += 25;
+            if (hasRelativeUnits) score += 25;
+            return Math.min(score, 100);
+        };
+
+        var calculateInteractionScore = function() {
+            var score = 60;
+            if (hasSmoothScroll) score += 20;
+            if (hasScrollSnap) score += 20;
+            return Math.min(score, 100);
+        };
+
         var sortedBreakpoints = Array.from(breakpoints).sort(function(a, b) { return a - b; });
         var breakpointRanges = {};
 
@@ -334,9 +501,7 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
                 responsiveImages > 0 ? 'partially-responsive' : 'fixed';
 
         var typographyScaling = hasRelativeUnits ? 'fluid' : 'fixed';
-
         var componentBehavior = hasGrid || hasFlexbox ? 'adaptive' : 'static';
-
         var minTapSize = tapTargetSizes.length > 0 
             ? Math.round(Math.min.apply(Math, tapTargetSizes.map(function(s) { return Math.sqrt(s); }))) 
             : 0;
@@ -363,10 +528,9 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
             tapTargets: {
                 averageSize: averageTapSize + 'px',
                 minSize: minTapSize + 'px',
-                spacing: '8px',
+                spacing: averageSpacing + 'px',
                 hitAreaExpansion: interactiveElements.some(function(el) {
-                    var style = window.getComputedStyle(el);
-                    return style.cursor === 'pointer';
+                    return window.getComputedStyle(el).cursor === 'pointer';
                 }),
                 issues: tapTargetIssues.slice(0, 5)
             },
@@ -374,13 +538,25 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
                 baseSize: averageFontSize + 'px',
                 relativeUnits: hasRelativeUnits,
                 readability: averageFontSize >= 16 ? 'good' : averageFontSize >= 14 ? 'adequate' : 'poor',
-                lineHeight: 1.5,
-                contrastRatio: '4.5:1+'
+                lineHeight: averageLineHeight,
+                contrastRatio: averageContrast + ':1'
             },
             scrollBehavior: {
                 smoothScrolling: hasSmoothScroll,
                 scrollSnap: hasScrollSnap,
-                overscrollBehavior: getStyle(document.documentElement, 'overscroll-behavior') || 'auto'
+                overscrollBehavior: getStyle(document.documentElement, 'overscroll-behavior') || 'auto',
+                momentumScrolling: hasMomentumScrolling
+            },
+            touchBehavior: {
+                touchHighlight: hasTouchHighlight,
+                activeStates: hasActiveStates,
+                longPress: hasLongPress,
+                swipeNav: hasSwipeNav,
+                gestureConflicts: hasGestureConflicts,
+                maxScale: maxScale
+            },
+            contentMeasurements: {
+                maxContentWidth: maxContentWidth
             },
             breakpointRanges: breakpointRanges,
             layoutAdaptation: layoutAdaptation,
@@ -391,7 +567,10 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
             scores: {
                 responsive: calculateResponsiveScore(),
                 mobile: calculateMobileScore(),
-                touch: calculateTouchScore()
+                touch: calculateTouchScore(),
+                accessibility: calculateAccessibilityScore(),
+                readability: calculateReadabilityScore(),
+                interaction: calculateInteractionScore()
             }
         };
     })()
@@ -399,19 +578,112 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
     
     const result: any = await ctx.page!.evaluate(analysisScript);
 
-    const performanceMetrics = await ctx.page!.metrics();
-    const performanceTiming = JSON.parse(
-        await ctx.page!.evaluate(() => JSON.stringify(window.performance.timing))
-    );
+    const performanceMetrics = await ctx.page!.evaluate(() => {
+        const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+        const paint = performance.getEntriesByType('paint');
+        
+        const fcp = paint.find(entry => entry.name === 'first-contentful-paint');
+        const lcp = performance.getEntriesByType('largest-contentful-paint').slice(-1)[0];
+        
+        const layoutShifts = performance.getEntriesByType('layout-shift') as any[];
+        const cls = layoutShifts.reduce((sum, entry) => sum + (entry.value || 0), 0);
+        
+        return {
+            timeToFirstByte: navigation ? navigation.responseStart - navigation.requestStart : 0,
+            firstContentfulPaint: fcp ? fcp.startTime : 0,
+            largestContentfulPaint: lcp ? (lcp as any).startTime : 0,
+            cumulativeLayoutShift: cls,
+            domContentLoaded: navigation ? navigation.domContentLoadedEventEnd - navigation.domContentLoadedEventStart : 0,
+            timeToInteractive: navigation ? navigation.domInteractive - navigation.fetchStart : 0
+        };
+    });
 
-    const timeToFirstByte = performanceTiming.responseStart - performanceTiming.requestStart;
-    const firstContentfulPaint = (performanceMetrics as any).FirstMeaningfulPaint || 0;
-    const largestContentfulPaint = (performanceMetrics as any).LargestContentfulPaint || 0;
+    const speedIndex = performanceMetrics.firstContentfulPaint + 
+                       (performanceMetrics.largestContentfulPaint - performanceMetrics.firstContentfulPaint) * 0.5;
+
+    const estimatedFID = performanceMetrics.timeToFirstByte > 600 ? 300 : 
+                         performanceMetrics.timeToFirstByte > 300 ? 150 : 50;
+    const estimatedINP = estimatedFID * 2;
 
     await closeBrowser(ctx);
 
     const finalResult: AnalysisResult = {
-        responsiveDesign: {
+        accessibilityScore: result.scores.accessibility,
+        mobileUsabilityScore: result.scores.mobile,
+        touchTargetScore: Math.max(0, 100 - (result.tapTargets.issues.length * 10)),
+        readabilityScore: result.scores.readability,
+        
+        fluidLayout: { value: result.layout.fluidLayout, impact: result.layout.fluidLayout ? 'Positive - Layout adapts to screen size' : 'Negative - Fixed layout may not adapt well' },
+        gridSystem: { value: result.layout.gridSystem, impact: result.layout.gridSystem !== 'Traditional' ? 'Positive - Modern layout system' : 'Neutral - Traditional layout approach' },
+        mediaQueriesCount: { value: result.mediaQueries.count, impact: result.mediaQueries.count > 3 ? 'Positive - Good responsive coverage' : 'Negative - Limited responsive breakpoints' },
+        orientationSupport: { value: result.mediaQueries.orientationSupport, impact: result.mediaQueries.orientationSupport ? 'Positive - Handles orientation changes' : 'Neutral - No specific orientation handling' },
+        
+        layoutAdaptation: { status: result.layoutAdaptation, impact: 'Critical for responsive design' },
+        imageScaling: { status: result.imageScaling, impact: 'Affects loading performance and display quality' },
+        typographyScaling: { status: result.typographyScaling, impact: 'Important for readability across devices' },
+        componentBehavior: { status: result.componentBehavior, impact: 'Determines how UI elements respond to screen changes' },
+        contentRearrangement: { status: result.contentRearrangement ? 'supported' : 'not-supported', impact: 'Essential for optimal mobile experience' },
+        horizontalScroll: { status: result.layout.horizontalScroll ? 'detected' : 'none', impact: result.layout.horizontalScroll ? 'Negative - Poor mobile UX' : 'Positive - Content fits viewport' },
+        
+        viewportExists: { value: result.viewportAnalysis.exists, impact: result.viewportAnalysis.exists ? 'Positive - Mobile optimization enabled' : 'Critical - Mobile optimization disabled' },
+        viewportContent: { value: result.viewportAnalysis.content, impact: result.viewportAnalysis.content.includes('width=device-width') ? 'Positive - Proper configuration' : 'Negative - Improper configuration' },
+        properlyConfigured: { value: result.viewportAnalysis.isProperlyConfigured, impact: 'Critical for mobile display' },
+        userScalableIssue: { value: !result.viewportAnalysis.userScalable, impact: !result.viewportAnalysis.userScalable ? 'Negative - Accessibility issue' : 'Positive - Users can zoom' },
+        
+        swipeNavigation: { 
+            status: result.touchBehavior.swipeNav ? 'detected' : 'not-detected', 
+            impact: result.touchBehavior.swipeNav ? 'Positive - Enhanced navigation' : 'Neutral - Depends on implementation' 
+        },
+        pinchZoom: { 
+            status: result.viewportAnalysis.userScalable ? 'enabled' : 'disabled', 
+            impact: result.viewportAnalysis.userScalable ? 'Positive - Accessibility feature' : 'Negative - Accessibility barrier' 
+        },
+        doubleTapZoom: { 
+            status: result.viewportAnalysis.userScalable ? 'enabled' : 'disabled', 
+            impact: 'Important for accessibility' 
+        },
+        longPressSupport: { 
+            status: result.touchBehavior.longPress ? 'detected' : 'not-detected', 
+            impact: result.touchBehavior.longPress ? 'Positive - Enhanced interaction' : 'Neutral - Standard browser behavior' 
+        },
+        smoothScrolling: { 
+            status: result.scrollBehavior.smoothScrolling ? 'enabled' : 'disabled', 
+            impact: result.scrollBehavior.smoothScrolling ? 'Positive - Better UX' : 'Neutral - Standard scrolling' 
+        },
+        momentumScrolling: { 
+            status: result.scrollBehavior.momentumScrolling ? 'enabled' : 'disabled', 
+            impact: result.scrollBehavior.momentumScrolling ? 'Positive - Native mobile behavior' : 'Neutral - Standard scrolling' 
+        },
+        scrollSnap: { 
+            status: result.scrollBehavior.scrollSnap ? 'enabled' : 'disabled', 
+            impact: result.scrollBehavior.scrollSnap ? 'Positive - Enhanced scroll experience' : 'Neutral - Standard scrolling' 
+        },
+        
+        maxZoomScale: { 
+            status: result.viewportAnalysis.content.includes('maximum-scale') ? 'restricted' : 'unrestricted', 
+            impact: result.viewportAnalysis.content.includes('maximum-scale') ? 'Negative - May limit accessibility' : 'Positive - Full zoom capability' 
+        },
+        viewportRestriction: { 
+            status: !result.viewportAnalysis.userScalable || result.viewportAnalysis.content.includes('maximum-scale=1') ? 'restricted' : 'unrestricted', 
+            impact: 'Affects user control and accessibility' 
+        },
+        touchHighlight: { 
+            status: result.touchBehavior.touchHighlight ? 'custom' : 'browser-default', 
+            impact: result.touchBehavior.touchHighlight ? 'Positive - Custom touch feedback' : 'Neutral - Standard touch feedback' 
+        },
+        activeStates: { 
+            status: result.touchBehavior.activeStates ? 'present' : 'absent', 
+            impact: result.touchBehavior.activeStates ? 'Positive - Visual feedback on interaction' : 'Negative - No visual feedback' 
+        },
+        
+        visualFeedback: { 
+            status: result.touchBehavior.activeStates ? 'immediate' : 'none', 
+            impact: result.touchBehavior.activeStates ? 'Positive - Good user experience' : 'Negative - Poor user experience' 
+        },
+        hapticFeedback: { status: 'device-dependent', impact: 'Neutral - Depends on device capabilities' },
+        interactionScore: { status: result.scores.interaction, impact: result.scores.interaction > 80 ? 'Excellent interaction design' : result.scores.interaction > 60 ? 'Good interaction design' : 'Needs improvement' },
+        
+        accessibilityDesign: {
             viewports: {
                 supported: result.breakpointRanges ? Object.keys(result.breakpointRanges) : ['unknown'],
                 breakpoints: result.breakpointRanges || {},
@@ -438,12 +710,12 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
                     fitsViewport: !result.layout.horizontalScroll,
                     overflow: result.layout.horizontalScroll ? 'horizontal' : 'none',
                     horizontalScroll: result.layout.horizontalScroll,
-                    maxContentWidth: '100%'
+                    maxContentWidth: result.contentMeasurements.maxContentWidth
                 },
                 loadingSpeed: {
-                    firstContentfulPaint: `${(firstContentfulPaint / 1000).toFixed(1)}s`,
-                    timeToInteractive: '3.2s',
-                    score: firstContentfulPaint < 2000 ? 85 : firstContentfulPaint < 3000 ? 60 : 30
+                    firstContentfulPaint: `${(performanceMetrics.firstContentfulPaint / 1000).toFixed(1)}s`,
+                    timeToInteractive: `${(performanceMetrics.timeToInteractive / 1000).toFixed(1)}s`,
+                    score: performanceMetrics.firstContentfulPaint < 2000 ? 85 : performanceMetrics.firstContentfulPaint < 3000 ? 60 : 30
                 }
             },
             score: result.scores.mobile
@@ -451,46 +723,46 @@ async function analyzeMobileResponsiveness(url: string): Promise<AnalysisResult>
         touchFriendly: {
             tapTargets: result.tapTargets,
             touchGestures: {
-                swipeNavigation: false,
+                swipeNavigation: result.touchBehavior.swipeNav,
                 pinchZoom: result.viewportAnalysis.userScalable,
                 doubleTapZoom: result.viewportAnalysis.userScalable,
-                longPressSupport: false,
-                gestureConflicts: false
+                longPressSupport: result.touchBehavior.longPress,
+                gestureConflicts: result.touchBehavior.gestureConflicts
             },
             scrollBehavior: {
                 smoothScrolling: result.scrollBehavior.smoothScrolling,
-                momentumScrolling: true,
+                momentumScrolling: result.scrollBehavior.momentumScrolling,
                 scrollSnap: result.scrollBehavior.scrollSnap,
                 overscrollBehavior: result.scrollBehavior.overscrollBehavior
             },
             zoomSupport: {
                 pinchToZoom: result.viewportAnalysis.userScalable,
                 doubleTapZoom: result.viewportAnalysis.userScalable,
-                maximumScale: 5.0,
+                maximumScale: result.touchBehavior.maxScale,
                 viewportRestrictions: result.viewportAnalysis.content.includes('maximum-scale')
             },
             feedback: {
-                touchHighlights: result.tapTargets.hitAreaExpansion,
-                activeStates: true,
-                visualFeedback: 'immediate',
+                touchHighlights: result.touchBehavior.touchHighlight,
+                activeStates: result.touchBehavior.activeStates,
+                visualFeedback: result.touchBehavior.activeStates ? 'immediate' : 'none',
                 hapticFeedback: 'device-dependent'
             },
             score: result.scores.touch
-        },
-        performance: {
-            coreWebVitals: {
-                lcp: `${(largestContentfulPaint / 1000).toFixed(1)}s`,
-                fid: '100ms',
-                cls: '0.1',
-                inp: '200ms'
-            },
-            loading: {
-                timeToFirstByte: `${timeToFirstByte}ms`,
-                firstContentfulPaint: `${(firstContentfulPaint / 1000).toFixed(1)}s`,
-                largestContentfulPaint: `${(largestContentfulPaint / 1000).toFixed(1)}s`,
-                speedIndex: '3.5s'
-            }
         }
+        // performance: {
+        //     coreWebVitals: {
+        //         lcp: `${(performanceMetrics.largestContentfulPaint / 1000).toFixed(1)}s`,
+        //         fid: `${estimatedFID}ms`,
+        //         cls: performanceMetrics.cumulativeLayoutShift.toFixed(3),
+        //         inp: `${estimatedINP}ms`
+        //     },
+        //     loading: {
+        //         timeToFirstByte: `${performanceMetrics.timeToFirstByte}ms`,
+        //         firstContentfulPaint: `${(performanceMetrics.firstContentfulPaint / 1000).toFixed(1)}s`,
+        //         largestContentfulPaint: `${(performanceMetrics.largestContentfulPaint / 1000).toFixed(1)}s`,
+        //         speedIndex: `${(speedIndex / 1000).toFixed(1)}s`
+        //     }
+        // }
     };
 
     return finalResult;
@@ -523,11 +795,11 @@ function generateRecommendations(analysisData: AnalysisResult): string[] {
         recommendations.push(`Fix ${analysisData.mobileOptimization.mobileFriendly.tapTargets.issues.length} tap targets that are smaller than 44x44px`);
     }
 
-    if (!analysisData.responsiveDesign.viewports.fluidLayout) {
+    if (!analysisData.accessibilityDesign.viewports.fluidLayout) {
         recommendations.push('Implement fluid layout using percentage-based or viewport-relative units');
     }
 
-    if (analysisData.responsiveDesign.viewports.mediaQueries.count < 3) {
+    if (analysisData.accessibilityDesign.viewports.mediaQueries.count < 3) {
         recommendations.push('Add more media queries to support different screen sizes');
     }
 
@@ -539,7 +811,7 @@ function generateRecommendations(analysisData: AnalysisResult): string[] {
         recommendations.push('Fix horizontal scrolling issues - content should fit within viewport');
     }
 
-    if (analysisData.responsiveDesign.viewports.gridSystem === 'Traditional') {
+    if (analysisData.accessibilityDesign.viewports.gridSystem === 'Traditional') {
         recommendations.push('Consider using CSS Grid or Flexbox for better responsive layouts');
     }
 
@@ -548,24 +820,21 @@ function generateRecommendations(analysisData: AnalysisResult): string[] {
     }
 
     if (recommendations.length === 0) {
-        recommendations.push('Great job! Your site is well optimized for mobile devices.');
+        recommendations.push('Great job! Your site is well optimized for accessibility and mobile devices.');
     }
 
     return recommendations;
 }
 
-import {
-  generateUniversalSeoIssues
-} from '../../../../services/universal-seo-issues';
+
 
 // API Route Handler
 export async function analyzeMobileHandler(req: any, res: any) {
     const startTime = Date.now();
     
-    try {
+   
         const { url } = req.body;
 
-        // Validation
         if (!url) {
             return res.status(400).json({ 
                 success: false, 
@@ -574,73 +843,67 @@ export async function analyzeMobileHandler(req: any, res: any) {
             });
         }
 
-        // Validate URL format
-        try {
-            new URL(url);
-        } catch {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Invalid URL format. Must include protocol (http:// or https://)',
-                example: { url: 'https://example.com' }
-            });
-        }
+        // try {
+        //     new URL(url);
+        // } catch {
+        //     return res.status(400).json({ 
+        //         success: false, 
+        //         error: 'Invalid URL format. Must include protocol (http:// or https://)',
+        //         example: { url: 'https://example.com' }
+        //     });
+        // }
 
         console.log(`[${new Date().toISOString()}] Analyzing: ${url}`);
 
-        // Run complete analysis
-        const analysis = await analyzeMobileResponsiveness(url);
+        const analysis = await analyzeMobileAccessibility(url);
         
-        // Add URL to analysis data for Gemini
         const analysisWithUrl = {
             ...analysis,
             url: url
         };
         
-        const geminiIssues = await generateUniversalSeoIssues(analysisWithUrl, 'mobile');
+        // console.log(analysisWithUrl);
+        await appendAnalyzeState(url,analysisWithUrl);
+        const geminiIssues = await generateSeoIssues(analysisWithUrl);
 
-        // Calculate processing time
+
         const processingTime = Date.now() - startTime;
         
-        // Calculate overall score
         const overallScore = Math.round(
-            (analysis.responsiveDesign.score + 
+            (analysis.accessibilityDesign.score + 
              analysis.mobileOptimization.score + 
              analysis.touchFriendly.score) / 3
         );
 
         console.log(`[${new Date().toISOString()}] Analysis complete in ${processingTime}ms`);
 
-        // Send comprehensive response
         res.json({ 
             success: true,
             url: url,
             timestamp: new Date().toISOString(),
             processingTime: `${processingTime}ms`,
             
-            // Summary scores
             summary: {
                 overallScore: overallScore,
-                responsiveScore: analysis.responsiveDesign.score,
+                accessibilityScore: analysis.accessibilityDesign.score,
                 mobileScore: analysis.mobileOptimization.score,
                 touchScore: analysis.touchFriendly.score,
                 rating: getRating(overallScore)
             },
 
-            // Complete analysis data
             analysis: analysis,
 
-            // Quick insights
             insights: {
                 viewport: {
                     configured: analysis.mobileOptimization.viewport.isProperlyConfigured,
-                    content: analysis.mobileOptimization.viewport.content || 'Not found',
+                    content: analysis.mobileOptimization.viewport.content,
                     issues: analysis.mobileOptimization.viewport.issues
                 },
-                responsive: {
-                    approach: analysis.responsiveDesign.viewports.mediaQueries.approach,
-                    breakpoints: Object.keys(analysis.responsiveDesign.viewports.breakpoints).length,
-                    fluidLayout: analysis.responsiveDesign.viewports.fluidLayout,
-                    gridSystem: analysis.responsiveDesign.viewports.gridSystem
+                accessibility: {
+                    approach: analysis.accessibilityDesign.viewports.mediaQueries.approach,
+                    breakpoints: Object.keys(analysis.accessibilityDesign.viewports.breakpoints).length,
+                    fluidLayout: analysis.accessibilityDesign.viewports.fluidLayout,
+                    gridSystem: analysis.accessibilityDesign.viewports.gridSystem
                 },
                 mobile: {
                     tapTargetIssues: analysis.mobileOptimization.mobileFriendly.tapTargets.issues.length,
@@ -653,33 +916,22 @@ export async function analyzeMobileHandler(req: any, res: any) {
                     smoothScrolling: analysis.touchFriendly.scrollBehavior.smoothScrolling,
                     scrollSnap: analysis.touchFriendly.scrollBehavior.scrollSnap
                 },
-                performance: {
-                    lcp: analysis.performance.coreWebVitals.lcp,
-                    fcp: analysis.performance.loading.firstContentfulPaint,
-                    cls: analysis.performance.coreWebVitals.cls,
-                    ttfb: analysis.performance.loading.timeToFirstByte
-                }
+                // performance: {
+                //     lcp: analysis.performance.coreWebVitals.lcp,
+                //     fcp: analysis.performance.loading.firstContentfulPaint,
+                //     cls: analysis.performance.coreWebVitals.cls,
+                //     ttfb: analysis.performance.loading.timeToFirstByte
+                // }
             },
 
-            // Recommendations
             recommendations: generateRecommendations(analysis),
             issues: geminiIssues
         });
 
-    } catch (error: any) {
-        const processingTime = Date.now() - startTime;
-        console.error(`[${new Date().toISOString()}] Error after ${processingTime}ms:`, error.message);
-        
-        res.status(500).json({ 
-            success: false, 
-            error: error.message || 'Analysis failed',
-            processingTime: `${processingTime}ms`,
-            timestamp: new Date().toISOString()
-        });
-    }
+   
 }
 
-export { analyzeMobileResponsiveness, createAnalyzerContext, closeBrowser };
+export { analyzeMobileAccessibility, createAnalyzerContext, closeBrowser };
 export type {
     AnalysisResult,
     PerformanceMetrics,

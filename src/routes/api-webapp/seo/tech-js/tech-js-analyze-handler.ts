@@ -1,8 +1,8 @@
-
 import * as cheerio from 'cheerio';
 import { randomUUID } from 'crypto';
 import axios from 'axios';
-import { generateUniversalSeoIssues } from '../../../../services/universal-seo-issues';
+import { generateSeoIssues } from '../../../../services/gemini-seo-issues';
+
 
 /* ============================================================
    TYPES
@@ -323,16 +323,16 @@ function detectFramework(
   if (patternMatch) return true;
 
   return selectors.some(selector => {
-    try {
+    // try {
       return $(selector).length > 0;
-    } catch {
-      return false;
-    }
+    // } catch {
+    //   return false;
+    // }
   });
 }
 
 function checkScriptContent($: cheerio.CheerioAPI, keyword: string): boolean {
-  try {
+  // try {
     let found = false;
     $('script').each((_, elem) => {
       const src = $(elem).attr('src') || '';
@@ -345,9 +345,9 @@ function checkScriptContent($: cheerio.CheerioAPI, keyword: string): boolean {
       }
     });
     return found;
-  } catch {
-    return false;
-  }
+  // } catch {
+  //   return false;
+  // }
 }
 
 function isThirdPartyScript(src: string, baseDomain?: string): boolean {
@@ -360,14 +360,14 @@ function isThirdPartyScript(src: string, baseDomain?: string): boolean {
   
   // Check if it's from a different domain
   if (baseDomain) {
-    try {
+    // try {
       const srcUrl = new URL(src, `https://${baseDomain}`);
       const baseUrl = new URL(`https://${baseDomain}`);
       return srcUrl.hostname !== baseUrl.hostname && 
              !srcUrl.hostname.endsWith(`.${baseUrl.hostname}`);
-    } catch {
-      return true;
-    }
+    // } catch {
+    //   return true;
+    // }
   }
   
   return false;
@@ -539,7 +539,7 @@ export function detectWebsiteTechStack(
   const analysisId = randomUUID();
   const analyzedAt = new Date().toISOString();
 
-  try {
+  // try {
     const html = Buffer.isBuffer(htmlContent)
       ? htmlContent.toString('utf-8')
       : htmlContent;
@@ -556,12 +556,12 @@ export function detectWebsiteTechStack(
     // Parse base domain from URL
     let baseDomain: string | undefined;
     if (url) {
-      try {
+      // try {
         const urlObj = new URL(url);
         baseDomain = urlObj.hostname;
-      } catch {
-        baseDomain = undefined;
-      }
+      // } catch {
+      //   baseDomain = undefined;
+      // }
     }
 
     /* ===============================
@@ -1051,14 +1051,14 @@ export function detectWebsiteTechStack(
         seoVisibilityImpact
       }
     };
-  } catch (err: any) {
-    return {
-      success: false,
-      analysisId,
-      analyzedAt,
-      error: err?.message || 'Unknown error'
-    };
-  }
+  // } catch (err: any) {
+  //   return {
+  //     success: false,
+  //     analysisId,
+  //     analyzedAt,
+  //     error: err?.message || 'Unknown error'
+  //   };
+  // }
 }
 
 /* ============================================================
@@ -1071,7 +1071,7 @@ export async function compareJSRendering(url: string, jsContent: string): Promis
   differences: { contentDifference: number; imageDifference: number; linkDifference: number; seoRisk: 'low' | 'medium' | 'high' };
   score: number;
 }> {
-  try {
+  // try {
     // Simulate non-JS content by fetching with basic user agent
     const response = await axios.get(url, {
       headers: {
@@ -1122,14 +1122,14 @@ export async function compareJSRendering(url: string, jsContent: string): Promis
       },
       score
     };
-  } catch (error) {
-    return {
-      jsEnabled: { contentLength: 0, imageCount: 0, linkCount: 0, structuredDataCount: 0 },
-      jsDisabled: { contentLength: 0, imageCount: 0, linkCount: 0, structuredDataCount: 0 },
-      differences: { contentDifference: 0, imageDifference: 0, linkDifference: 0, seoRisk: 'low' },
-      score: 100
-    };
-  }
+  // } catch (error) {
+  //   return {
+  //     jsEnabled: { contentLength: 0, imageCount: 0, linkCount: 0, structuredDataCount: 0 },
+  //     jsDisabled: { contentLength: 0, imageCount: 0, linkCount: 0, structuredDataCount: 0 },
+  //     differences: { contentDifference: 0, imageDifference: 0, linkDifference: 0, seoRisk: 'low' },
+  //     score: 100
+  //   };
+  // }
 }
 
 export async function detectWebsiteTechStackWithAI(
@@ -1137,7 +1137,7 @@ export async function detectWebsiteTechStackWithAI(
   htmlContent: string | Buffer,
   headers: Record<string, string | string[] | undefined> = {},
   url: string
-): Promise<JsFrameworkAnalysisResponse & { aiRecommendations?: any }> {
+): Promise<JsFrameworkAnalysisResponse & { issues?: any }> {
   const result = detectWebsiteTechStack($, htmlContent, headers, url);
   
   if (result.success && result.data) {
@@ -1146,15 +1146,15 @@ export async function detectWebsiteTechStackWithAI(
       ...result.data
     };
     
-    try {
-      const geminiIssues = await generateUniversalSeoIssues(analysisData, 'tech-frameworks');
+    // try {
+      const geminiIssues = await generateSeoIssues(analysisData);
       return {
         ...result,
         issues: geminiIssues
       };
-    } catch (error) {
-      return result;
-    }
+    // } catch (error) {
+    //   return result;
+    // }
   }
   
   return result;

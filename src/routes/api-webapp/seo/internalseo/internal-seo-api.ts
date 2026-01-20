@@ -1,20 +1,34 @@
 import { Router, Request, Response } from 'express';
 import { analyzeInternalSEOHandler } from './internalseo-analyze-handler';
 import { saveSeoAnalysis } from '../seo-middleware';
+import { serverError } from '../../../../utils/responseHandler';
 
 const router = Router();
 
 router.post('/analyze-internal-seo', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { url, maxDepth = 3, maxPages = 30, fast = false } = req.body;
+    const { url, maxDepth, maxPages, fast} = req.body;
+
+    
     
     if (!url) {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    if (url) {
-      await saveSeoAnalysis(url, 'internal-seo', { url, maxDepth, maxPages, fast });
-    }
+   
+if (maxDepth && typeof maxDepth !== 'number') {
+  return res.status(400).json({ error: 'maxDepth must be a number' });
+}
+
+if (maxPages && typeof maxPages !== 'number') {
+  return res.status(400).json({ error: 'maxPages must be a number' });
+}
+
+if (fast && typeof fast !== 'boolean') {
+  return res.status(400).json({ error: 'fast must be true or false' });
+}
+
+    await saveSeoAnalysis(url, 'internal-seo', { url, maxDepth, maxPages, fast });
 
     const result = await analyzeInternalSEOHandler(url, {
       maxDepth,
@@ -24,10 +38,7 @@ router.post('/analyze-internal-seo', async (req: Request, res: Response): Promis
 
     return res.json(result);
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Internal SEO analysis failed'
-    });
+    serverError(res, error.message || 'Internal SEO analysis failed');
   }
 });
 
@@ -74,10 +85,7 @@ router.post('/onpage-seo-score', async (req: Request, res: Response): Promise<an
       }
     });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'On-page SEO score calculation failed'
-    });
+    serverError(res, error.message || 'On-page SEO score calculation failed');
   }
 });
 

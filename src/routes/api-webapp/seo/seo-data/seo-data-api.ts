@@ -1,5 +1,6 @@
 import { getallSeoUrl } from './seo-data-handler'
 import express, { Request, Response } from 'express';
+import { serverError } from '../../../../utils/responseHandler';
 
 const router = express.Router();
 
@@ -13,10 +14,7 @@ router.get('/all-url', async (req: Request, res: Response): Promise<any> => {
       data
     });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      error: error.message || "something went wrong during fetching urls from seo"
-    });
+    serverError(res, error.message || "something went wrong during fetching urls from seo");
   }
 })
 

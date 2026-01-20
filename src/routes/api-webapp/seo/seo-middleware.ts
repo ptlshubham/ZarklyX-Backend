@@ -1,13 +1,26 @@
 import { seo } from './seo-model';
+function extractDomain(inputUrl: string): string {
+  const parsedUrl = new URL(inputUrl);
+  return parsedUrl.hostname.replace(/^www\./, '');
+}
 
-export async function saveSeoAnalysis(url: string, analysisType: string, analysisData: any): Promise<void> {
-  try {
-    await seo.create({
-      url: url,
-      isDeleted: false
+export async function saveSeoAnalysis(
+  url: string,
+  analysisType: string,
+  analysisData: any
+): Promise<void> {
+ 
+    const domain = extractDomain(url);
+
+    const existingSeo = await seo.findOne({
+      where: { url: domain }
     });
-  } catch (error) {
-    console.error('Failed to save SEO analysis to database:', error);
-    // Don't throw error to avoid breaking the analysis response
-  }
+
+    if (!existingSeo) {
+      await seo.create({
+        url: domain,
+        isDeleted: false
+      });
+    }
+ 
 }

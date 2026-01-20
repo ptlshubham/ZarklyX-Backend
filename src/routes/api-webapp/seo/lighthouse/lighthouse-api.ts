@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { analyzeLighthouseWithAI } from './lightHouse-analyze-handler';
 import { saveSeoAnalysis } from '../seo-middleware';
+import { serverError } from '../../../../utils/responseHandler';
 
 const router = express.Router();
 
@@ -22,10 +23,7 @@ router.post('/analyze-lighthouse', async (req: Request, res: Response): Promise<
     
     return res.json(result);
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Lighthouse analysis failed'
-    });
+    serverError(res, error.message || 'Lighthouse analysis failed');
   }
 });
 

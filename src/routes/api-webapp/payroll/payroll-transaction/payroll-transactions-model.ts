@@ -56,6 +56,7 @@ export class PayrollTransaction extends Model<
 
     // Soft Delete
     declare isDeleted: CreationOptional<boolean>;
+    declare isActive: CreationOptional<boolean>;
 
     // Timestamps
     declare createdAt: CreationOptional<Date>;
@@ -195,6 +196,10 @@ export class PayrollTransaction extends Model<
                 isDeleted: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: false,
+                    allowNull: false,
+                }, isActive: {
+                    type: DataTypes.BOOLEAN,
+                    defaultValue: true,
                     allowNull: false,
                 },
                 createdAt: {

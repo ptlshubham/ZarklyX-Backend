@@ -1,5 +1,6 @@
 import axios from "axios";
-import { generateUniversalSeoIssues } from '../../../../services/universal-seo-issues';
+import { generateSeoIssues } from '../../../../services/gemini-seo-issues';
+import dotenv from 'dotenv';
 
 interface LighthouseMetrics {
   performance: number;
@@ -15,8 +16,8 @@ interface LighthouseMetrics {
 }
 
 export async function analyzeLighthouse(url: string): Promise<{ success: boolean; metrics?: LighthouseMetrics; error?: string }> {
-  try {
-   const key:String="AIzaSyBybH9QinP7FrDiDgD3K0t_oBahIZXV00A";
+  // try {
+   const key:String=process.env.GOOGLE_LIGHTHOUSE_API || "";
     // const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&category=performance&category=accessibility&category=best-practices&category=seo&category=pwa&strategy=mobile`;
     const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&key=${key}&category=performance&category=accessibility&category=best-practices&category=seo&category=pwa&strategy=mobile`;
     
@@ -39,29 +40,29 @@ export async function analyzeLighthouse(url: string): Promise<{ success: boolean
     };
     
     return { success: true, metrics };
-  } catch (error: any) {
-    // Fallback to estimated metrics when API is unavailable (rate limited)
-    if (error.response?.status === 429 || error.message.includes('429')) {
-      const mockMetrics: LighthouseMetrics = {
-        performance: 0,
-        accessibility:0,
-        bestPractices:0,
-        seo: 0,
-        pwa:0,
-        firstContentfulPaint: 0,
-        largestContentfulPaint:0,
-        cumulativeLayoutShift: 0,
-        speedIndex: 0,
-        totalBlockingTime: 0,
-      };
-      return { 
-        success: true, 
-        metrics: mockMetrics,
-        error: 'Using estimated metrics (API rate limited)'
-      };
-    }
-    return { success: false, error: error.message };
-  }
+  // } catch (error: any) {
+  //   // Fallback to estimated metrics when API is unavailable (rate limited)
+  //   if (error.response?.status === 429 || error.message.includes('429')) {
+  //     const mockMetrics: LighthouseMetrics = {
+  //       performance: 0,
+  //       accessibility:0,
+  //       bestPractices:0,
+  //       seo: 0,
+  //       pwa:0,
+  //       firstContentfulPaint: 0,
+  //       largestContentfulPaint:0,
+  //       cumulativeLayoutShift: 0,
+  //       speedIndex: 0,
+  //       totalBlockingTime: 0,
+  //     };
+  //     return { 
+  //       success: true, 
+  //       metrics: mockMetrics,
+  //       error: 'Using estimated metrics (API rate limited)'
+  //     };
+  //   }
+  //   return { success: false, error: error.message };
+  // }
 }
 
 export async function analyzeLighthouseWithAI(url: string): Promise<any> {
@@ -73,7 +74,7 @@ export async function analyzeLighthouseWithAI(url: string): Promise<any> {
       ...result.metrics
     };
     
-    const geminiIssues = await generateUniversalSeoIssues(analysisData, 'lighthouse');
+    const geminiIssues = await generateSeoIssues(analysisData);
     
     return {
       ...result,

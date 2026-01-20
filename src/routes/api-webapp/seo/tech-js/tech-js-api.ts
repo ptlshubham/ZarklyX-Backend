@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { detectWebsiteTechStackWithAI, compareJSRendering } from './tech-js-analyze-handler';
 import { saveSeoAnalysis } from '../seo-middleware';
+import { serverError } from '../../../../utils/responseHandler';
 import * as cheerio from 'cheerio';
 import axios from 'axios';
 
@@ -44,10 +45,7 @@ router.post('/analyze-tech-js', async (req: Request, res: Response): Promise<any
 
     return res.json(result);
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Tech and JS analysis failed'
-    });
+    serverError(res, error.message || 'Tech and JS analysis failed');
   }
 });
 

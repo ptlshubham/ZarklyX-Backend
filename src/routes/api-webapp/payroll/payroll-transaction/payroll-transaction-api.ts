@@ -1,6 +1,8 @@
+import { messages } from './../../../../validations/zod-messages';
 import { Router, Request, Response } from "express";
 import dbInstance from "../../../../db/core/control-db";
 import { serverError, alreadyExist } from "../../../../utils/responseHandler";
+import fs from 'fs';
 import {
     createPayrollTransaction,
     getAllPayrollTransactions,
@@ -9,9 +11,11 @@ import {
     deletePayrollTransaction,
     checkPayrollExists,
     getPayrollTransactionById,
-    getEmployeePayrollData
+    getEmployeePayrollData,
+    bulkPayrollInsertUsingExcel,
+    createExcelForPayroll
 } from "./payroll-transaction-handler";
-
+import { uploadPayrollExcel } from "../../../../middleware/uploadPayrollExcel";
 const router = Router();
 
 // Get employee payroll data
@@ -29,7 +33,7 @@ router.get("/employee/:employeeId/data", async (req: Request, res: Response): Pr
             data: employeeData
         });
     } catch (error: any) {
-        serverError(res, error.message || "Error fetching employee data");
+        serverError(res,  "Error fetching employee data");
     }
 });
 
@@ -37,9 +41,6 @@ router.get("/employee/:employeeId/data", async (req: Request, res: Response): Pr
 router.post("/addPayroll", async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
-
-
-
           if (req.body.salaryMonth || req.body.employeeId) {
             const employeeId = req.body.employeeId;
             const salaryMonth = req.body.salaryMonth ;
@@ -61,7 +62,7 @@ router.post("/addPayroll", async (req: Request, res: Response): Promise<void> =>
         });
     } catch (error: any) {
         await t.rollback();
-        serverError(res, error.message || "Error creating payroll transaction");
+        serverError(res, "Error creating payroll transaction");
     }
 });
 
@@ -89,7 +90,7 @@ router.get("/getPayrollTransactionByCompanyId", async (req: Request, res: Respon
             }
         });
     } catch (error: any) {
-        serverError(res, error.message || "Error fetching payroll transactions");
+        serverError(res, "Error fetching payroll transactions");
     }
 });
 
@@ -122,7 +123,7 @@ router.put("/updatePayrollTransaction/:id", async (req: Request, res: Response):
         res.json({ message: "Payroll transaction updated successfully" });
     } catch (error: any) {
         await t.rollback();
-        serverError(res, error.message || "Error updating payroll transaction");
+        serverError(res, "Error updating payroll transaction");
     }
 });
 
@@ -151,7 +152,7 @@ router.patch("/updatePayrollStatus/:id/status", async (req: Request, res: Respon
         res.json({ message: "Payroll status updated successfully" });
     } catch (error: any) {
         await t.rollback();
-        serverError(res, error.message || "Error updating payroll status");
+        serverError(res,  "Error updating payroll status");
     }
 });
 
@@ -172,8 +173,69 @@ router.delete("/softDeletePayrollTransaction/:id", async (req: Request, res: Res
         res.json({ message: "Payroll transaction deleted successfully" });
     } catch (error: any) {
         await t.rollback();
-        serverError(res, error.message || "Error deleting payroll transaction");
+        serverError(res,  "Error deleting payroll transaction");
     }
 });
 
+router.get(
+  "/createExcelForPayroll/:companyId",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { companyId } = req.params;
+
+      if (!companyId) {
+        res.status(400).json({ error: "Company ID is required" });
+        return;
+      }
+
+      const buffer = await createExcelForPayroll(companyId);
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=payroll-${companyId}.xlsx`
+      );
+
+      res.send(buffer);
+    } catch (error: any) {
+      console.error(error);
+      serverError(res, "Error creating payroll Excel file");
+    }
+  }
+);
+
+
+
+router.post(
+  "/bulkPayrollInsertUsingExcel/:companyId",
+  uploadPayrollExcel.single("file"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { companyId } = req.params;
+
+      if (!companyId) {
+        res.status(400).json({ error: "Company ID is required" });
+        return;
+      }
+
+      if (!req.file) {
+        res.status(400).json({ error: "Excel file is required" });
+        return;
+      }
+
+      await bulkPayrollInsertUsingExcel(companyId, req.file.path);
+
+      res.status(201).json({
+        message: "Payroll inserted successfully using Excel",
+      });
+
+    } catch (error: any) {
+      console.error(error);
+      serverError(res, error.messages || "Error inserting payroll using Excel");
+    }
+  }
+);
 export default router;

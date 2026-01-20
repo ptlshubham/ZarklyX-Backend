@@ -1,22 +1,23 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { generateUniversalSeoIssues } from '../../../../services/universal-seo-issues';
+import { generateSeoIssues } from '../../../../services/gemini-seo-issues';
 import dotenv from 'dotenv';
 dotenv.config()
-const api : string=process.env.GEMINI_API || "";
+const api : string="AIzaSyCBEa6aiK2e6etGfwaDd__Dh4Cr4UcmKkk";
 const genAI = new GoogleGenerativeAI(api);
 
- async function askGroq(question: string): Promise<string> {
+async function askGroq(question: string): Promise<string> {
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash" // Remove "-latest"
-    // OR use: "gemini-1.5-pro"
-    // OR use: "gemini-1.0-pro"
+    model: "gemini-2.5-flash"
   });
 
   const result = await model.generateContent(question);
   return result.response.text();
 }
+
+
+
 const STOPWORDS = new Set([
   'and','or','the','with','for','to','from','of','in','on','at',
   'a','an','is','are','was','were','be','by','as','that','this',
@@ -50,32 +51,26 @@ export async function fetchKeywords(url: string) {
   });
 
   const $ = cheerio.load(html);
-  // const keywordSet = new Set<string>();
+  const keywordSet = new Set<string>();
 
-  // const sources = [
-  //   $('title').text(),
-  //   $('meta[name="keywords"]').attr('content') || '',
-  //   $('meta[name="description"]').attr('content') || '',
-  //   $('h1').text()
-  // ];
+  const sources = [
+    $('title').text(),
+    $('meta[name="keywords"]').attr('content') || '',
+    $('meta[name="description"]').attr('content') || '',
+    $('h1').text()
+  ];
 
-  // for (const source of sources) {
-  //   const words = normalize(source);
-  //   words.forEach(w => keywordSet.add(w));
+  for (const source of sources) {
+    const words = normalize(source);
+    words.forEach(w => keywordSet.add(w));
 
-  //   generatePhrases(words).forEach(p => keywordSet.add(p));
-  // }
-  const keywords=$('title').text()+$('meta[name="keywords"]').attr('content') || '' +  $('meta[name="description"]').attr('content') || ''+  $('h1').text();
+    generatePhrases(words).forEach(p => keywordSet.add(p));
+  }
 
-  return {
-   keywords
-  };
+  return Array.from(keywordSet);
 }
 
-let keywords:any;
-
-
-
+let keywords: string[];
 
 interface RankResult {
   keyword: string;
@@ -83,17 +78,11 @@ interface RankResult {
   page: number | string;
 }
 
-/* ================= CONFIG ================= */
-
-// const TARGET_DOMAIN = 'linkedin.com'; //  your website
 const RESULTS_PER_PAGE = 10;
 const MAX_PAGES = 1;
 
-/* ================= FETCH SERP ================= */
-
 async function fetchSerp(keyword: string, page: number): Promise<string> {
   const offset = (page - 1) * RESULTS_PER_PAGE;
-
   const url = `https://duckduckgo.com/lite/?q=${encodeURIComponent(keyword)}&s=${offset}`;
 
   const res = await axios.get(url, {
@@ -109,53 +98,34 @@ async function fetchSerp(keyword: string, page: number): Promise<string> {
   return res.data;
 }
 
-
-/* ================= FIND RANK ================= */
-
-async function getRank(keyword: string,damain:string): Promise<RankResult> {
+async function getRank(keyword: string, domain: string): Promise<RankResult> {
   let positionCounter = 1;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const html = await fetchSerp(keyword, page);
     const $ = cheerio.load(html);
-
     const links = $('a.result-link');
 
     for (let i = 0; i < links.length; i++) {
       const url = $(links[i]).attr('href') || '';
-
-      if (url.includes(damain)) {
-        return {
-          keyword,
-          position: positionCounter,
-          page
-        };
+      if (url.includes(domain)) {
+        return { keyword, position: positionCounter, page };
       }
       positionCounter++;
     }
-
-    // VERY IMPORTANT: slow down
     await new Promise(r => setTimeout(r, 3000));
   }
 
-  return {
-    keyword,
-    position: "not found",
-    page: "not found"
-  };
+  return { keyword, position: "not found", page: "not found" };
 }
 
-/* ================= RUNNER ================= */
 
+export async function keywordRenkChecker(url: string) {
+  keywords = await fetchKeywords(url);
+  const rawKeywords = keywords;
+  console.log(rawKeywords);
 
-export async function keywordRenkChecker(url:string) {
-
- keywords = await fetchKeywords(url);
- 
- const rawKeywords = keywords; //  extract array
-//  console.log(rawKeywords);
-
-const prompt = `
+  const prompt = `
 You are an SEO keyword analyst specializing in search intent classification and optimization for the domain: ${url}
 
 OBJECTIVE:
@@ -180,44 +150,39 @@ INPUT KEYWORDS:
 ${rawKeywords}
 `;
 
-const groqText = await askGroq(prompt);
-//  Convert Groq output → array
-const refinedKeywords = groqText
-  .split(',')
-  .map(k => k.trim())
-  .filter(Boolean);
-// console.log(refinedKeywords);
+  const groqText = await askGroq(prompt);
+  const refinedKeywords = groqText
+    .split(',')
+    .map(k => k.trim())
+    .filter(Boolean);
+  console.log(refinedKeywords);
+
+  const report: RankResult[] = [];
+  const domain: string = url.split("://")[1];
+
+  for (const keyword of refinedKeywords) {
+    console.log(`🔍 Checking rank for: ${keyword}`);
+    const result = await getRank(keyword, domain);
+    report.push(result);
+  }
+
+  console.log(JSON.stringify(report, null, 2));
+
+  const analysisData = {
+    url,
+    keywords: refinedKeywords,
+    rankings: report,
+    timestamp: new Date().toISOString()
+  };
 
 
-//  Rank checking
-const report: RankResult[] = [];
-const domain:string = url.split("://")[1];
 
+  const geminiIssues = await generateSeoIssues(analysisData);
 
-for (const keyword of refinedKeywords) {
-  // console.log(` Checking rank for: ${keyword}`);
-  const result = await getRank(keyword,domain);
-  report.push(result);
+  return {
+    success: true,
+    ...analysisData,
+    issues: geminiIssues
+  };
 }
-
-// console.log(JSON.stringify(report, null, 2));
-
-// Return the report instead of just logging it
-const analysisData = {
-  url,
-  keywords: refinedKeywords,
-  rankings: report,
-  timestamp: new Date().toISOString()
-};
-
-// Generate AI issues
-const geminiIssues = await generateUniversalSeoIssues(analysisData, 'keyword-ranking');
-
-return {
-  success: true,
-  ...analysisData,
-  issues: geminiIssues
-};
-
-};
 

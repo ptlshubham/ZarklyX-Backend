@@ -1,10 +1,10 @@
-// ==================== IMPORTS ====================
 import puppeteer, { Browser, Page, HTTPResponse } from 'puppeteer';
 import ora from 'ora';
 import Table from 'cli-table3';
 import fs from 'fs';
 import path from 'path';
-import { generateUniversalSeoIssues } from '../../../../services/universal-seo-issues';
+import { generateSeoIssues } from '../../../../services/gemini-seo-issues';
+import { appendAnalyzeState } from '../storeinfile/storeFile-handler';
 
 // ==================== TYPES ====================
 interface InternalSEOAnalysisOptions {
@@ -33,7 +33,6 @@ interface AnalysisSuccess<T> {
 
 type AnalysisResult<T> = AnalysisSuccess<T> | AnalysisError;
 
-// ==================== TYPES ====================
 interface PageInfo {
   url: string;
   status: 'healthy' | 'broken' | 'redirect';
@@ -96,65 +95,45 @@ interface CrawlState {
 
 // ==================== URL HELPERS ====================
 function normalizeUrl(baseUrl: string, href: string): string | null {
-  try {
-    if (!href || href.trim() === '') return null;
-    
-    if (href.startsWith('/')) {
-      const base = new URL(baseUrl);
-      return `${base.origin}${href}`;
-    }
-    
+  if (!href || href.trim() === '') return null;
+  
+  if (href.startsWith('/')) {
     const base = new URL(baseUrl);
-    const url = new URL(href, base);
-    
-    url.hash = '';
-    url.search = '';
-    
-    return url.toString().replace(/\/$/, '');
-  } catch {
-    return null;
+    return `${base.origin}${href}`;
   }
+  
+  const base = new URL(baseUrl);
+  const url = new URL(href, base);
+  
+  url.hash = '';
+  url.search = '';
+  
+  return url.toString().replace(/\/$/, '');
 }
 
 function isInternalLink(baseDomain: string, url: string): boolean {
-  try {
-    const parsedUrl = new URL(url);
-    return parsedUrl.hostname === baseDomain || 
-           parsedUrl.hostname.endsWith(`.${baseDomain}`) ||
-           parsedUrl.hostname.replace('www.', '') === baseDomain.replace('www.', '');
-  } catch {
-    return false;
-  }
+  const parsedUrl = new URL(url);
+  return parsedUrl.hostname === baseDomain || 
+         parsedUrl.hostname.endsWith(`.${baseDomain}`) ||
+         parsedUrl.hostname.replace('www.', '') === baseDomain.replace('www.', '');
 }
 
 function getDomain(url: string): string | null {
-  try {
-    return new URL(url).hostname.replace('www.', '');
-  } catch {
-    return null;
-  }
+  return new URL(url).hostname.replace('www.', '');
 }
 
 function isValidUrl(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
+  const urlObj = new URL(url);
+  return !!urlObj;
 }
 
 function getPathDepth(url: string): number {
-  try {
-    const urlObj = new URL(url);
-    const path = urlObj.pathname;
-    if (path === '/' || path === '') return 0;
-    
-    const segments = path.split('/').filter(segment => segment.length > 0);
-    return segments.length;
-  } catch {
-    return 0;
-  }
+  const urlObj = new URL(url);
+  const path = urlObj.pathname;
+  if (path === '/' || path === '') return 0;
+  
+  const segments = path.split('/').filter(segment => segment.length > 0);
+  return segments.length;
 }
 
 function truncateUrl(url: string, maxLength: number = 40): string {
@@ -204,81 +183,75 @@ async function crawlPage(
     hasMetaDescription: false
   };
 
-  try {
-    let finalUrl = url;
-    let statusCode = 200;
-    let redirected = false;
-    let redirectUrl = '';
+  let finalUrl = url;
+  let statusCode = 200;
+  let redirected = false;
+  let redirectUrl = '';
 
-    page.on('response', (response: HTTPResponse) => {
-      if (response.url() === url || response.url() === finalUrl) {
-        statusCode = response.status();
-        
-        if (statusCode >= 300 && statusCode < 400) {
-          const headers = response.headers();
-          if (headers.location) {
-            redirected = true;
-            redirectUrl = headers.location;
-          }
+  page.on('response', (response: HTTPResponse) => {
+    if (response.url() === url || response.url() === finalUrl) {
+      statusCode = response.status();
+      
+      if (statusCode >= 300 && statusCode < 400) {
+        const headers = response.headers();
+        if (headers.location) {
+          redirected = true;
+          redirectUrl = headers.location;
         }
       }
-    });
-
-    const startTime = Date.now();
-    
-    const response = await page.goto(url, { 
-      waitUntil: 'networkidle2',
-      timeout 
-    }).catch(() => null);
-    
-    pageInfo.loadTime = Date.now() - startTime;
-
-    finalUrl = page.url();
-    
-    if (redirected) {
-      pageInfo.status = 'redirect';
-      pageInfo.redirectUrl = redirectUrl;
-      pageInfo.statusCode = statusCode;
-    } else if (statusCode !== 200 || !response) {
-      pageInfo.status = 'broken';
-      pageInfo.statusCode = statusCode || 0;
-    } else {
-      pageInfo.status = 'healthy';
-      pageInfo.statusCode = statusCode;
-      
-      const html = await page.content();
-      pageInfo.sizeKb = Math.round(html.length / 1024);
-      
-      pageInfo.title = await page.title();
-      
-      const metaDescription = await page.$eval(
-        'meta[name="description"]', 
-        el => el.getAttribute('content')
-      ).catch(() => null);
-      pageInfo.hasMetaDescription = !!metaDescription;
-      
-      pageInfo.h1Count = await page.$$eval('h1', elements => elements.length);
-      
-      const links = await page.$$eval('a[href]', (anchors: HTMLAnchorElement[]) => 
-        anchors.map(a => a.href).filter(href => 
-          href && !href.startsWith('#') && !href.startsWith('javascript:')
-        )
-      );
-      
-      links.forEach(href => {
-        const absoluteUrl = normalizeUrl(url, href);
-        if (absoluteUrl && isValidUrl(absoluteUrl)) {
-          pageInfo.outgoingLinks.add(absoluteUrl);
-        }
-      });
     }
-    
-  } catch (error) {
+  });
+
+  const startTime = Date.now();
+  
+  const response = await page.goto(url, { 
+    waitUntil: 'networkidle2',
+    timeout 
+  });
+  
+  pageInfo.loadTime = Date.now() - startTime;
+
+  finalUrl = page.url();
+  
+  if (redirected) {
+    pageInfo.status = 'redirect';
+    pageInfo.redirectUrl = redirectUrl;
+    pageInfo.statusCode = statusCode;
+  } else if (statusCode !== 200 || !response) {
     pageInfo.status = 'broken';
-    pageInfo.statusCode = 0;
-  } finally {
-    await page.close();
+    pageInfo.statusCode = statusCode || 0;
+  } else {
+    pageInfo.status = 'healthy';
+    pageInfo.statusCode = statusCode;
+    
+    const html = await page.content();
+    pageInfo.sizeKb = Math.round(html.length / 1024);
+    
+    pageInfo.title = await page.title();
+    
+    const metaDescription = await page.$eval(
+      'meta[name="description"]', 
+      el => el.getAttribute('content')
+    );
+    pageInfo.hasMetaDescription = !!metaDescription;
+    
+    pageInfo.h1Count = await page.$$eval('h1', elements => elements.length);
+    
+    const links = await page.$$eval('a[href]', (anchors: HTMLAnchorElement[]) => 
+      anchors.map(a => a.href).filter(href => 
+        href && !href.startsWith('#') && !href.startsWith('javascript:')
+      )
+    );
+    
+    links.forEach(href => {
+      const absoluteUrl = normalizeUrl(url, href);
+      if (absoluteUrl && isValidUrl(absoluteUrl)) {
+        pageInfo.outgoingLinks.add(absoluteUrl);
+      }
+    });
   }
+  
+  await page.close();
 
   return pageInfo;
 }
@@ -617,12 +590,9 @@ function printIssues(report: SEOReport): void {
   const hasIssues = report.orphanPages.length > 0 || report.brokenLinks.length > 0;
   
   if (hasIssues) {
-    console.log(' CRITICAL ISSUES FOUND:');
     console.log('='.repeat(40));
     
     if (report.orphanPages.length > 0) {
-      console.log(`\n Orphan Pages (${report.orphanPages.length}):`);
-      console.log('   Pages with no incoming internal links:');
       report.orphanPages.slice(0, 3).forEach((page, i) => {
         console.log(`   ${i + 1}. ${truncateUrl(page, 55)}`);
       });
@@ -717,92 +687,6 @@ function generateReport(report: SEOReport): void {
 
   console.log(summaryTable.toString() + '\n');
 
-  console.log('🔗 Top 10 Pages by Incoming Links:');
-  const linkTable = new Table({
-    head: ['Page URL', '⬇Incoming', '⬆ Outgoing', ' Depth'],
-    colWidths: [45, 12, 12, 10],
-    style: { head: ['green'] }
-  });
-
-  report.linkDistribution
-    .sort((a, b) => b.incoming - a.incoming)
-    .slice(0, 10)
-    .forEach(page => {
-      const truncated = truncateUrl(page.page, 43);
-      linkTable.push([truncated, page.incoming, page.outgoing, `L${page.depth}`]);
-    });
-
-  console.log(linkTable.toString() + '\n');
-
-  console.log('🎯 Page Depth Distribution:');
-  const depthTable = new Table({
-    head: [' Depth Level', ' Page Count', ' Percentage', ' Link Status'],
-    colWidths: [15, 15, 20, 20],
-    style: { head: ['yellow'] }
-  });
-
-  const totalPages = report.totalPages;
-  Object.entries(report.depthAnalysis)
-    .sort(([a], [b]) => parseInt(a) - parseInt(b))
-    .forEach(([depth, count]) => {
-      const percentage = ((count / totalPages) * 100).toFixed(1);
-      
-      const depthLinks = report.linkDistribution.filter(p => p.depth === parseInt(depth));
-      const avgIncoming = depthLinks.reduce((sum, p) => sum + p.incoming, 0) / Math.max(depthLinks.length, 1);
-      const status = avgIncoming >= 3 ? ' Strong' : avgIncoming >= 1 ? ' Weak' : ' Poor';
-      
-      depthTable.push([`Level ${depth}`, count.toString(), `${percentage}%`, status]);
-    });
-
-  console.log(depthTable.toString() + '\n');
-
-  console.log(' Internal Link Status Overview:');
-  const statusTable = new Table({
-    head: [' Status', ' Count', ' Percentage', ' Avg Depth'],
-    colWidths: [15, 15, 20, 15],
-    style: { head: ['magenta'] }
-  });
-
-  const totalLinks = report.brokenLinks.length + report.redirectLinks.length + report.healthyLinks.length;
-  if (totalLinks > 0) {
-    const healthyPercent = ((report.healthyLinks.length / totalLinks) * 100).toFixed(1);
-    const brokenPercent = ((report.brokenLinks.length / totalLinks) * 100).toFixed(1);
-    const redirectPercent = ((report.redirectLinks.length / totalLinks) * 100).toFixed(1);
-    
-    const avgHealthyDepth = report.healthyLinks.length > 0 
-      ? (report.healthyLinks.reduce((sum, link) => sum + link.depth, 0) / report.healthyLinks.length).toFixed(1)
-      : '0';
-    const avgBrokenDepth = report.brokenLinks.length > 0 
-      ? (report.brokenLinks.reduce((sum, link) => sum + link.depth, 0) / report.brokenLinks.length).toFixed(1)
-      : '0';
-    const avgRedirectDepth = report.redirectLinks.length > 0 
-      ? (report.redirectLinks.reduce((sum, link) => sum + link.depth, 0) / report.redirectLinks.length).toFixed(1)
-      : '0';
-
-    statusTable.push(
-      ['Healthy', report.healthyLinks.length.toString(), `${healthyPercent}% `, avgHealthyDepth],
-      ['Broken', report.brokenLinks.length.toString(), `${brokenPercent}% `, avgBrokenDepth],
-      ['Redirect', report.redirectLinks.length.toString(), `${redirectPercent}% `, avgRedirectDepth]
-    );
-  }
-
-  console.log(statusTable.toString() + '\n');
-
-  console.log('⚡ Performance Overview:');
-  const perfTable = new Table({
-    head: [' Metric', ' Value', 'Rating'],
-    colWidths: [25, 25, 20],
-    style: { head: ['blue'] }
-  });
-
-  perfTable.push(
-    ['Average Load Time', `${report.performance.averageLoadTime}ms`, getPerformanceRating(report.performance.averageLoadTime)],
-    ['Fastest Page', truncateUrl(report.performance.fastestPage, 30), '⚡ Lightning'],
-    ['Slowest Page', truncateUrl(report.performance.slowestPage, 30), '🐢 Slow']
-  );
-
-  console.log(perfTable.toString() + '\n');
-
   printIssues(report);
   printRecommendations(report);
   
@@ -842,8 +726,6 @@ function saveReportToFile(report: SEOReport, filename?: string): void {
   console.log(` Full report saved to: ${path.resolve(outputFile)}`);
 }
 
-
-
 // ==================== MAIN ANALYSIS FUNCTION ====================
 export async function analyzeSEOWithPuppeteer(url: string, options: {
   maxDepth?: number;
@@ -855,303 +737,97 @@ export async function analyzeSEOWithPuppeteer(url: string, options: {
 }) {
   const spinner = ora('🚀 Initializing Puppeteer SEO Analyzer...').start();
 
-  try {
-    if (!isValidUrl(url)) {
-      spinner.fail('Invalid URL provided');
-      throw new Error('Invalid URL provided - Please provide a valid URL including protocol (http:// or https://)');
-    }
+  const normalizedUrl = normalizeUrl(url, url) || url;
+  const baseDomain = getDomain(normalizedUrl);
 
-    const normalizedUrl = normalizeUrl(url, url) || url;
-    const baseDomain = getDomain(normalizedUrl);
+  spinner.text = `🔍 Analyzing: ${normalizedUrl}`;
 
-    if (!baseDomain) {
-      spinner.fail('Could not extract domain from URL');
-      throw new Error('Could not extract domain from URL');
-    }
+  const crawlOptions: CrawlOptions = {
+    maxDepth: options.maxDepth || 3,
+    maxPages: options.maxPages || 30,
+    delay: options.fast ? 100 : 500,
+    headless: options.headless !== false,
+    timeout: 300000
+  };
 
-    spinner.text = `🔍 Analyzing: ${normalizedUrl}`;
+  const pages = await crawlSite(normalizedUrl, baseDomain!, crawlOptions, spinner);
 
-    const crawlOptions: CrawlOptions = {
-      maxDepth: options.maxDepth || 3,
-      maxPages: options.maxPages || 30,
-      delay: options.fast ? 100 : 500,
-      headless: options.headless !== false,
-      timeout: 30000
-    };
+  spinner.text = '📊 Analyzing link structure and calculating metrics...';
+  const analysis = analyzeLinks(pages, baseDomain!);
 
-    const pages = await crawlSite(normalizedUrl, baseDomain, crawlOptions, spinner);
+  const technicalArchitechure = calculateSEOScore(analysis);
 
-    if (pages.size === 0) {
-      spinner.fail('No pages could be crawled');
-      throw new Error('No pages could be crawled. Possible reasons: Website requires JavaScript, blocks headless browsers, or network issues');
-    }
+  const report: SEOReport = {
+    technicalArchitechure,
+    totalPages: analysis.totalPages,
+    totalInternalLinks: analysis.totalInternalLinks,
+    orphanPages: analysis.orphanPages,
+    brokenLinks: analysis.brokenLinks,
+    redirectLinks: analysis.redirectLinks,
+    healthyLinks: analysis.healthyLinks,
+    linkDistribution: analysis.linkDistribution,
+    depthAnalysis: analysis.depthAnalysis,
+    performance: analysis.performance
+  };
 
-    spinner.text = '📊 Analyzing link structure and calculating metrics...';
-    const analysis = analyzeLinks(pages, baseDomain);
+  spinner.succeed(`Analysis complete! Crawled ${pages.size} pages`);
 
-    const technicalArchitechure = calculateSEOScore(analysis);
-
-    const report: SEOReport = {
-      technicalArchitechure,
-      totalPages: analysis.totalPages,
-      totalInternalLinks: analysis.totalInternalLinks,
-      orphanPages: analysis.orphanPages,
-      brokenLinks: analysis.brokenLinks,
-      redirectLinks: analysis.redirectLinks,
-      healthyLinks: analysis.healthyLinks,
-      linkDistribution: analysis.linkDistribution,
-      depthAnalysis: analysis.depthAnalysis,
-      performance: analysis.performance
-    };
-
-    spinner.succeed(`Analysis complete! Crawled ${pages.size} pages`);
-
-    // Only print to console if not in API mode
-    if (typeof process !== 'undefined' && process.stdout.isTTY) {
-      generateReport(report);
-    }
-
-    if (options.saveReport) {
-      saveReportToFile(report, options.outputFile);
-    }
-
-    // IMPORTANT: Return the report instead of exiting
-    return report;
-
-  } catch (error) {
-    spinner.fail('Analysis failed');
-    
-    // Re-throw the error so the handler can catch it
-    throw error;
+  if (typeof process !== 'undefined' && process.stdout.isTTY) {
+    generateReport(report);
   }
+
+  if (options.saveReport) {
+    saveReportToFile(report, options.outputFile);
+  }
+
+  return report;
 }
 
 /* ===================== HANDLER FUNCTION ===================== */
-
 export async function analyzeInternalSEOHandler(
   url: string, 
   options: InternalSEOAnalysisOptions = {}
 ): Promise<AnalysisResult<SEOReport>> {
   const startTime = Date.now();
   
-  try {
-    const { maxDepth = 3, maxPages = 30, fast = false, timeout = 30000, headless = true } = options;
+  const { maxDepth = 5, maxPages = 10, fast = false, timeout = 3000000, headless = true } = options;
 
-    if (!url) {
-      throw new Error('URL is required');
-    }
+  const urlObj = new URL(url);
 
-    try {
-      new URL(url);
-    } catch {
-      throw new Error('Invalid URL format. Must include protocol (http:// or https://)');
-    }
+  const report = await analyzeSEOWithPuppeteer(url, {
+    maxDepth,
+    maxPages,
+    fast,
+    headless
+  });
+  
+  const analysisWithUrl = {
+    ...report,
+    url: url
+  };
+ await appendAnalyzeState(url,analysisWithUrl);
+  
+  const geminiIssues = await generateSeoIssues(analysisWithUrl);
 
-    console.log(`[${new Date().toISOString()}] Starting Internal SEO analysis for: ${url}`);
-    console.log(`[${new Date().toISOString()}] Options: maxDepth=${maxDepth}, maxPages=${maxPages}, fast=${fast}`);
+  const processingTime = Date.now() - startTime;
 
-    const report = await analyzeSEOWithPuppeteer(url, {
-      maxDepth,
-      maxPages,
-      fast,
-      headless
-    });
-    
-    // Add URL to analysis data for Gemini
-    const analysisWithUrl = {
+  return {
+    success: true,
+    url,
+    timestamp: new Date().toISOString(),
+    processingTime: `${processingTime}ms`,
+    data: {
       ...report,
-      url: url
-    };
-    
-    // Generate AI recommendations
-    const geminiIssues = await generateUniversalSeoIssues(analysisWithUrl, 'internal-seo');
-    
-    const processingTime = Date.now() - startTime;
-
-    console.log(`[${new Date().toISOString()}] Analysis complete in ${processingTime}ms`);
-    console.log(`[${new Date().toISOString()}] Results: ${report.totalPages} pages, SEO score: ${report.technicalArchitechure}/100`);
-
-    return {
-      success: true,
-      url,
-      timestamp: new Date().toISOString(),
-      processingTime: `${processingTime}ms`,
-      data: {
-        ...report,
-        issues: geminiIssues
-      }
-    };
-
-  } catch (error: any) {
-    const processingTime = Date.now() - startTime;
-    console.error(`[${new Date().toISOString()}] Error after ${processingTime}ms:`, error.message);
-    console.error(`[${new Date().toISOString()}] Stack trace:`, error.stack);
-    
-    return {
-      success: false,
-      error: error.message || 'Internal SEO analysis failed',
-      processingTime: `${processingTime}ms`,
-      timestamp: new Date().toISOString(),
-      code: error.code
-    };
-  }
+      issues: geminiIssues
+    }
+  };
 }
 
-// ==================== MAIN ANALYSIS FUNCTION ====================
-// export async function analyzeSEOWithPuppeteer(url: string, options: {
-//   maxDepth?: number;
-//   maxPages?: number;
-//   saveReport?: boolean;
-//   outputFile?: string;
-//   headless?: any;
-//   fast?: boolean;
-// }) {
-//   const spinner = ora('🚀 Initializing Puppeteer SEO Analyzer...').start();
-
-//   try {
-//     if (!isValidUrl(url)) {
-//       spinner.fail('Invalid URL provided');
-//       console.error('❌ Please provide a valid URL including protocol (http:// or https://)');
-//       process.exit(1);
-//     }
-
-//     const normalizedUrl = normalizeUrl(url, url) || url;
-//     const baseDomain = getDomain(normalizedUrl);
-
-//     if (!baseDomain) {
-//       spinner.fail('Could not extract domain from URL');
-//       process.exit(1);
-//     }
-
-//     spinner.text = `🔍 Analyzing: ${normalizedUrl}`;
-
-//     const crawlOptions: CrawlOptions = {
-//       maxDepth: options.maxDepth || 3,
-//       maxPages: options.maxPages || 30,
-//       delay: options.fast ? 100 : 500,
-//       headless: options.headless !== false,
-//       timeout: 30000
-//     };
-
-//     const pages = await crawlSite(normalizedUrl, baseDomain, crawlOptions, spinner);
-
-//     if (pages.size === 0) {
-//       spinner.fail('No pages could be crawled');
-//       console.error('\nPossible reasons:');
-//       console.error('• Website requires JavaScript to render content');
-//       console.error('• Website blocks headless browsers');
-//       console.error('• Network or timeout issues');
-//       console.error('\nTry:');
-//       console.error('• Increasing timeout with --timeout flag');
-//       console.error('• Running in non-headless mode with --visible flag');
-//       process.exit(1);
-//     }
-
-//     spinner.text = '📊 Analyzing link structure and calculating metrics...';
-//     const analysis = analyzeLinks(pages, baseDomain);
-
-//     const seoScore = calculateSEOScore(analysis);
-
-//     const report: SEOReport = {
-//       seoScore,
-//       totalPages: analysis.totalPages,
-//       totalInternalLinks: analysis.totalInternalLinks,
-//       orphanPages: analysis.orphanPages,
-//       brokenLinks: analysis.brokenLinks,
-//       redirectLinks: analysis.redirectLinks,
-//       healthyLinks: analysis.healthyLinks,
-//       linkDistribution: analysis.linkDistribution,
-//       depthAnalysis: analysis.depthAnalysis,
-//       performance: analysis.performance
-//     };
-
-//     spinner.succeed(`Analysis complete! Crawled ${pages.size} pages`);
-
-//     generateReport(report);
-
-//     if (options.saveReport) {
-//       saveReportToFile(report, options.outputFile);
-//     }
-
-//   } catch (error) {
-//     spinner.fail('Analysis failed');
-//     console.error('\n🔥 Error:', error instanceof Error ? error.message : 'Unknown error');
-//     console.error('\n💡 Troubleshooting tips:');
-//     console.error('• Ensure Puppeteer is installed: npm install puppeteer');
-//     console.error('• Try with --visible flag to see browser');
-//     console.error('• Reduce --max-pages if website is large');
-//     console.error('• Check if website is accessible from your network');
-//     process.exit(1);
-//   }
-// }
-
-
 export {
-
   crawlSite,
   analyzeLinks,
   calculateSEOScore,
   getScoreCategory,
   generateReport,
   saveReportToFile,
-  normalizeUrl,
-  isInternalLink,
-  getDomain,
-  isValidUrl,
-  getPathDepth
-}
-
-/* ===================== HANDLER FUNCTION ===================== */
-
-// export async function analyzeInternalSEOHandler(
-//   url: string, 
-//   options: InternalSEOAnalysisOptions = {}
-// ): Promise<AnalysisResult<any>> {
-//   const startTime = Date.now();
-  
-//   try {
-//     const { maxDepth = 3, maxPages = 30, fast = false } = options;
-
-//     if (!url) {
-//       throw new Error('URL is required');
-//     }
-
-//     try {
-//       new URL(url);
-//     } catch {
-//       throw new Error('Invalid URL format. Must include protocol (http:// or https://)');
-//     }
-
-//     console.log(`[${new Date().toISOString()}] Internal SEO analysis for: ${url}`);
-
-//     const result = await analyzeSEOWithPuppeteer(url, {
-//       maxDepth,
-//       maxPages,
-//       fast,
-//       headless: true
-//     });
-    
-//     const processingTime = Date.now() - startTime;
-
-//     console.log(`[${new Date().toISOString()}] Analysis complete in ${processingTime}ms`);
-
-//     return {
-//       success: true,
-//       url,
-//       timestamp: new Date().toISOString(),
-//       processingTime: `${processingTime}ms`,
-//       data: result
-//     };
-
-//   } catch (error: any) {
-//     const processingTime = Date.now() - startTime;
-//     console.error(`[${new Date().toISOString()}] Error after ${processingTime}ms:`, error.message);
-    
-//     return {
-//       success: false,
-//       error: error.message || 'Internal SEO analysis failed',
-//       processingTime: `${processingTime}ms`,
-//       timestamp: new Date().toISOString()
-//     };
-//   }
-// }
+  normalizeUrl}

@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { keywordRenkChecker } from './keywordranking-analyze-handler';
 import { saveSeoAnalysis } from '../seo-middleware';
+import { serverError } from '../../../../utils/responseHandler';
 
 const router = express.Router();
 
@@ -22,10 +23,7 @@ router.post('/analyze-keyword', async (req: Request, res: Response): Promise<any
     
     return res.json(result);
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Keyword ranking analysis failed'
-    });
+    serverError(res, error.message || 'Keyword ranking analysis failed');
   }
 });
 
