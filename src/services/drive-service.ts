@@ -313,3 +313,13 @@ export async function getGoogleUser(accessToken: string) {
   });
   return res.data;
 }
+
+export async function moveItemToFolder(tokens: DriveTokens, itemId: string, targetFolderId: string) {
+  try {
+    const result = await moveDriveFile(tokens, itemId, targetFolderId);
+    return { id: itemId, ...result };
+  } catch (error: any) {
+    console.error(`Failed to move item ${itemId}:`, error.message);
+    throw error;
+  }
+}

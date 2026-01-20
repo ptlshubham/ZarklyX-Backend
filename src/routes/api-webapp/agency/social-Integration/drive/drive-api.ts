@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred, renameDriveItem } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred, renameDriveItem, moveItemToFolder } from "../../../../../services/drive-service";
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -1938,4 +1938,57 @@ router.post("/me/files/:id/rename", async (req: Request, res: Response): Promise
   }
 });
 
+// Move multiple files/folders to a target folder
+router.post("/me/files/move", async (req: any, res: any) => {
+  try {
+    const { itemIds, targetFolderId } = req.body;
+
+    if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0 || !targetFolderId) {
+      res.status(400).json({
+        success: false,
+        message: "Missing itemIds array or targetFolderId"
+      });
+      return;
+    }
+
+    // Extract tokens from headers or query
+    const tokens = extractTokens(req);
+
+    // Ensure valid access token
+    await ensureValidAccessToken(tokens);
+
+    if (!tokens.access_token) {
+      res.status(401).json({
+        success: false,
+        message: "No valid access token found"
+      });
+      return;
+    }
+
+    // Move each item to the target folder
+    const movePromises = itemIds.map(itemId =>
+      moveItemToFolder(tokens, itemId, targetFolderId)
+    );
+
+    const results = await Promise.all(movePromises);
+
+    console.log(`✅ ${results.length} item(s) moved successfully to folder ${targetFolderId}`);
+
+    res.status(200).json({
+      success: true,
+      data: results,
+      message: `${results.length} item(s) moved successfully`
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Failed to move items:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to move items"
+    });
+    return;
+  }
+});
+
 module.exports = router;
+
