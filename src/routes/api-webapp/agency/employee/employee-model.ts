@@ -141,7 +141,6 @@ export class Employee extends Model<
                 employeeId: {
                     type: DataTypes.STRING(50),
                     allowNull: false,
-                    unique: true,
                 },
                 departmentId: {
                     type: DataTypes.STRING,

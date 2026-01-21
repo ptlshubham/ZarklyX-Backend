@@ -1,4 +1,6 @@
 import type { Sequelize } from "sequelize";
+
+// Models for Web -app
 import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
 import { UserCompany, initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
@@ -9,12 +11,29 @@ import { PremiumModule } from "../../routes/api-webapp/superAdmin/generalSetup/p
 import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
+import { ItTickets } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-model";
+// import { Role } from "../../routes/api-webapp/roles/role-model";
+// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
-import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
-import { Role } from "../../routes/api-webapp/roles/role-model";
-import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+
+// import { Role } from "../../routes/api-webapp/roles/role-model";
+// import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
+// Use a relative path to the route-local Google token model to avoid module alias issues
+// import { GoogleToken } from "../../routes/api-webapp/agency/social-Integration/google/google-token.model";
+
+import { InfluencerCategory } from "../../routes/api-webapp/superAdmin/influencer/category/influencerCategory-model";
+import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
+import { Industry } from "../../routes/api-webapp/superAdmin/influencer/industry/influencerIndustry-models";
+import { Platform } from "../../routes/api-webapp/superAdmin/influencer/platform/influencerPlatform-model";
+import { ItemCategory } from "../../routes/api-webapp/accounting/item-Category/item-Category-model";
+import { Unit } from "../../routes/api-webapp/accounting/unit/unit-model";
+import { Item } from "../../routes/api-webapp/accounting/item/item-model";
+import { Vendor } from "../../routes/api-webapp/accounting/vendor/vendor-model";
 import { Warehouse } from "../../routes/api-webapp/inventory Management/warehouse/warehouse-model";
+import { StockTransaction } from "../../routes/api-webapp/inventory Management/stock/stock-transaction/stock-transaction-model";
+import { StockBalance } from "../../routes/api-webapp/inventory Management/stock/stock-balance/stock-balance-model";
 
 export {
   User,
@@ -29,11 +48,23 @@ export {
   BusinessSubcategory,
   SocialToken,
   Employee,
-  Influencer,
+  ItTickets,
   // GoogleToken
+  InfluencerCategory,
+  Influencer,
+  Industry,
+  Platform,
+  ItemCategory,
+  Unit,
+  Item,
+  Vendor,
   Warehouse,
+  StockTransaction,
+  StockBalance
 };
 export function initControlDB(sequelize: Sequelize) {
+  // For web App
+  // User.initModel(sequelize);
   User.initModel(sequelize);
   Company.initModel(sequelize);
   PremiumModule.initModel(sequelize);
@@ -42,23 +73,33 @@ export function initControlDB(sequelize: Sequelize) {
   Employee.initModel(sequelize);
   Otp.initModel(sequelize);
   LoginHistory.initModel(sequelize);
+  ItTickets.initModel(sequelize);
   // Roles
-  Role.initModel(sequelize);
-  SubRole.initModel(sequelize);
+  // Role.initModel(sequelize);
+  // SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
   SocialToken.initModel(sequelize);
+  // Role.initModel(sequelize);
+  // SubRole.initModel(sequelize);
   initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
-  SocialToken.initModel(sequelize);
-  Influencer.initModel(sequelize);
-  Warehouse.initModel(sequelize);
-
-  // GoogleToken.initModel(sequelize);
+  // GoogleToken.initModel(sequelize); 
   //  initCategoryModel(sequelize);
   //  initPremiumModuleModel(sequelize);
   // LoginHistory.initModel(sequelize);
+  InfluencerCategory.initModel(sequelize);
+  Influencer.initModel(sequelize);
+  Industry.initModel(sequelize);
+  Platform.initModel(sequelize);
 
+  ItemCategory.initModel(sequelize);
+  Unit.initModel(sequelize);
+  Item.initModel(sequelize);
+  Vendor.initModel(sequelize);
+  Warehouse.initModel(sequelize);
+  StockTransaction.initModel(sequelize);
+  StockBalance.initModel(sequelize);
 
   // Relations and associations
   /***user <-> company */
@@ -178,7 +219,120 @@ export function initControlDB(sequelize: Sequelize) {
     as: "user",
   });
 
-  // Company <-> Warehouse
+  /*** User <-> ItTickets */
+  User.hasMany(ItTickets, {
+    foreignKey: "userId",
+    as: "itTickets",
+  });
+  ItTickets.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
+
+  /*** Company <-> ItTickets */
+  Company.hasMany(ItTickets, {
+    foreignKey: "companyId",
+    as: "itTickets",
+  });
+  ItTickets.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> Unit */
+  Company.hasMany(Unit, {
+    foreignKey: "companyId",
+    as: "units",
+  });
+  Unit.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> ItemCategory */
+  Company.hasMany(ItemCategory, {
+    foreignKey: "companyId",
+    as: "itemCategories",
+  });
+  ItemCategory.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Company <-> Item */
+  Company.hasMany(Item, {
+    foreignKey: "companyId",
+    as: "items",
+  });
+  Item.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Unit <-> Item */
+  Unit.hasMany(Item, {
+    foreignKey: "unitId",
+    as: "items",
+  });
+  Item.belongsTo(Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  });
+
+  /*** Company <-> Vendor */
+  Company.hasMany(Vendor, {
+    foreignKey: "companyId",
+    as: "vendors",
+  });
+  Vendor.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** InfluencerCategory <-> Influencer (Many-to-Many) */
+  InfluencerCategory.belongsToMany(Influencer, {
+    through: 'influencer_category_mapping',
+    foreignKey: "categoryId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(InfluencerCategory, {
+    through: 'influencer_category_mapping',
+    foreignKey: "influencerId",
+    otherKey: "categoryId",
+    as: "categories",
+  });
+
+  /*** Industry <-> Influencer (Many-to-Many) */
+  Industry.belongsToMany(Influencer, {
+    through: 'influencer_industry_mapping',
+    foreignKey: "industryId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(Industry, {
+    through: 'influencer_industry_mapping',
+    foreignKey: "influencerId",
+    otherKey: "industryId",
+    as: "industries",
+  });
+
+  /*** Platform <-> Influencer (Many-to-Many) */
+  Platform.belongsToMany(Influencer, {
+    through: 'influencer_platform_mapping',
+    foreignKey: "platformId",
+    otherKey: "influencerId",
+    as: "influencers",
+  });
+  Influencer.belongsToMany(Platform, {
+    through: 'influencer_platform_mapping',
+    foreignKey: "influencerId",
+    otherKey: "platformId",
+    as: "platforms",
+  });
+
+
+  //Compony <-> Warehouse
   Company.hasMany(Warehouse, {
     foreignKey: "companyId",
     as: "warehouses",
@@ -188,6 +342,71 @@ export function initControlDB(sequelize: Sequelize) {
     as: "company",
   });
 
+
+  //company <-> StockTransaction
+  Company.hasMany(StockTransaction, {
+    foreignKey: "companyId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  //Warehouse <-> StockTransaction
+  Warehouse.hasMany(StockTransaction, {
+    foreignKey: "warehouseId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Warehouse, {
+    foreignKey: "warehouseId",
+    as: "warehouse",
+  });
+  //Item <-> StockTransaction
+  Item.hasMany(StockTransaction, {
+    foreignKey: "itemId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+  //vendor <-> stockTransaction
+  Vendor.hasMany(StockTransaction, {
+    foreignKey: "vendorId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+  });
+
+  //Company <-> StockBalance
+  Company.hasMany(StockBalance, {
+    foreignKey: "companyId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  //Warehouse <-> StockBalance
+  Warehouse.hasMany(StockBalance, {
+    foreignKey: "warehouseId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Warehouse, {
+    foreignKey: "warehouseId",
+    as: "warehouse",
+  });
+  //Item <-> StockBalance
+  Item.hasMany(StockBalance, {
+    foreignKey: "itemId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
 
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
@@ -213,10 +432,18 @@ export function initControlDB(sequelize: Sequelize) {
     BusinessType,
     BusinessSubcategory,
     SocialToken,
-    Role,
-    SubRole,
-    Influencer,
     Employee,
+    ItTickets,
+    Influencer,
+    InfluencerCategory,
+    Industry,
+    Platform,
+    ItemCategory,
+    Unit,
+    Item,
+    Vendor,
     Warehouse,
+    StockTransaction,
+    StockBalance
   };
 }
