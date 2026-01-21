@@ -120,7 +120,6 @@ export class Vendor extends Model<
                 vendorCode: {
                     type: DataTypes.STRING(50),
                     allowNull: false,
-                    unique: true,
                 },
                 currency: {
                     type: DataTypes.STRING(10),
@@ -180,7 +179,7 @@ export class Vendor extends Model<
                         fields: ['companyId', 'isActive', 'isDeleted'],
                     },
                     {
-                        fields: ['vendorCode'],
+                        fields: ['companyId', 'vendorCode'],
                         unique: true,
                     },
                     {

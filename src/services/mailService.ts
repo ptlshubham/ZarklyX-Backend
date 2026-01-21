@@ -22,7 +22,7 @@ const emailConfig = GLOBAL_CONSTANTS.email;
 //   },
 // });
 
-// Configure transporter. Use secure=true for port 465 (SMTPS), otherwise false.
+// Configure transporter. Use secure=false for port 587 (TLS/STARTTLS), use secure=true for port 465 (SMTPS)
 const useSecure = Number(emailConfig.SENDER_EMAIL_PORT) === 465;
 const nodemailerTransporter = nodemailer.createTransport({
   host: emailConfig.SENDER_EMAIL_HOST,

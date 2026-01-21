@@ -67,8 +67,10 @@ router.post("/createItem/", async (req: Request, res: Response): Promise<any> =>
 // GET /accounting/item/getItemById/:id?companyId=
 router.get("/getItemById/:id", async (req: Request, res: Response): Promise<any> => {
     try {
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const data = await getItemById(
-            req.params.id,
+            id,
             req.query.companyId as string
         );
 
@@ -158,8 +160,10 @@ router.get("/searchItems", async (req: Request, res: Response): Promise<any> => 
 router.patch("/updateItem/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const [affectedRows] = await updateItem(
-            req.params.id,
+            id,
             req.query.companyId as string,
             req.body,
             t
@@ -174,7 +178,7 @@ router.patch("/updateItem/:id", async (req: Request, res: Response): Promise<any
         }
 
         const updatedItem = await getItemById(
-            req.params.id,
+            id,
             req.query.companyId as string
         );
 
@@ -194,8 +198,10 @@ router.patch("/updateItem/:id", async (req: Request, res: Response): Promise<any
 router.patch("/deactivateItem/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const [affectedRows] = await deactivateItem(
-            req.params.id,
+            id,
             req.query.companyId as string,
             t
         );
@@ -223,8 +229,10 @@ router.patch("/deactivateItem/:id", async (req: Request, res: Response): Promise
 router.patch("/activateItem/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const [affectedRows] = await activateItem(
-            req.params.id,
+            id,
             req.query.companyId as string,
             t
         );
@@ -252,8 +260,10 @@ router.patch("/activateItem/:id", async (req: Request, res: Response): Promise<a
 router.delete("/deleteItem/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
         const affectedRows = await deleteItem(
-            req.params.id,
+            id,
             req.query.companyId as string,
             t
         );

@@ -34,7 +34,6 @@ export class ItemCategory extends Model<
                 categoryName: {
                     type: DataTypes.STRING(100),
                     allowNull: false,
-                    unique: true,
                 },
                 isActive: {
                     type: DataTypes.BOOLEAN,
@@ -61,6 +60,12 @@ export class ItemCategory extends Model<
                 sequelize,
                 tableName: "itemCategory",
                 timestamps: true,
+                indexes: [
+                    {
+                        fields: ["companyId", "categoryName"],
+                        unique: true,
+                    },
+                ],
             }
         );
         return ItemCategory;
