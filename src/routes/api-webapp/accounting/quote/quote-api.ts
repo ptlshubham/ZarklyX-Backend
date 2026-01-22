@@ -172,13 +172,13 @@ router.delete("/deleteQuote/:id", async (req: Request, res: Response): Promise<a
   try {
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
-    const [affectedRows] = await deleteQuote(
+    const result = await deleteQuote(
       id,
       req.query.companyId as string,
       t
     );
 
-    if (affectedRows === 0) {
+    if (!result) {
       await t.rollback();
       return res.status(404).json({
         success: false,

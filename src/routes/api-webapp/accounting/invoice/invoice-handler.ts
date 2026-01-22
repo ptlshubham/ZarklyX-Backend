@@ -972,6 +972,8 @@ export const convertInvoiceToPayment = async (
       amountUsedForPayments: paymentData.paymentAmount,
       amountInExcess: 0,
       memo: `Payment for Invoice ${invoice.invoiceNo}`,
+      isActive: true,
+      isDeleted: false,
     },
     { transaction: t, validate: true }
   );
@@ -983,6 +985,8 @@ export const convertInvoiceToPayment = async (
       documentId: invoice.id,
       documentType: "Invoice",
       paymentValue: paymentData.paymentAmount,
+      isActive: true,
+      isDeleted: false,
     },
     { transaction: t, validate: true }
   );
