@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred, renameDriveItem, moveItemToFolder, getDriveClientFromTokens } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred, renameDriveItem, moveItemToFolder, getDriveClientFromTokens, moveFileToTrash } from "../../../../../services/drive-service";
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -1981,6 +1981,120 @@ router.post("/me/files/move", async (req: any, res: any) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to move items"
+    });
+    return;
+  }
+});
+
+/**
+ * ✅ POST /drive/me/files/:id/trash
+ * Purpose: Move a file/folder to trash (sets trashed=true in Google Drive)
+ * Params:
+ *   - id (required, URL): File/Folder ID to move to trash
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, data: { id, name, trashed } }
+ */
+router.post("/me/files/:id/trash", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!fileId) {
+      res.status(400).json({ 
+        success: false, 
+        message: "Missing fileId" 
+      });
+      return;
+    }
+
+    // Extract tokens from headers or query
+    const tokens = extractTokens(req);
+    
+    // Ensure valid access token
+    await ensureValidAccessToken(tokens);
+
+    if (!tokens.access_token) {
+      res.status(401).json({ 
+        success: false, 
+        message: "No valid access token found" 
+      });
+      return;
+    }
+
+    // Move file/folder to trash
+    const result = await moveFileToTrash(tokens, fileId);
+
+    console.log(`✅ File/Folder ${fileId} moved to trash`);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "File/Folder moved to trash successfully"
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Failed to move file/folder to trash:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to move file/folder to trash"
+    });
+    return;
+  }
+});
+
+/**
+ * ✅ DELETE /drive/me/files/:id/trash
+ * Purpose: Move multiple files/folders to trash
+ * Body:
+ *   - fileIds (required): Array of file/folder IDs to move to trash
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, data: array of results }
+ */
+router.delete("/me/files/trash", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { fileIds } = req.body;
+
+    if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
+      res.status(400).json({ 
+        success: false, 
+        message: "Missing or invalid fileIds array" 
+      });
+      return;
+    }
+
+    // Extract tokens from headers or query
+    const tokens = extractTokens(req);
+    
+    // Ensure valid access token
+    await ensureValidAccessToken(tokens);
+
+    if (!tokens.access_token) {
+      res.status(401).json({ 
+        success: false, 
+        message: "No valid access token found" 
+      });
+      return;
+    }
+
+    // Move all files/folders to trash
+    const trashPromises = fileIds.map(fileId => 
+      moveFileToTrash(tokens, fileId)
+    );
+
+    const results = await Promise.all(trashPromises);
+
+    console.log(`✅ ${results.length} file(s)/folder(s) moved to trash`);
+
+    res.status(200).json({
+      success: true,
+      data: results,
+      message: `${results.length} file(s)/folder(s) moved to trash successfully`
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Failed to move files/folders to trash:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to move files/folders to trash"
     });
     return;
   }

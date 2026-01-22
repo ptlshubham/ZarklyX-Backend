@@ -323,3 +323,14 @@ export async function moveItemToFolder(tokens: DriveTokens, itemId: string, targ
     throw error;
   }
 }
+
+// Move a file/folder to trash (set trashed=true)
+export async function moveFileToTrash(tokens: DriveTokens, fileId: string) {
+  const drive = getDriveClientFromTokens(tokens);
+  const res = await drive.files.update({
+    fileId,
+    requestBody: { trashed: true },
+    fields: "id,name,trashed",
+  });
+  return res.data;
+}
