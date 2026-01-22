@@ -71,12 +71,12 @@ interface CreatePurchaseBillInput {
   taxSelectionOn?: string;
   placeOfSupply: string;
   invoiceNo: string;
-  billDate: Date;
+  purchaseBillDate: Date;
   status: 'Open';
   poNo: string;
   poDate: Date;
   dueDate: Date;
-  purchaseBillNumber?: string;
+  purchaseBillNo?: string;
   items: Array<{
     itemId: string;
     itemName?: string;
@@ -159,7 +159,7 @@ const calculatePurchaseBillTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply !== companyState, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLocaleLowerCase !== companyState.toLocaleLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -195,7 +195,7 @@ const calculatePurchaseBillTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply !== companyState) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -215,22 +215,39 @@ const calculatePurchaseBillTotals = (
   // Calculate TDS and TCS amounts
   let totalTds = 0;
   let totalTcs = 0;
-  const taxableBase = subTotal - finalDiscount + (shippingAmount || 0);
-  const totalBase = reverseCharge ? taxableBase
-        : taxableBase + totalCgst + totalSgst + totalIgst + totalCess;
+  const taxableBase = subTotal - finalDiscount;
+  // Purchase bill total BEFORE TDS/TCS
+  const totalBase = reverseCharge
+    ? taxableBase
+        + (shippingAmount || 0)
+    : taxableBase
+        + totalCgst
+        + totalSgst
+        + totalIgst
+        + totalCess
+        + (shippingAmount || 0);
 
   if (tdsTcsEntries && tdsTcsEntries.length > 0) {
     tdsTcsEntries.forEach(entry => {
 
-      const baseAmount =
-      entry.applicableOn === "total" ? totalBase : taxableBase;
+      let baseAmount = 0;
+      if (entry.applicableOn === "taxable") {
+        baseAmount = taxableBase;
+      }
 
-      const taxAmount = baseAmount * (entry.taxPercentage / 100); 
-      // const taxAmount = taxableBase * (entry.taxPercentage / 100);
+      if (entry.applicableOn === "total") {
+        baseAmount = totalBase;
+      }
+
+      const taxAmount = parseFloat(
+        (baseAmount * entry.taxPercentage / 100).toFixed(2)
+      );
 
       if (entry.type.toLowerCase() === "tds") {
         totalTds += taxAmount;
-      } else if (entry.type.toLowerCase() === "tcs") {
+      }
+
+      if (entry.type.toLowerCase() === "tcs") {
         totalTcs += taxAmount;
       }
     });
@@ -262,11 +279,11 @@ export const createPurchaseBill = async (body: CreatePurchaseBillInput, t: Trans
     throw new Error("dueDate is required");
   }
 
-  const billDate = body.billDate || new Date();
+  const purchaseBillDate = body.purchaseBillDate || new Date();
   const dueDate = body.dueDate;
 
-  // Generate purchaseBillNumber only if not provided
-  const purchaseBillNumber = body.purchaseBillNumber || `PB-${Date.now()}`;
+  // Generate purchaseBillNo only if not provided
+  const purchaseBillNo = body.purchaseBillNo || `PB-${Date.now()}`;
 
   // Fetch all items from database to get their details
   const itemIds = body.items.map(item => item.itemId);
@@ -284,7 +301,7 @@ export const createPurchaseBill = async (body: CreatePurchaseBillInput, t: Trans
   if (!company) {
     throw new Error("Company not found");
   }
-  const companyState = company.state ?? "";
+  const companyState: string = company.state ?? "";
 
   // Fetch vendor details to get state for tax calculation
   const vendor = await Vendor.findByPk(body.vendorId);
@@ -317,10 +334,10 @@ export const createPurchaseBill = async (body: CreatePurchaseBillInput, t: Trans
     {
       companyId: body.companyId,
       vendorId: body.vendorId,
-      purchaseBillNumber: purchaseBillNumber,
+      purchaseBillNo: purchaseBillNo,
       placeOfSupply: body.placeOfSupply,
-      invoiceNo: body.invoiceNo, // Vendor's invoice number
-      billDate,
+      invoiceNo: body.invoiceNo,
+      purchaseBillDate,
       status: 'Open',
       poNo: body.poNo,
       poDate: body.poDate,
@@ -359,8 +376,17 @@ export const createPurchaseBill = async (body: CreatePurchaseBillInput, t: Trans
     { transaction: t }
   );
 
-  const itemTaxableBase = calculated.subTotal - calculated.finalDiscount;
-  const totalConsiderationBase = itemTaxableBase + (body.shippingAmount || 0);
+  const taxableBase = calculated.subTotal - calculated.finalDiscount;
+
+  const totalBase = body.reverseCharge
+    ? taxableBase
+        + (body.shippingAmount || 0)
+    : taxableBase
+        + calculated.totalCgst
+        + calculated.totalSgst
+        + calculated.totalIgst
+        + calculated.totalCess
+        + (body.shippingAmount || 0);
 
   // Create TDS/TCS entries if provided
   let createdTdsTcs: any[] = [];
@@ -368,7 +394,7 @@ export const createPurchaseBill = async (body: CreatePurchaseBillInput, t: Trans
     
     createdTdsTcs = await PurchaseBillTdsTcs.bulkCreate(
       body.tdsTcsEntries.map(entry => {
-        const baseAmount = entry.applicableOn === "total" ? totalConsiderationBase : itemTaxableBase;
+        const baseAmount = entry.applicableOn === "total" ? totalBase : taxableBase;
         const taxAmount = baseAmount * (entry.taxPercentage / 100);
         
         return {
@@ -379,6 +405,8 @@ export const createPurchaseBill = async (body: CreatePurchaseBillInput, t: Trans
           taxName: entry.taxName,
           applicableOn: entry.applicableOn,
           taxAmount: parseFloat(taxAmount.toFixed(2)),
+          isActive: true,
+          isDeleted: false,
         };
       }),
       { transaction: t, validate: true }
@@ -413,7 +441,7 @@ export const getPurchaseBillById = async (id: string, companyId: string) => {
 export const getPurchaseBillsByCompany = async (companyId: string) => {
   return await PurchaseBill.findAll({
     where: { companyId, isDeleted: false },
-    order: [["billDate", "DESC"]],
+    order: [["purchaseBillDate", "DESC"]],
   });
 };
 
@@ -421,7 +449,7 @@ export const getPurchaseBillsByCompany = async (companyId: string) => {
 export const getPurchaseBillsByVendor = async (vendorId: string, companyId: string) => {
   return await PurchaseBill.findAll({
     where: { vendorId, companyId, isDeleted: false },
-    order: [["billDate", "DESC"]],
+    order: [["purchaseBillDate", "DESC"]],
   });
 };
 
@@ -504,7 +532,7 @@ export const updatePurchaseBill = async (
     );
 
     // Check payment status before modification
-    if (["Open", "Partially Paid"].includes((existingPurchaseBill as any).status)) {
+    if (["Closed", "Partially Paid"].includes((existingPurchaseBill as any).status)) {
       throw new Error("Purchase bill with payments cannot be modified");
     }
 
@@ -533,6 +561,7 @@ export const updatePurchaseBill = async (
         sgst: parseFloat(calculated.totalSgst.toFixed(2)),
         igst: parseFloat(calculated.totalIgst.toFixed(2)),
         total: parseFloat(calculated.total.toFixed(2)),
+        balance: parseFloat(newBalance.toFixed(2)),
       },
       { where: { id, companyId }, transaction: t }
     );
@@ -560,12 +589,21 @@ export const updatePurchaseBill = async (
 
       if (mergedData.tdsTcsEntries.length > 0) {
         // Calculate base amounts for TDS/TCS
-        const itemTaxableBase = calculated.subTotal - calculated.finalDiscount;
-        const totalConsiderationBase = itemTaxableBase + (mergedData.shippingAmount || 0);
+        const taxableBase = calculated.subTotal - calculated.finalDiscount;
+
+        const totalBase = mergedData.reverseCharge
+          ? taxableBase
+              + (mergedData.shippingAmount || 0)
+          : taxableBase
+              + calculated.totalCgst
+              + calculated.totalSgst
+              + calculated.totalIgst
+              + calculated.totalCess
+              + (mergedData.shippingAmount || 0);
         
         await PurchaseBillTdsTcs.bulkCreate(
           mergedData.tdsTcsEntries.map(entry => {
-            const baseAmount = entry.applicableOn === "total" ? totalConsiderationBase : itemTaxableBase;
+            const baseAmount = entry.applicableOn === "total" ? totalBase : taxableBase;
             const taxAmount = baseAmount * (entry.taxPercentage / 100);
             
             return {
@@ -576,6 +614,8 @@ export const updatePurchaseBill = async (
               taxName: entry.taxName,
               applicableOn: entry.applicableOn,
               taxAmount: parseFloat(taxAmount.toFixed(2)),
+              isActive: true,
+              isDeleted: false,
             };
           }),
           { transaction: t, validate: true }
@@ -597,18 +637,80 @@ export const updatePurchaseBill = async (
 };
 
 // Soft delete purchase bill
-export const deletePurchaseBill = async (id: string, companyId: string, t: Transaction) => {
-  return await PurchaseBill.update(
+export const deletePurchaseBill = async (
+  id: string,
+  companyId: string,
+  t: Transaction
+) => {
+  // Fetch purchase bill
+  const purchaseBill = await PurchaseBill.findOne({
+    where: { id, companyId, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!purchaseBill) {
+    throw new Error("Purchase bill not found");
+  }
+
+  // Block delete if bill is not open
+  if (purchaseBill.status !== "Open") {
+    throw new Error(
+      "Only OPEN purchase bills can be deleted"
+    );
+  }
+
+  // Check for linked payments
+  const paymentCount = await PaymentsDocuments.count({
+    where: {
+      documentId: id,
+      documentType: "PurchaseBill",
+    },
+    transaction: t,
+  });
+
+  if (paymentCount > 0) {
+    throw new Error(
+      "Purchase bill has linked payments and cannot be deleted"
+    );
+  }
+
+  // Soft delete TDS/TCS entries
+  await PurchaseBillTdsTcs.update(
     { isActive: false, isDeleted: true },
-    { where: { id, companyId, isDeleted: false }, transaction: t }
+    {
+      where: { purchaseBillId: id },
+      transaction: t,
+    }
   );
+
+  // Soft delete purchase bill items
+  await PurchaseBillItem.update(
+    { isActive: false, isDeleted: true },
+    {
+      where: { purchaseBillId: id },
+      transaction: t,
+    }
+  );
+
+  // Safe soft delete purchase bill
+  await PurchaseBill.update(
+    { isActive: false, isDeleted: true },
+    {
+      where: { id, companyId },
+      transaction: t,
+    }
+  );
+
+  return { success: true };
 };
+
 
 // Search purchase bill with filters
 export interface SearchPurchaseBillFilters {
   companyId: string;
   vendorName?: string;
-  purchaseBillNumber?: string;
+  purchaseBillNo?: string;
   status?: string;
   city?: string;
   itemName?: string;
@@ -625,9 +727,9 @@ export const searchPurchaseBill = async (filters: SearchPurchaseBillFilters) => 
   };
 
   // Filter by purchase bill number
-  if (filters.purchaseBillNumber) {
-    whereConditions.purchaseBillNumber = {
-      [Op.like]: `%${filters.purchaseBillNumber}%`,
+  if (filters.purchaseBillNo) {
+    whereConditions.purchaseBillNo = {
+      [Op.like]: `%${filters.purchaseBillNo}%`,
     };
   }
 
@@ -641,7 +743,7 @@ export const searchPurchaseBill = async (filters: SearchPurchaseBillFilters) => 
     const dateFilter: any = {};
     if (filters.issueDateFrom) dateFilter[Op.gte] = filters.issueDateFrom;
     if (filters.issueDateTo) dateFilter[Op.lte] = filters.issueDateTo;
-    whereConditions.billDate = dateFilter;
+    whereConditions.purchaseBillDate = dateFilter;
   }
 
   // Filter by due date range
@@ -714,20 +816,21 @@ export const searchPurchaseBill = async (filters: SearchPurchaseBillFilters) => 
   return await PurchaseBill.findAll({
     where: whereConditions,
     include: includeArray,
-    order: [["billDate", "DESC"]],
+    order: [["purchaseBillDate", "DESC"]],
     subQuery: false,
   });
 };
 
 // Convert Purchase Bill to Payment (Only Amount Required)
 export const convertPurchaseBillToPayment = async (
-  purchaseBillId: string,
   companyId: string,
+  purchaseBillId: string,
   paymentData: { 
     paymentAmount: number;
     paymentNo: string;
     referenceNo: string;
     method: string;
+    bankCharges?: number;
   },
   t: Transaction
 ) => {
@@ -743,6 +846,19 @@ export const convertPurchaseBillToPayment = async (
     throw new Error(`Payment amount cannot exceed bill balance of ${purchaseBill.balance}`);
   }
 
+  const existingPayment = await Payments.findOne({
+      where: {
+        companyId,
+        paymentNo: paymentData.paymentNo,
+        isDeleted: false,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+  
+    if (existingPayment) {
+      throw new Error("Duplicate payment detected");
+    }
 
   // Create payment (do not use invoiceId/purchaseBillId fields)
   const payment = await Payments.create(
@@ -756,12 +872,11 @@ export const convertPurchaseBillToPayment = async (
       paymentDate: new Date(),
       referenceNo: paymentData.referenceNo,
       method: paymentData.method as PaymentMethod,
-      bankCharges: 0,
-      amountReceived: null,
+      bankCharges: paymentData.bankCharges,
+      amountReceived: paymentData.paymentAmount,
       amountUsedForPayments: paymentData.paymentAmount,
       amountInExcess: 0,
       memo: `Payment for Purchase Bill ${purchaseBill.invoiceNo}`,
-      status: "Active",
       isActive: true,
       isDeleted: false,
     },
@@ -775,13 +890,15 @@ export const convertPurchaseBillToPayment = async (
       documentId: purchaseBill.id,
       documentType: "PurchaseBill",
       paymentValue: paymentData.paymentAmount,
+      isActive: true,
+      isDeleted: false,
     },
     { transaction: t, validate: true }
   );
 
   // Update purchase bill balance and status
   const newBalance = Number(purchaseBill.balance) - paymentData.paymentAmount;
-  const newStatus = newBalance === 0 ? "Paid" : "Partial";
+  const newStatus = newBalance === 0 ? "Closed" : "Partially Paid";
 
   await PurchaseBill.update(
     { 

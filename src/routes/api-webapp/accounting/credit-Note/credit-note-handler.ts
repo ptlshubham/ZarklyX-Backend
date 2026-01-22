@@ -145,7 +145,7 @@ const calculateCreditNoteTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply !== companyState, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -181,7 +181,7 @@ const calculateCreditNoteTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (isTaxInvoice && shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply !== companyState) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -451,11 +451,47 @@ export const updateCreditNote = async (
 };
 
 // Soft delete credit note
-export const deleteCreditNote = async (id: string, companyId: string, t: Transaction) => {
-  return await CreditNote.update(
+export const deleteCreditNote = async (
+  id: string,
+  companyId: string,
+  t: Transaction
+) => {
+  // Fetch credit note with lock
+  const creditNote = await CreditNote.findOne({
+    where: { id, companyId, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!creditNote) {
+    throw new Error("Credit Note not found");
+  }
+
+  // Soft delete credit note items
+  await CreditNoteItem.update(
     { isActive: false, isDeleted: true },
-    { where: { id, companyId, isDeleted: false }, transaction: t }
+    {
+      where: { creditNoteId: id },
+      transaction: t,
+    }
   );
+
+  // Soft delete credit note
+  await CreditNote.update(
+    {
+      isActive: false,
+      isDeleted: true,
+    },
+    {
+      where: { id, companyId },
+      transaction: t,
+    }
+  );
+  return {
+    success: true,
+    message: "Credit Note deleted successfully",
+    creditNoteId: id,
+  };
 };
 
 // Search credit note with filters

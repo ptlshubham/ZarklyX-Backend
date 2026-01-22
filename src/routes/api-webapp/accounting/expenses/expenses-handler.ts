@@ -112,7 +112,7 @@ const calculateExpenseTotals = (
 
     // Apply tax split only if not reverse charge
     if (!reverseCharge && itemTax > 0) {
-      const taxTotals = applyTaxSplit(baseAmount, itemTax, placeOfSupply !== companyState, {
+      const taxTotals = applyTaxSplit(baseAmount, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
         cgst: totalCgst,
         sgst: totalSgst,
         igst: totalIgst,
@@ -375,6 +375,8 @@ export const updateExpense = async (id: string, companyId: string, data: Partial
           expenseId: id,
           companyId: companyId,
           totalAmount: lineItemTotal.totalAmount,
+          isActive: true,
+          isDeleted: false,
         };
       })
     );

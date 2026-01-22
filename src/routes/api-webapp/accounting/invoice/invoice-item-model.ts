@@ -29,6 +29,8 @@ export class InvoiceItem extends Model<
     declare taxable: number | null; // Taxable amount (after discount, before tax)
     declare taxAmount: number | null;
     declare totalAmount: number;
+    declare isActive: boolean;
+    declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -127,6 +129,16 @@ export class InvoiceItem extends Model<
                     type: DataTypes.DECIMAL(12, 2),
                     allowNull: false,
                     comment: 'Total amount for this line item',
+                }, 
+                isActive: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: true,
+                },
+                isDeleted: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
                 },
                 createdAt: {
                     type: DataTypes.DATE,

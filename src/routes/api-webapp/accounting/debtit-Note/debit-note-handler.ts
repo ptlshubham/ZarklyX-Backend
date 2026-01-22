@@ -150,7 +150,7 @@ const calculateDebitNoteTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply !== companyState, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -186,7 +186,7 @@ const calculateDebitNoteTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (isTaxInvoice && shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply !== companyState) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -506,11 +506,47 @@ export const updateDebitNote = async (
 };
 
 // Soft delete debit note
-export const deleteDebitNote = async (id: string, companyId: string, t: Transaction) => {
-  return await DebitNote.update(
+export const deleteDebitNote = async (
+  id: string,
+  companyId: string,
+  t: Transaction
+) => {
+  // Fetch debit note with lock
+  const debitNote = await DebitNote.findOne({
+    where: { id, companyId, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!debitNote) {
+    throw new Error("Debit Note not found");
+  }
+
+  // Soft delete debit note items
+  await DebitNoteItem.update(
     { isActive: false, isDeleted: true },
-    { where: { id, companyId, isDeleted: false }, transaction: t }
+    {
+      where: { debitNoteId: id },
+      transaction: t,
+    }
   );
+
+  // Soft delete debit note
+  await DebitNote.update(
+    {
+      isActive: false,
+      isDeleted: true,
+    },
+    {
+      where: { id, companyId },
+      transaction: t,
+    }
+  );
+  return {
+    success: true,
+    message: "Debit Note deleted successfully",
+    creditNoteId: id,
+  };
 };
 
 // Search debit note with filters

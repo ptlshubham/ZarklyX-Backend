@@ -169,12 +169,12 @@ router.delete("/deletePurchaseOrder/:id", async (req: Request, res: Response): P
   try {
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
-    const [affectedRows] = await deletePurchaseOrder(
+    const result = await deletePurchaseOrder(
       id,
       req.query.companyId as string,
       t
     );
-    if (affectedRows === 0) {
+    if (!result) {
       await t.rollback();
       return res.status(404).json({
         success: false,
