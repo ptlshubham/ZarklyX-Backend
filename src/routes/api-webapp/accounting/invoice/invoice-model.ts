@@ -80,8 +80,11 @@ export class Invoice extends Model<
     declare igst: number | null; // Tax percentage
     declare total: number; // Tax percentage
     declare balance: number // remaining balance after paying
+    declare publicToken: string | null;
     declare isActive: boolean;
     declare isDeleted: boolean;
+    declare lastReminderType : string | null;
+    declare lastDueReminderSentAt: CreationOptional<Date>;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -286,6 +289,11 @@ export class Invoice extends Model<
                     allowNull: false,
                     defaultValue: 0,
                 },
+                publicToken: {
+                    type: DataTypes.STRING,
+                    allowNull: true,
+                    unique: true,
+                },
                 isActive: {
                     type: DataTypes.BOOLEAN,
                     allowNull: false,
@@ -295,6 +303,14 @@ export class Invoice extends Model<
                     type: DataTypes.BOOLEAN,
                     allowNull: false,
                     defaultValue: false,
+                },
+                lastReminderType: {
+                    type: DataTypes.ENUM('BEFORE_3_DAYS','BEFORE_1_DAYS','OVERDUE'),
+                    allowNull: true,
+                },
+                lastDueReminderSentAt: {
+                    type: DataTypes.DATE,
+                    allowNull: true
                 },
                 createdAt: {
                     type: DataTypes.DATE,
