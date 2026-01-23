@@ -31,7 +31,7 @@ const router = express.Router();
  * Get all companies associated with the logged-in user
  * Returns list of companies with user's role in each
  */
-router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promise<any>=> {
+router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promise<any> => {
   try {
     const userId: any = (req as any).user?.id;
     if (!userId) {
@@ -80,11 +80,11 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
 });
 
 /**
- * GET /company/:companyId/details
+ * GET /company/details/:companyId
  * Get detailed information about a specific company
  * (Same as Facebook profile view)
  */
-router.get("/:companyId/details",
+router.get("/details/:companyId",
   tokenMiddleWare,
   async (req: Request, res: Response): Promise<any> => {
     try {
@@ -138,7 +138,7 @@ router.get("/:companyId/details",
  */
 router.post("/switch/:companyId",
   tokenMiddleWare,
-  async (req: Request, res: Response): Promise<any>=> {
+  async (req: Request, res: Response): Promise<any> => {
     try {
       const userId: any = (req as any).user?.id;
       let { companyId } = req.params;
@@ -191,7 +191,7 @@ router.post("/switch/:companyId",
  * Create a new company (Admin only)
  */
 router.post("/addCompany",
-  async (req: Request, res: Response): Promise<any>=> {
+  async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -200,6 +200,8 @@ router.post("/addCompany",
         description,
         email,
         contact,
+        isdCode,
+        isoCode,
         address,
         city,
         state,
@@ -213,6 +215,26 @@ router.post("/addCompany",
         industryType,
         accountType,
         businessArea,
+        bankName,
+        branchName,
+        adCode,
+        upiId,
+        accountNumber,
+        ifscCode,
+        swiftCode,
+        accountHolderName,
+        tin,
+        lst,
+        pan,
+        fssaiNo,
+        dlNo,
+        cst,
+        tan,
+        currency,
+        gstin,
+        serviceTaxNumber,
+        taxationType,
+        taxInclusiveRate,
       } = req.body;
 
       if (!userId) {
@@ -239,6 +261,8 @@ router.post("/addCompany",
           description,
           email,
           contact,
+          isdCode,
+          isoCode,
           address,
           city,
           state,
@@ -252,6 +276,26 @@ router.post("/addCompany",
           industryType,
           accountType,
           businessArea,
+          bankName,
+          branchName,
+          adCode,
+          upiId,
+          accountNumber,
+          ifscCode,
+          swiftCode,
+          accountHolderName,
+          tin,
+          lst,
+          pan,
+          fssaiNo,
+          dlNo,
+          cst,
+          tan,
+          currency,
+          gstin,
+          serviceTaxNumber,
+          taxationType,
+          taxInclusiveRate,
           isActive: true,
         },
         t
@@ -321,30 +365,31 @@ router.post("/addCompany",
 //   }
 // });
 /**
- * PUT /company/:companyId/update
+ * PUT /company/updateById/:id
  * Update company details (Admin/Owner only)
  */
-router.put("/:companyId/update",
-  async (req: Request, res: Response): Promise<any>=> {
+router.put("/updateById/:id",
+  async (req: Request, res: Response): Promise<any> => {
+    console.log("Update Company API called", req.body);
     const t = await dbInstance.transaction();
     try {
-      const userId: any = (req as any).user?.id;
-      let { companyId } = req.params;
-      if (Array.isArray(companyId)) companyId = companyId[0];
+      const userId: any = (req as any).user?.id || req.body.user_id;
+      let { id } = req.params;
+      if (Array.isArray(id)) id = id[0];
 
       if (!userId) {
         await t.rollback();
         return serverError(res, "User ID not found in token");
       }
 
-      if (!companyId) {
+      if (!id) {
         await t.rollback();
         return serverError(res, "Company ID is required");
       }
 
       // Check if user is admin/owner of company
       //   const userCompany = await UserCompany.findOne({
-      //     where: { userId, companyId: parseInt(companyId) },
+      //     where: { userId, companyId: parseInt(id) },
       //   });
 
       //   if (!userCompany || !["admin", "manager"].includes(userCompany.role)) {
@@ -354,7 +399,7 @@ router.put("/:companyId/update",
 
       // Update company
       const updatedCompany = await updateCompany(
-        companyId,
+        id,
         req.body,
         t
       );
@@ -379,7 +424,7 @@ router.put("/:companyId/update",
  * Add a user to a company (Admin/Owner only)
  */
 router.post("/:companyId/add-user",
-  async (req: Request, res: Response): Promise<any>=> {
+  async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -456,7 +501,7 @@ router.post("/:companyId/add-user",
  * Remove a user from a company (Admin/Owner only)
  */
 router.delete("/:companyId/remove-user/:targetUserId",
-  async (req: Request, res: Response): Promise<any>=> {
+  async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
