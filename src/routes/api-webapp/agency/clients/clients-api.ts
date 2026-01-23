@@ -1381,7 +1381,8 @@ router.get("/clients/getAll", async (req: Request, res: Response): Promise<void>
 router.get("/clients/getById/:id",
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const id = req.params.id;
+      let id = req.params.id;
+      if (Array.isArray(id)) id = id[0];
       console.log(id)
       if (!id || id.trim() === '') {
         res.status(400).json({
@@ -1415,7 +1416,8 @@ router.get("/clients/by-user/:userId",
   async (req: Request, res: Response): Promise<void> => {
     console.log(req.params.userId);
     try {
-      const { userId } = req.params;
+      let { userId } = req.params;
+      if (Array.isArray(userId)) userId = userId[0];
 
       if (!userId || userId.trim() === "") {
         res.status(400).json({

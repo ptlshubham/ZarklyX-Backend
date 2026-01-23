@@ -55,8 +55,8 @@ export = {
 
     //For Mobile App send OTP
     email: {
-      SENDER_EMAIL_HOST: "smtp.hostinger.com",
-      SENDER_EMAIL_PORT: "465",
+      SENDER_EMAIL_HOST: "smtp.gmail.com",
+      SENDER_EMAIL_PORT: "587",
      SENDER_EMAIL_ID: "zarklyxconnection@gmail.com",// br.rinkal1997@gmail.com
       SENDER_EMAIL_PASSWORD: "iysmcygimxwwxreq", // dmtz kgzb vadp cdki
     },
