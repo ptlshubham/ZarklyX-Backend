@@ -41,9 +41,39 @@ async function ensureValidAccessToken(tokens: any): Promise<void> {
     try {
       const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
       tokens.access_token = refreshed.access_token;
+      if (refreshed.refresh_token) {
+        tokens.refresh_token = refreshed.refresh_token;
+      }
     } catch (error: any) {
       console.error('❌ Failed to refresh token:', error.message);
       throw new Error('Failed to refresh access token');
+    }
+  } else if (tokens.access_token && tokens.refresh_token) {
+    // Token exists - try to verify it's valid, if not refresh it
+    try {
+      const verifyUrl = 'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + tokens.access_token;
+      const verifyResponse = await fetch(verifyUrl);
+      
+      // If token is invalid (401 or 400), refresh it
+      if (!verifyResponse.ok) {
+        const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
+        tokens.access_token = refreshed.access_token;
+        if (refreshed.refresh_token) {
+          tokens.refresh_token = refreshed.refresh_token;
+        }
+      }
+    } catch (error: any) {
+      // If verification fails, try to refresh
+      try {
+        const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
+        tokens.access_token = refreshed.access_token;
+        if (refreshed.refresh_token) {
+          tokens.refresh_token = refreshed.refresh_token;
+        }
+      } catch (refreshError: any) {
+        console.error('❌ Failed to refresh token:', refreshError.message);
+        throw new Error('Failed to refresh access token');
+      }
     }
   }
 }
@@ -2451,6 +2481,515 @@ router.get("/me/files/:id/share-link", async (req: Request, res: Response): Prom
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to get share link'
+    });
+  }
+});
+
+/**
+ * ✅ GET /drive/activity/:id
+ * Purpose: Get activity/revisions for a file or folder
+ * For folders: shows all activities of files within it (created, edited, uploaded)
+ * For files: shows revision history or file metadata
+ * Params:
+ *   - id (required, URL): File ID to get activity for
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, data: [ { timestamp, action, description, actor, actorInitial, relatedItems } ] }
+ */
+router.get("/activity/:id", async (req: Request, res: Response): Promise<void> => {
+  try {
+    let { access_token, refresh_token } = extractTokens(req);
+    const fileId = req.params.id;
+
+    if (!access_token && !refresh_token) {
+      res.status(401).json({ success: false, message: "No access token provided" });
+      return;
+    }
+
+    // Ensure valid access token - refresh if needed
+    const tokens = { access_token, refresh_token };
+    await ensureValidAccessToken(tokens);
+    
+    // Update access token after potential refresh
+    access_token = tokens.access_token;
+
+    // Get file metadata
+    const fileMetadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,parents,createdTime,modifiedTime,lastModifyingUser(displayName,emailAddress)`;
+    
+    const fileResponse = await fetch(fileMetadataUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!fileResponse.ok) {
+      const errorBody = await fileResponse.text();
+      console.error('❌ Google API Error (file metadata):', fileResponse.status, errorBody);
+      throw new Error(`Failed to get file metadata: ${fileResponse.status} ${fileResponse.statusText}`);
+    }
+
+    const fileMetadata: any = await fileResponse.json();
+    const isFolderView = fileMetadata.mimeType?.includes('folder');
+    let activityData: any[] = [];
+
+    if (isFolderView) {
+      // Folder: Use Activity API to get all activities
+      console.log(`📁 Loading activities for folder: ${fileMetadata.name}`);
+      
+      try {
+        // Try Activity API first (v3 endpoint for file activity)
+        const activityUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/activity?pageSize=100`;
+        
+        const activityResponse = await fetch(activityUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${access_token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (activityResponse.ok) {
+          const activityDataResponse: any = await activityResponse.json();
+          const activities = activityDataResponse.activities || [];
+
+          console.log(`✅ Got ${activities.length} activities from Activity API`);
+
+          if (activities.length > 0) {
+            // Process activities
+            activities.forEach((activity: any) => {
+              const timestamp = activity.time;
+              const actor = activity.actors?.[0]?.displayName || 'Unknown User';
+              const actorInitial = actor.charAt(0).toUpperCase();
+              const activityType = activity.type;
+              const targets = activity.targets || [];
+
+              let description = '';
+              let action = 'Modified';
+
+              switch (activityType) {
+                case 'create':
+                  description = targets.length === 1 ? 'You created an item' : `You created ${targets.length} items`;
+                  action = 'Created';
+                  break;
+                case 'edit':
+                  description = targets.length === 1 ? 'You edited an item' : `You edited ${targets.length} items`;
+                  action = 'Modified';
+                  break;
+                case 'move':
+                  description = targets.length === 1 ? 'You moved an item' : `You moved ${targets.length} items`;
+                  action = 'Moved';
+                  break;
+                case 'move_to_trash':
+                  description = targets.length === 1 ? 'You moved an item to the bin' : `You moved ${targets.length} items to the bin`;
+                  action = 'Trashed';
+                  break;
+                case 'restore':
+                  description = targets.length === 1 ? 'You restored an item' : `You restored ${targets.length} items`;
+                  action = 'Restored';
+                  break;
+                case 'rename':
+                  description = 'You renamed an item';
+                  action = 'Renamed';
+                  break;
+                case 'copy':
+                  description = targets.length === 1 ? 'You copied an item' : `You copied ${targets.length} items`;
+                  action = 'Copied';
+                  break;
+                case 'upload':
+                  description = targets.length === 1 ? 'You uploaded an item' : `You uploaded ${targets.length} items`;
+                  action = 'Created';
+                  break;
+                default:
+                  description = `You performed an action`;
+              }
+
+              // Build related items from targets
+              const relatedItems = targets
+                .map((target: any) => ({
+                  name: target.driveItem?.name || 'Item',
+                  type: target.driveItem?.mimeType?.includes('folder') ? 'folder' : 'file'
+                }))
+                .filter((item: any) => item.name !== 'Item');
+
+              if (description && timestamp) {
+                activityData.push({
+                  timestamp,
+                  action,
+                  description,
+                  actor,
+                  actorInitial,
+                  relatedItems: relatedItems.length > 0 ? relatedItems : [{ name: fileMetadata.name, type: 'folder' }]
+                });
+              }
+            });
+          }
+        } else {
+          const errorText = await activityResponse.text();
+          console.log(`⚠️ Activity API returned status: ${activityResponse.status}`, errorText.substring(0, 100));
+        }
+      } catch (error: any) {
+        console.error('⚠️ Activity API error:', error.message);
+      }
+
+      // Fallback: If Activity API returned nothing, get detailed file history
+      if (activityData.length === 0) {
+        console.log('📋 Falling back to file history method - querying all files to detect bulk actions');
+
+        // Get all files in folder - both active and trashed to detect moves
+        const allFilesUrl = `https://www.googleapis.com/drive/v3/files?q='${fileId}' in parents&fields=files(id,name,mimeType,createdTime,modifiedTime,trashed,trashedTime,lastModifyingUser(displayName,emailAddress))&pageSize=100&orderBy=modifiedTime desc`;
+        
+        const allFilesResponse = await fetch(allFilesUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${access_token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (allFilesResponse.ok) {
+          const allFilesData: any = await allFilesResponse.json();
+          const allFiles = allFilesData.files || [];
+          
+          const activeFiles = allFiles.filter((f: any) => !f.trashed);
+          const trashedFiles = allFiles.filter((f: any) => f.trashed);
+
+          // Group activities by time and action type to detect bulk operations
+          const activitiesByTimestamp: { [key: string]: any[] } = {};
+
+          // Collect all file activities
+          for (const file of activeFiles) {
+            const actor = file.lastModifyingUser?.displayName || 'Unknown User';
+            const actorInitial = actor.charAt(0).toUpperCase();
+            const fileType = file.mimeType?.includes('folder') ? 'folder' : 'file';
+
+            const fileRevisionsUrl = `https://www.googleapis.com/drive/v3/files/${file.id}/revisions?fields=revisions(id,modifiedTime,lastModifyingUser(displayName,emailAddress))&pageSize=50`;
+            
+            try {
+              const fileRevisionsResponse = await fetch(fileRevisionsUrl, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${access_token}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+
+              if (fileRevisionsResponse.ok) {
+                const fileRevisionsData: any = await fileRevisionsResponse.json();
+                const fileRevisions = fileRevisionsData.revisions || [];
+
+                fileRevisions.forEach((revision: any, index: number) => {
+                  const revisionActor = revision.lastModifyingUser?.displayName || 'Unknown User';
+                  const revisionActorInitial = revisionActor.charAt(0).toUpperCase();
+                  const timestamp = revision.modifiedTime;
+
+                  if (index === fileRevisions.length - 1) {
+                    // Creation activity
+                    const timeKey = new Date(timestamp).toISOString().split('T')[0] + '-create-' + revisionActor;
+                    if (!activitiesByTimestamp[timeKey]) {
+                      activitiesByTimestamp[timeKey] = [];
+                    }
+                    activitiesByTimestamp[timeKey].push({
+                      timestamp,
+                      action: 'Created',
+                      description: 'You created an item in',
+                      actor: revisionActor,
+                      actorInitial: revisionActorInitial,
+                      relatedItems: [
+                        { name: fileMetadata.name, type: 'folder' },
+                        { name: file.name, type: fileType }
+                      ]
+                    });
+                  } else {
+                    // Modification activity - add individually
+                    activityData.push({
+                      timestamp,
+                      action: 'Modified',
+                      description: `You edited an item`,
+                      actor: revisionActor,
+                      actorInitial: revisionActorInitial,
+                      relatedItems: [
+                        { name: file.name, type: fileType }
+                      ]
+                    });
+                  }
+                });
+              } else if (fileRevisionsResponse.status === 403) {
+                // No revision support
+                const timeKey = new Date(file.createdTime).toISOString().split('T')[0] + '-create-' + actor;
+                if (!activitiesByTimestamp[timeKey]) {
+                  activitiesByTimestamp[timeKey] = [];
+                }
+                activitiesByTimestamp[timeKey].push({
+                  timestamp: file.createdTime,
+                  action: 'Created',
+                  description: 'You created an item in',
+                  actor,
+                  actorInitial,
+                  relatedItems: [
+                    { name: fileMetadata.name, type: 'folder' },
+                    { name: file.name, type: fileType }
+                  ]
+                });
+              }
+            } catch (err) {
+              console.log(`⚠️ Error getting revisions for ${file.name}:`, err);
+            }
+          }
+
+          // Process trashed files as bulk "moved to bin" actions
+          if (trashedFiles.length > 0) {
+            const trashedByTime: { [key: string]: any[] } = {};
+            trashedFiles.forEach((file: any) => {
+              const trashedTime = file.trashedTime || file.modifiedTime;
+              const actor = file.lastModifyingUser?.displayName || 'Unknown User';
+              const actorInitial = actor.charAt(0).toUpperCase();
+              const fileType = file.mimeType?.includes('folder') ? 'folder' : 'file';
+              
+              const timeKey = new Date(trashedTime).toISOString().split('T')[0] + '-' + actor;
+              if (!trashedByTime[timeKey]) {
+                trashedByTime[timeKey] = [];
+              }
+              
+              trashedByTime[timeKey].push({
+                timestamp: trashedTime,
+                actor,
+                actorInitial,
+                file: { name: file.name, type: fileType }
+              });
+            });
+
+            // Add grouped trash activities
+            Object.entries(trashedByTime).forEach(([key, items]: [string, any[]]) => {
+              if (items.length > 0) {
+                const firstItem = items[0];
+                activityData.push({
+                  timestamp: firstItem.timestamp,
+                  action: 'Trashed',
+                  description: items.length === 1 ? 'You moved an item to the bin' : `You moved ${items.length} items to the bin`,
+                  actor: firstItem.actor,
+                  actorInitial: firstItem.actorInitial,
+                  relatedItems: items.map(i => i.file)
+                });
+              }
+            });
+          }
+
+          // Add grouped creation activities
+          Object.entries(activitiesByTimestamp).forEach(([key, items]: [string, any[]]) => {
+            if (items.length > 1) {
+              const firstItem = items[0];
+              activityData.push({
+                timestamp: firstItem.timestamp,
+                action: firstItem.action,
+                description: `You created ${items.length} items in`,
+                actor: firstItem.actor,
+                actorInitial: firstItem.actorInitial,
+                relatedItems: items.flatMap(i => i.relatedItems)
+              });
+            } else if (items.length === 1) {
+              activityData.push(items[0]);
+            }
+          });
+        }
+      }
+
+      // Sort by timestamp, most recent first
+      activityData.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    } else {
+      // File: Get its revision history
+      const revisionsUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/revisions?fields=revisions(id,modifiedTime,lastModifyingUser(displayName,emailAddress))&pageSize=10`;
+      
+      const revisionsResponse = await fetch(revisionsUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${access_token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (revisionsResponse.ok) {
+        // File supports revisions
+        const revisionsData: any = await revisionsResponse.json();
+        const revisions = revisionsData.revisions || [];
+
+        activityData = revisions.map((revision: any, index: number) => {
+          const actor = revision.lastModifyingUser?.displayName || 'Unknown User';
+          const actorInitial = actor.charAt(0).toUpperCase();
+          
+          let action = 'Modified';
+          let description = 'You edited an item';
+          if (index === revisions.length - 1) {
+            action = 'Created';
+            description = 'You uploaded an item';
+          }
+
+          return {
+            timestamp: revision.modifiedTime,
+            action: action,
+            description: description,
+            actor: actor,
+            actorInitial: actorInitial,
+            relatedItems: fileMetadata.name ? [
+              {
+                name: fileMetadata.name,
+                type: 'file'
+              }
+            ] : []
+          };
+        });
+      } else if (revisionsResponse.status === 403) {
+        // File doesn't support revisions
+        console.log(`⚠️  File ${fileId} does not support revisions, using file metadata`);
+        
+        const actor = fileMetadata.lastModifyingUser?.displayName || 'Unknown User';
+        const actorInitial = actor.charAt(0).toUpperCase();
+
+        // Create activity from file metadata
+        if (fileMetadata.createdTime) {
+          activityData.push({
+            timestamp: fileMetadata.createdTime,
+            action: 'Created',
+            description: 'You uploaded an item',
+            actor: actor,
+            actorInitial: actorInitial,
+            relatedItems: fileMetadata.name ? [
+              {
+                name: fileMetadata.name,
+                type: 'file'
+              }
+            ] : []
+          });
+        }
+
+        if (fileMetadata.modifiedTime && fileMetadata.modifiedTime !== fileMetadata.createdTime) {
+          activityData.push({
+            timestamp: fileMetadata.modifiedTime,
+            action: 'Modified',
+            description: 'You edited an item',
+            actor: actor,
+            actorInitial: actorInitial,
+            relatedItems: fileMetadata.name ? [
+              {
+                name: fileMetadata.name,
+                type: 'file'
+              }
+            ] : []
+          });
+        }
+      } else {
+        // Other error
+        const errorBody = await revisionsResponse.text();
+        console.error('❌ Google API Error (revisions):', revisionsResponse.status, errorBody);
+        throw new Error(`Failed to get revisions: ${revisionsResponse.status} ${revisionsResponse.statusText}`);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: activityData
+    });
+    return;
+
+  } catch (error: any) {
+    console.error('❌ Failed to get activity:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get activity'
+    });
+  }
+});
+
+/**
+ * ✅ GET /drive/file-details/:id
+ * Get complete file/folder metadata including timestamps and additional details
+ */
+router.get("/file-details/:id", async (req: Request, res: Response): Promise<void> => {
+  try {
+    let { access_token, refresh_token } = extractTokens(req);
+    const fileId = req.params.id;
+
+    if (!access_token && !refresh_token) {
+      res.status(401).json({ success: false, message: "No access token provided" });
+      return;
+    }
+
+    // Ensure valid access token - refresh if needed
+    const tokens = { access_token, refresh_token };
+    await ensureValidAccessToken(tokens);
+    
+    // Update access token after potential refresh
+    access_token = tokens.access_token;
+
+    // Fetch comprehensive file metadata
+    const fileMetadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,description,createdTime,modifiedTime,viewedByMeTime,webViewLink,owners,size,parents,lastModifyingUser(displayName,emailAddress,photoLink)`;
+    
+    const fileResponse = await fetch(fileMetadataUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!fileResponse.ok) {
+      const errorBody = await fileResponse.text();
+      console.error('❌ Google API Error (file metadata):', fileResponse.status, errorBody);
+      throw new Error(`Failed to get file metadata: ${fileResponse.status} ${fileResponse.statusText}`);
+    }
+
+    const fileMetadata: any = await fileResponse.json();
+    
+    // Get parent folder name for location
+    let location = 'My Drive';
+    if (fileMetadata.parents && fileMetadata.parents.length > 0) {
+      const parentId = fileMetadata.parents[0];
+      try {
+        const parentUrl = `https://www.googleapis.com/drive/v3/files/${parentId}?fields=name`;
+        const parentResponse = await fetch(parentUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${access_token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (parentResponse.ok) {
+          const parentData: any = await parentResponse.json();
+          location = parentData.name || 'My Drive';
+        }
+      } catch (error) {
+        console.log('Could not fetch parent folder name, using default');
+      }
+    }
+
+    // Build response
+    const response = {
+      success: true,
+      data: {
+        id: fileMetadata.id,
+        name: fileMetadata.name,
+        mimeType: fileMetadata.mimeType,
+        description: fileMetadata.description || '',
+        createdTime: fileMetadata.createdTime,
+        modifiedTime: fileMetadata.modifiedTime,
+        viewedByMeTime: fileMetadata.viewedByMeTime,
+        location: location,
+        size: fileMetadata.size || '-',
+        owners: fileMetadata.owners || [],
+        lastModifyingUser: fileMetadata.lastModifyingUser || null,
+        webViewLink: fileMetadata.webViewLink
+      }
+    };
+
+    res.status(200).json(response);
+    return;
+
+  } catch (error: any) {
+    console.error('❌ Failed to get file details:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get file details'
     });
   }
 });
