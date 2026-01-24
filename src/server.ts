@@ -31,11 +31,25 @@ import tiktokRoutes from './routes/api-webapp/agency/social-Integration/tiktok/t
 import rolesRoutes from './routes/api-webapp/roles/roles-api';
 // const influencerRoutes = require ('./routes/api-webapp/influencer/influencer-api');
 import influencerRoutes from './routes/api-webapp/influencer/influencer-api';
+import influencerCategoryRoutes from './routes/api-webapp/superAdmin/influencer/category/influencerCategory-api';
+import influencerIndustryRoutes from './routes/api-webapp/superAdmin/influencer/industry/influencerIndustry-api';
+import influencerPlatformRoutes from './routes/api-webapp/superAdmin/influencer/platform/influencerPlatform-api';
 const bodyParser = require('body-parser');
 const cookieSession = require('cookie-session');
 
 import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
 import itTicketsRoutes from './routes/api-webapp/it-Management/it-Tickets/it-Tickets-api';
+import  itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/item-Category-api';
+import unitRouter from './routes/api-webapp/accounting/unit/unit-api';
+import itemRouter from './routes/api-webapp/accounting/item/item-api';
+import vendorRouter from './routes/api-webapp/accounting/vendor/vendor-api';
+import invoiceRouter from './routes/api-webapp/accounting/invoice/invoice-api';
+import quoteRouter from './routes/api-webapp/accounting/quote/quote-api';
+import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-note-api';
+import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
+import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
+import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
+import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
 
 import path from "path";
 const app = express();
@@ -78,6 +92,16 @@ app.use("/youtube", youtubeRoutes);
 app.use("/google-business", googleBusinessRoutes);
 app.use("/gmail", gmailRoutes);
 app.use("/google", googleRoutes);
+
+// 🔍 DEBUG: Log all /drive requests
+app.use("/drive", (req, res, next) => {
+  // console.log(`📍 [DRIVE REQUEST] ${req.method} ${req.path}`, { 
+  //   hasAccessToken: !!req.query.access_token || !!req.headers['x-access-token'],
+  //   hasRefreshToken: !!req.query.refresh_token || !!req.headers['x-refresh-token']
+  // });
+  next();
+});
+
 app.use("/drive", driveRoutes);
 app.use("/linkedin", linkedinRoutes);
 app.use("/facebook", facebookRoutes);
@@ -87,7 +111,21 @@ app.use("/twitter", twitterRoutes);
 app.use("/tiktok", tiktokRoutes);
 app.use("/roles", rolesRoutes);
 app.use("/influencer", influencerRoutes);
+app.use("/influencerCategory", influencerCategoryRoutes);
+app.use("/influencerIndustry", influencerIndustryRoutes);
+app.use("/influencerPlatform", influencerPlatformRoutes);
 app.use("/itManagement/itTickets", itTicketsRoutes);
+app.use("/accounting/item-Category",itemCategoryRoutes);
+app.use("/accounting/unit",unitRouter);
+app.use("/accounting/vendor",vendorRouter);
+app.use("/accounting/item",itemRouter);
+app.use("/accounting/invoice",invoiceRouter);
+app.use("/accounting/quote",quoteRouter);
+app.use("/accounting/credit-note",creditNoteRouter);
+app.use("/accounting/purchase-bill",purchaseBillRouter);
+app.use("/accounting/purchaseOrder",purchaseOrderRouter);
+app.use("/accounting/payments",paymentsRouter);
+app.use("/accounting/debit-note",debitNoteRouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
