@@ -23,6 +23,10 @@ export class Company extends Model<
   declare isdCode: string | null;
   declare isoCode: string | null;
   declare logo: string | null;
+  declare companyLogoLight: string | null;
+  declare companyLogoDark: string | null;
+  declare faviconLight: string | null;
+  declare faviconDark: string | null;
   declare timezone: string | null;
   declare country: string | null;
   declare state: string | null;
@@ -131,6 +135,22 @@ export class Company extends Model<
           allowNull: true,
         },
         logo: {
+          type: DataTypes.STRING(500),
+          allowNull: true,
+        },
+        companyLogoLight: {
+          type: DataTypes.STRING(500),
+          allowNull: true,
+        },
+        companyLogoDark: {
+          type: DataTypes.STRING(500),
+          allowNull: true,
+        },
+        faviconLight: {
+          type: DataTypes.STRING(500),
+          allowNull: true,
+        },
+        faviconDark: {
           type: DataTypes.STRING(500),
           allowNull: true,
         },

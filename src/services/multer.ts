@@ -50,6 +50,36 @@ export const ticketAttachmentUpload = multer({
   },
 });
 
+// Company Assets Storage (Logos and Favicons)
+const COMPANY_ASSETS_DIR = "company/assets";
+
+const companyAssetsStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = `/${config.publicPath}/${COMPANY_ASSETS_DIR}`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const companyAssetsUpload = multer({
+  storage: companyAssetsStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/svg+xml"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only jpeg/png/webp/svg files allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
 
 
 const getFileStorage = (path: string) => {
