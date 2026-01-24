@@ -893,3 +893,164 @@ export async function downloadFilesInParallel(
 
     return results;
 }
+
+/**
+ * 📤 FILE UPLOAD HANDLERS
+ */
+
+/**
+ * Handle single file upload to Google Drive
+ * @param tokens - Token object with access_token and refresh_token
+ * @param file - Multer file object
+ * @param parentId - Optional parent folder ID
+ * @returns Uploaded file metadata
+ */
+export async function handleFileUpload(
+    tokens: any,
+    file: Express.Multer.File,
+    parentId?: string
+): Promise<any> {
+    // Ensure access token is valid (refresh if expired)
+    await ensureValidAccessToken(tokens);
+
+    if (!file) {
+        throw new Error("Missing file");
+    }
+
+    const parents = parentId ? [parentId] : undefined;
+    
+    const uploaded = await uploadDriveFile(tokens, {
+        name: file.originalname,
+        mimeType: file.mimetype || "application/octet-stream",
+        data: file.buffer,
+        parents,
+    });
+
+    return uploaded;
+}
+
+/**
+ * Handle folder upload with structure preservation
+ * @param tokens - Token object with access_token and refresh_token
+ * @param files - Array of multer file objects
+ * @param folderName - Name for the root folder
+ * @param parentId - Optional parent folder ID
+ * @returns Upload result with folder ID and uploaded files list
+ */
+export async function handleFolderUpload(
+    tokens: any,
+    files: Express.Multer.File[],
+    folderName?: string,
+    parentId?: string
+): Promise<{
+    success: boolean;
+    uploadedCount: number;
+    folderId: string;
+    folderName: string;
+    files: Array<{ id: string; name: string; path: string; mimeType: string }>;
+}> {
+    // Ensure access token is valid (refresh if expired)
+    await ensureValidAccessToken(tokens);
+
+    if (!files || files.length === 0) {
+        throw new Error("Missing files");
+    }
+
+    // Determine folder name
+    let uploadFolderName = folderName;
+    
+    if (!uploadFolderName) {
+        // Fallback: extract folder name from first file's path
+        const firstFilePath = files[0].fieldname || "uploaded-folder";
+        const folderNameMatch = firstFilePath.split('/')[0];
+        uploadFolderName = folderNameMatch || "uploaded-folder";
+    }
+
+    // Create root folder for this upload
+    const rootFolder = await createFolder(tokens, uploadFolderName, parentId);
+    const rootFolderId = rootFolder.id;
+
+    // Map to track created folders: path -> folderId
+    const folderCache: Map<string, string> = new Map();
+    folderCache.set("", rootFolderId); // Root
+
+    const uploadedFiles: Array<{ id: string; name: string; path: string; mimeType: string }> = [];
+
+    // Process and upload each file
+    for (const file of files) {
+        try {
+            // Get the relative path from the file's webkitRelativePath if available
+            let filePath = (file as any).webkitRelativePath || file.fieldname || "";
+            
+            // Use the original filename from browser (preserves exact name)
+            const fileName = file.originalname;
+            
+            // Strip the root folder name from the path
+            const pathParts = filePath.split('/');
+            const rootFolderNameInPath = pathParts[0];
+            
+            // Remove root folder from path if it matches the upload folder name
+            let adjustedPath = filePath;
+            if (rootFolderNameInPath === uploadFolderName) {
+                adjustedPath = pathParts.slice(1).join('/');
+            }
+            
+            // Extract folder path from adjusted path (remove the filename)
+            const adjustedParts = adjustedPath.split('/');
+            const relativeFolderPath = adjustedParts.slice(0, -1).join('/');
+
+            // Determine target folder ID
+            let targetFolderId = rootFolderId;
+
+            // Create folder hierarchy if needed
+            if (relativeFolderPath) {
+                const folderParts = relativeFolderPath.split('/');
+                let currentPath = "";
+
+                for (const folderNameItem of folderParts) {
+                    currentPath = currentPath ? `${currentPath}/${folderNameItem}` : folderNameItem;
+
+                    if (!folderCache.has(currentPath)) {
+                        // Folder doesn't exist, create it
+                        const parentFolderPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+                        const parentFolderId = folderCache.get(parentFolderPath) || rootFolderId;
+                        
+                        const newFolder = await createFolder(tokens, folderNameItem, parentFolderId);
+                        folderCache.set(currentPath, newFolder.id);
+                        targetFolderId = newFolder.id;
+                    } else {
+                        targetFolderId = folderCache.get(currentPath)!;
+                    }
+                }
+            }
+
+            // Upload file to target folder
+            if (fileName) { // Only upload if there's an actual filename (skip folders)
+                const uploaded = await uploadDriveFile(tokens, {
+                    name: fileName,
+                    mimeType: file.mimetype || "application/octet-stream",
+                    data: file.buffer,
+                    parents: [targetFolderId],
+                });
+
+                uploadedFiles.push({
+                    id: uploaded.id || "",
+                    name: uploaded.name || fileName,
+                    path: filePath,
+                    mimeType: uploaded.mimeType || file.mimetype || "application/octet-stream",
+                });
+            }
+        } catch (fileError: any) {
+            console.error(`❌ Error uploading file ${file.originalname}:`, fileError.message);
+            // Continue with next file instead of failing entire upload
+        }
+    }
+
+    return {
+        success: true,
+        uploadedCount: uploadedFiles.length,
+        folderId: rootFolderId,
+        folderName: uploadFolderName,
+        files: uploadedFiles,
+    };
+}
