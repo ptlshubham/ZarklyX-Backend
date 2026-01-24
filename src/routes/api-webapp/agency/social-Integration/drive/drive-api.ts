@@ -1,14 +1,33 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred, renameDriveItem, moveItemToFolder, getDriveClientFromTokens, moveFileToTrash } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, updateFolderColor, updateItemStarred, getDriveClientFromTokens, moveFileToTrash } from "../../../../../services/drive-service";
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
 import JSZip from "jszip";
 import { sendEmailWithAttachments } from "../../../../../services/gmail-service";
 import multer from "multer";
-import { saveOrUpdateToken, updateAccessToken, getConnectedDrivesByCompanyId, deleteTokensByCompanyIdAndProvider } from "../../../../../services/token-store.service";
-import { notifySocialConnectionAdded, notifySocialConnectionRemoved } from "../../../../../services/socket-service";
+import { saveOrUpdateToken } from "../../../../../services/token-store.service";
+import { notifySocialConnectionAdded } from "../../../../../services/socket-service";
 import { v4 as uuidv4 } from "uuid";
+import {
+  extractTokens,
+  ensureValidAccessToken,
+  refreshToken,
+  createFolder,
+  listFolderChildren,
+  disconnectCompanyDrives,
+  downloadFilesInParallel,
+  renameFile,
+  moveMultipleFiles,
+  trashFile,
+  getFileShareInfo,
+  shareFileWithUser,
+  removeFileSharing,
+  updateFileSharingRole,
+  updateFileAccessLevel,
+  getCompanyDrives
+} from "./drive-handler";
+
 
 // Server-side temporary store for OAuth state (alternative to session)
 const oauthStateStore = new Map<string, { companyId: string; timestamp: number }>();
@@ -24,169 +43,6 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 const router = express.Router();
-
-// Helper: extract tokens from headers/query
-function extractTokens(req: Request) {
-  const access_token = ((req.headers["x-access-token"] as string) || (req.query.access_token as string) || (req.body?.access_token as string) || "").trim();
-  const refresh_token = ((req.headers["x-refresh-token"] as string) || (req.query.refresh_token as string) || (req.body?.refresh_token as string) || "").trim();
-  const tokens: any = {};
-  if (access_token) tokens.access_token = access_token;
-  if (refresh_token) tokens.refresh_token = refresh_token;
-  return tokens;
-}
-
-// Helper: Ensure access token is valid, refresh if needed
-async function ensureValidAccessToken(tokens: any): Promise<void> {
-  if (!tokens.access_token && tokens.refresh_token) {
-    try {
-      const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
-      tokens.access_token = refreshed.access_token;
-      if (refreshed.refresh_token) {
-        tokens.refresh_token = refreshed.refresh_token;
-      }
-    } catch (error: any) {
-      console.error('❌ Failed to refresh token:', error.message);
-      throw new Error('Failed to refresh access token');
-    }
-  } else if (tokens.access_token && tokens.refresh_token) {
-    // Token exists - try to verify it's valid, if not refresh it
-    try {
-      const verifyUrl = 'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + tokens.access_token;
-      const verifyResponse = await fetch(verifyUrl);
-      
-      // If token is invalid (401 or 400), refresh it
-      if (!verifyResponse.ok) {
-        const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
-        tokens.access_token = refreshed.access_token;
-        if (refreshed.refresh_token) {
-          tokens.refresh_token = refreshed.refresh_token;
-        }
-      }
-    } catch (error: any) {
-      // If verification fails, try to refresh
-      try {
-        const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
-        tokens.access_token = refreshed.access_token;
-        if (refreshed.refresh_token) {
-          tokens.refresh_token = refreshed.refresh_token;
-        }
-      } catch (refreshError: any) {
-        console.error('❌ Failed to refresh token:', refreshError.message);
-        throw new Error('Failed to refresh access token');
-      }
-    }
-  }
-}
-
-// Helper: Download multiple files with concurrency control
-async function downloadFilesInParallel(
-  files: Array<{ id: string; name: string; mimeType?: string }>,
-  tokens: any,
-  concurrency: number = 15
-): Promise<Array<{ name: string; buffer: Buffer }>> {
-  const results: Array<{ name: string; buffer: Buffer }> = [];
-  const fileQueue = [...files];
-  const activeDownloads: Promise<void>[] = [];
-
-  // Map Google Docs types to Microsoft formats
-  const googleToMicrosoftMap: { [key: string]: { mimeType: string; extension: string; name: string } } = {
-    'application/vnd.google-apps.document': {
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      extension: '.docx',
-      name: 'Word Document'
-    },
-    'application/vnd.google-apps.spreadsheet': {
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      extension: '.xlsx',
-      name: 'Excel Spreadsheet'
-    },
-    'application/vnd.google-apps.presentation': {
-      mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      extension: '.pptx',
-      name: 'PowerPoint Presentation'
-    },
-    'application/vnd.google-apps.drawing': {
-      mimeType: 'application/pdf',
-      extension: '.pdf',
-      name: 'PDF Drawing'
-    },
-    'application/vnd.google-apps.form': {
-      mimeType: 'application/pdf',
-      extension: '.pdf',
-      name: 'PDF Form'
-    }
-  };
-
-  const downloadFile = async (file: { id: string; name: string; mimeType?: string }) => {
-    try {
-      const fileName = file.name;
-      const mimeType = file.mimeType || "";
-      
-      // Check if it's a Google Docs type
-      if (mimeType.startsWith("application/vnd.google-apps")) {
-        const exportConfig = googleToMicrosoftMap[mimeType] || {
-          mimeType: 'application/pdf',
-          extension: '.pdf',
-          name: 'PDF'
-        };
-        
-        const { stream } = await exportDriveFileStream(tokens, file.id, exportConfig.mimeType);
-        const finalName = fileName.replace(/\.[^.]*$/, '') + exportConfig.extension;
-        const chunks: Buffer[] = [];
-
-        return new Promise<void>((resolve, reject) => {
-          stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-          stream.on("end", () => {
-            const fileBuffer = Buffer.concat(chunks);
-            results.push({ name: finalName, buffer: fileBuffer });
-            resolve();
-          });
-          stream.on("error", reject);
-        });
-      }
-      
-      // Regular file download
-      const { stream } = await downloadDriveFileStream(tokens, file.id);
-      const chunks: Buffer[] = [];
-
-      return new Promise<void>((resolve, reject) => {
-        stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-        stream.on("end", () => {
-          const fileBuffer = Buffer.concat(chunks);
-          results.push({ name: fileName, buffer: fileBuffer });
-          resolve();
-        });
-        stream.on("error", reject);
-      });
-    } catch (error: any) {
-      console.warn(`⚠️ Failed to download ${file.name}: ${error.message}`);
-      // Continue with other files
-    }
-  };
-
-  // Process files with concurrency limit
-  while (fileQueue.length > 0 || activeDownloads.length > 0) {
-    // Start new downloads if under concurrency limit
-    while (activeDownloads.length < concurrency && fileQueue.length > 0) {
-      const file = fileQueue.shift()!;
-      const downloadPromise = downloadFile(file).then(() => {
-        activeDownloads.splice(activeDownloads.indexOf(downloadPromise), 1);
-      }).catch((error) => {
-        console.error(`❌ Error downloading ${file.name}:`, error.message);
-        activeDownloads.splice(activeDownloads.indexOf(downloadPromise), 1);
-      });
-      activeDownloads.push(downloadPromise);
-    }
-
-    // Wait for at least one download to complete before continuing
-    if (activeDownloads.length > 0) {
-      await Promise.race(activeDownloads);
-    }
-  }
-
-  return results;
-}
-
 
 // Multer memory upload for sending data directly to Drive
 const memoryUpload = multer({ storage: multer.memoryStorage() });
@@ -430,7 +286,7 @@ router.get("/me/profile", async (req: Request, res: Response): Promise<void> => 
           });
         } catch (refreshError: any) {
           console.error('Token refresh failed:', refreshError.message);
-          
+
           // Check if this is an invalid_grant error (revoked/expired refresh token)
           const errorMsg = refreshError.message || '';
           if (errorMsg.includes('invalid_grant')) {
@@ -545,7 +401,7 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
     return;
   } catch (error: any) {
     console.error('❌ Failed to list files:', error.message);
-    
+
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
@@ -595,7 +451,7 @@ router.get("/me/files/preview/:id", async (req: Request, res: Response): Promise
     res.send(data);
   } catch (error: any) {
     console.error('Preview endpoint error:', error.message);
-    
+
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
@@ -635,7 +491,7 @@ router.get("/file/:id", async (req: Request, res: Response): Promise<void> => {
     return;
   } catch (error: any) {
     console.error('Failed to get file metadata:', error.message);
-    
+
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
@@ -665,6 +521,15 @@ router.get("/file/:id", async (req: Request, res: Response): Promise<void> => {
  * Returns: { success, tokens: {access_token, refresh_token?, expiry_date, token_type} }
  * Usage: Manual token refresh when access_token expires
  */
+/**
+ * ✅ POST /drive/token/refresh
+ * Purpose: Refresh expired access token using refresh_token
+ * Params:
+ *   - refresh_token (required): Token from body, headers, or query
+ *   - accountEmail (optional): Account email to update in token store
+ * Returns: { success, tokens: {access_token, refresh_token?, expiry_date, token_type} }
+ * Usage: Manual token refresh when access_token expires
+ */
 router.post("/token/refresh", async (req: Request, res: Response): Promise<void> => {
   try {
     const refresh_token = (req.body?.refresh_token as string) || (req.headers["x-refresh-token"] as string) || (req.query.refresh_token as string);
@@ -672,35 +537,25 @@ router.post("/token/refresh", async (req: Request, res: Response): Promise<void>
       res.status(400).json({ success: false, message: "Missing refresh_token" });
       return;
     }
-    const creds = await refreshDriveAccessToken(refresh_token);
-    // Optionally update store
-    const accountEmail = (req.body?.accountEmail as string) || (req.headers["x-account-email"] as string) || (req.query.accountEmail as string) || null;
-    if (accountEmail) {
-      await updateAccessToken("drive", accountEmail, creds.access_token!, creds.expiry_date || null, creds.token_type || null);
-    }
+
+    // Use handler function for token refresh
+    const accountEmail = (req.body?.accountEmail as string) || (req.headers["x-account-email"] as string) || (req.query.accountEmail as string) || undefined;
+    const creds = refreshToken(refresh_token, accountEmail);
+
     res.status(200).json({ success: true, tokens: creds });
     return;
   } catch (error: any) {
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
-      
-      // Extract company ID from request context if available
       const companyId = (req.body?.companyId as string) || (req.headers["x-company-id"] as string) || (req.query.companyId as string);
-      
-      // Clear invalid tokens from database
+
       if (companyId) {
         try {
-          // @ts-ignore - deleteTokensByCompanyIdAndProvider may exist in your DB service
-          if (typeof deleteTokensByCompanyIdAndProvider === 'function') {
-            await deleteTokensByCompanyIdAndProvider(companyId, "drive");
-            console.log('🗑️ Invalid tokens cleared for company:', companyId);
-          }
-        } catch (dbError: any) {
-          console.warn('⚠️ Failed to clear tokens from DB:', dbError.message);
-        }
+          await disconnectCompanyDrives(companyId);
+        } catch (dbError: any) { }
       }
-      
+
       res.status(401).json({
         success: false,
         message: "Your Google Drive connection has expired. Please reconnect.",
@@ -709,7 +564,7 @@ router.post("/token/refresh", async (req: Request, res: Response): Promise<void>
       });
       return;
     }
-    
+
     // Generic error handling
     res.status(500).json({ success: false, message: error.message || "Failed to refresh access token" });
     return;
@@ -805,7 +660,7 @@ router.post("/me/folders", async (req: Request, res: Response): Promise<void> =>
       res.status(400).json({ success: false, message: "Missing folder name" });
       return;
     }
-    const folder = await createDriveFolder(tokens, name, parentId);
+    const folder = await createFolder(tokens, name, parentId);
     res.status(200).json({ success: true, folder });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || "Failed to create folder" });
@@ -836,7 +691,7 @@ router.get("/me/folders/:id/children", async (req: Request, res: Response): Prom
     const pageToken = (req.query.pageToken as string) || undefined;
     const pageSize = parseInt((req.query.pageSize as string) || "25", 10);
     const q = (req.query.q as string) || undefined;
-    const data = await listDriveFolderChildren(tokens, folderId, pageToken, pageSize, q);
+    const data = await listFolderChildren(tokens, folderId, pageToken, pageSize, q);
     res.status(200).json({ success: true, data });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || "Failed to list folder children" });
@@ -1008,7 +863,7 @@ router.get("/me/files/export-pdf/:id", async (req: Request, res: Response): Prom
     stream.pipe(res);
   } catch (error: any) {
     console.error('Failed to export PDF:', error.message);
-    
+
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
@@ -1103,7 +958,7 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
         name: 'PDF'
       };
 
-      
+
       // Export Google Docs as Microsoft format
       const { stream } = await exportDriveFileStream({ access_token, refresh_token }, fileId, exportConfig.mimeType);
       const filename = (meta.name || fileId) + exportConfig.extension;
@@ -1162,8 +1017,8 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
     if (error?.error?.code === 403 && error?.error?.errors?.[0]?.reason === 'fileNotDownloadable') {
       console.error('⚠️ File is not directly downloadable - likely a Google Docs file. Should export instead.');
       if (!res.headersSent) {
-        res.status(400).json({ 
-          success: false, 
+        res.status(400).json({
+          success: false,
           message: "This file type requires export. File was likely misidentified as downloadable.",
           errorCode: 'fileNotDownloadable',
           suggestion: 'The file may be a Google Docs type that needs to be exported'
@@ -1187,8 +1042,8 @@ router.get("/files/:id", async (req: Request, res: Response): Promise<void> => {
     }
 
     if (!res.headersSent) {
-      res.status(500).json({ 
-        success: false, 
+      res.status(500).json({
+        success: false,
         message: error.message || "Failed to download file",
         errorCode: error.code
       });
@@ -1243,7 +1098,7 @@ router.get("/me/files/download/:id", async (req: Request, res: Response): Promis
     stream.pipe(res);
   } catch (error: any) {
     console.error('Failed to download file:', error.message);
-    
+
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
@@ -1304,7 +1159,7 @@ router.get("/me/files/export/:id", async (req: Request, res: Response): Promise<
     stream.pipe(res);
   } catch (error: any) {
     console.error('Failed to export file:', error.message);
-    
+
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
@@ -1338,7 +1193,7 @@ router.get("/me/files/export/:id", async (req: Request, res: Response): Promise<
  */
 router.get("/folders/:folderId/download-zip", async (req: Request, res: Response): Promise<void> => {
   const startTime = Date.now();
-  
+
   try {
     let tokens = extractTokens(req);
     if (!tokens.access_token && !tokens.refresh_token) {
@@ -1368,7 +1223,7 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
       try {
         // List all files in this folder
         let response;
-        
+
         try {
           response = await axios.get(
             "https://www.googleapis.com/drive/v3/files",
@@ -1427,7 +1282,7 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
         // Download all files in parallel (up to 15 concurrent downloads)
         if (filesToDownload.length > 0) {
           const downloadedFiles = await downloadFilesInParallel(filesToDownload, tokens, 15);
-          
+
           // Add downloaded files to ZIP
           for (const { name, buffer } of downloadedFiles) {
             zipFolder.file(name, buffer);
@@ -1466,7 +1321,7 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     console.error(`❌ Failed to create folder ZIP after ${duration}s:`, error.message || error);
     console.error("Stack trace:", error.stack);
-    
+
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
@@ -1479,8 +1334,8 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
         });
       }
     } else if (!res.headersSent) {
-      res.status(500).json({ 
-        success: false, 
+      res.status(500).json({
+        success: false,
         message: error.message || "Failed to create ZIP",
         error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
       });
@@ -1501,7 +1356,7 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
  */
 router.post("/items/download-zip", async (req: Request, res: Response): Promise<void> => {
   const startTime = Date.now();
-  
+
   try {
     let tokens = extractTokens(req);
     if (!tokens.access_token && !tokens.refresh_token) {
@@ -1560,7 +1415,7 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
         if (mimeType === "application/vnd.google-apps.folder") {
           // It's a folder - recursively add contents
           const subFolder = zipFolder.folder(itemName);
-          
+
           let response;
           try {
             response = await axios.get(
@@ -1581,7 +1436,7 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
               try {
                 const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
                 tokens.access_token = refreshed.access_token;
-                
+
                 response = await axios.get(
                   "https://www.googleapis.com/drive/v3/files",
                   {
@@ -1604,7 +1459,7 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
           }
 
           const files = response.data.files || [];
-          
+
           // Process each file/folder in the parent folder
           for (const file of files) {
             await addItemToZip(file.id, subFolder);
@@ -1627,7 +1482,6 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
               stream.on("end", () => {
                 const fileBuffer = Buffer.concat(chunks);
                 zipFolder.file(finalName, fileBuffer);
-                console.log(`✅ Exported ${finalName} (${exportConfig.name})`);
                 resolve();
               });
               stream.on("error", reject);
@@ -1638,7 +1492,6 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
         } else {
           // Regular file - download and add to ZIP
           try {
-            console.log(`📥 Downloading file: ${itemName}`);
             const { stream } = await downloadDriveFileStream(tokens, itemId);
             const chunks: Buffer[] = [];
 
@@ -1676,13 +1529,12 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
-    console.log(`✅ ZIP created and sent successfully: download.zip (${zipBuffer.length} bytes) containing ${itemIds.length} item(s) in ${duration}s`);
   } catch (error: any) {
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     console.error(`❌ Failed to create items ZIP after ${duration}s:`, error.message || error);
     console.error("Stack trace:", error.stack);
-    
+
     // Check if this is an invalid_grant error (revoked/expired refresh token)
     const errorMsg = error.message || '';
     if (errorMsg.includes('invalid_grant')) {
@@ -1695,8 +1547,8 @@ router.post("/items/download-zip", async (req: Request, res: Response): Promise<
         });
       }
     } else if (!res.headersSent) {
-      res.status(500).json({ 
-        success: false, 
+      res.status(500).json({
+        success: false,
         message: error.message || "Failed to create ZIP",
         error: process.env.NODE_ENV === 'development' ? error.toString() : undefined
       });
@@ -1836,8 +1688,8 @@ router.get("/company/:companyId/drives", async (req: Request, res: Response): Pr
       return;
     }
 
-    // Fetch all connected drives for this company from database
-    const drives = await getConnectedDrivesByCompanyId(companyId);
+    // Use handler function to fetch drives
+    const drives = await getCompanyDrives(companyId);
 
     res.status(200).json({
       success: true,
@@ -1874,8 +1726,8 @@ router.post("/company/:companyId/disconnect", async (req: Request, res: Response
       return;
     }
 
-    // Get all connected drives for this company first
-    const drives = await getConnectedDrivesByCompanyId(companyId);
+    // Check if there are drives to disconnect
+    const drives = await getCompanyDrives(companyId);
 
     if (!drives || drives.length === 0) {
       res.status(200).json({
@@ -1885,11 +1737,8 @@ router.post("/company/:companyId/disconnect", async (req: Request, res: Response
       return;
     }
 
-    // Delete all token records for this company where provider is 'google'
-    const deletedCount = await deleteTokensByCompanyIdAndProvider(companyId, "google");
-
-    // 🔥 BROADCAST: Notify all company users about the drive disconnection
-    notifySocialConnectionRemoved(companyId, "google-drive");
+    // Use handler function to disconnect all drives
+    const deletedCount = await disconnectCompanyDrives(companyId);
 
     res.status(200).json({
       success: true,
@@ -1922,31 +1771,26 @@ router.post("/me/files/:id/rename", async (req: Request, res: Response): Promise
     const { newName } = req.body;
 
     if (!fileId || !newName) {
-      res.status(400).json({ 
-        success: false, 
-        message: "Missing fileId or newName" 
+      res.status(400).json({
+        success: false,
+        message: "Missing fileId or newName"
       });
       return;
     }
 
     // Extract tokens from headers or query
     const tokens = extractTokens(req);
-    
-    // Ensure valid access token
-    await ensureValidAccessToken(tokens);
 
-    if (!tokens.access_token) {
-      res.status(401).json({ 
-        success: false, 
-        message: "No valid access token found" 
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({
+        success: false,
+        message: "No valid access token found"
       });
       return;
     }
 
-    // Rename the file/folder
-    const result = await renameDriveItem(tokens, fileId, newName);
-
-    console.log(`✅ File/Folder ${fileId} renamed to ${newName}`);
+    // Rename the file/folder using handler
+    const result = await renameFile(tokens, fileId, newName);
 
     res.status(200).json({
       success: true,
@@ -1977,13 +1821,10 @@ router.post("/me/files/move", async (req: any, res: any) => {
       return;
     }
 
-    // Extract tokens from headers or query
+    // Extract tokens and move using handler
     const tokens = extractTokens(req);
 
-    // Ensure valid access token
-    await ensureValidAccessToken(tokens);
-
-    if (!tokens.access_token) {
+    if (!tokens.access_token && !tokens.refresh_token) {
       res.status(401).json({
         success: false,
         message: "No valid access token found"
@@ -1991,14 +1832,8 @@ router.post("/me/files/move", async (req: any, res: any) => {
       return;
     }
 
-    // Move each item to the target folder
-    const movePromises = itemIds.map(itemId =>
-      moveItemToFolder(tokens, itemId, targetFolderId)
-    );
-
-    const results = await Promise.all(movePromises);
-
-    console.log(`✅ ${results.length} item(s) moved successfully to folder ${targetFolderId}`);
+    // Use handler function to move multiple files
+    const results = await moveMultipleFiles(tokens, itemIds, targetFolderId);
 
     res.status(200).json({
       success: true,
@@ -2029,31 +1864,26 @@ router.post("/me/files/:id/trash", async (req: Request, res: Response): Promise<
     const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
     if (!fileId) {
-      res.status(400).json({ 
-        success: false, 
-        message: "Missing fileId" 
+      res.status(400).json({
+        success: false,
+        message: "Missing fileId"
       });
       return;
     }
 
     // Extract tokens from headers or query
     const tokens = extractTokens(req);
-    
-    // Ensure valid access token
-    await ensureValidAccessToken(tokens);
 
-    if (!tokens.access_token) {
-      res.status(401).json({ 
-        success: false, 
-        message: "No valid access token found" 
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({
+        success: false,
+        message: "No valid access token found"
       });
       return;
     }
 
-    // Move file/folder to trash
-    const result = await moveFileToTrash(tokens, fileId);
-
-    console.log(`✅ File/Folder ${fileId} moved to trash`);
+    // Move file/folder to trash using handler
+    const result = await trashFile(tokens, fileId);
 
     res.status(200).json({
       success: true,
@@ -2084,35 +1914,33 @@ router.delete("/me/files/trash", async (req: Request, res: Response): Promise<vo
     const { fileIds } = req.body;
 
     if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
-      res.status(400).json({ 
-        success: false, 
-        message: "Missing or invalid fileIds array" 
+      res.status(400).json({
+        success: false,
+        message: "Missing or invalid fileIds array"
       });
       return;
     }
 
     // Extract tokens from headers or query
     const tokens = extractTokens(req);
-    
+
     // Ensure valid access token
     await ensureValidAccessToken(tokens);
 
     if (!tokens.access_token) {
-      res.status(401).json({ 
-        success: false, 
-        message: "No valid access token found" 
+      res.status(401).json({
+        success: false,
+        message: "No valid access token found"
       });
       return;
     }
 
     // Move all files/folders to trash
-    const trashPromises = fileIds.map(fileId => 
+    const trashPromises = fileIds.map(fileId =>
       moveFileToTrash(tokens, fileId)
     );
 
     const results = await Promise.all(trashPromises);
-
-    console.log(`✅ ${results.length} file(s)/folder(s) moved to trash`);
 
     res.status(200).json({
       success: true,
@@ -2146,54 +1974,16 @@ router.get("/me/files/:id/share-info", async (req: Request, res: Response): Prom
       return;
     }
 
-    await ensureValidAccessToken(tokens);
     const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
-    const drive = getDriveClientFromTokens(tokens);
-
-    // Get file permissions
-    const permissionsResponse = await drive.permissions.list({
-      fileId,
-      fields: 'permissions(id,emailAddress,displayName,role,type,domain)',
-      pageSize: 100
-    });
-
-    const permissions = permissionsResponse.data.permissions || [];
-
-    // Map permissions to SharedUser interface
-    const sharedUsers = permissions
-      .filter((perm: any) => perm.type === 'user' && perm.emailAddress) // Only include individual users
-      .map((perm: any) => ({
-        id: perm.id,
-        email: perm.emailAddress,
-        name: perm.displayName || perm.emailAddress.split('@')[0],
-        role: perm.role === 'writer' ? 'editor' : 'viewer' // Map Google roles to our roles
-      }));
-
-    // Determine access level based on permissions
-    let accessLevel = 'restricted';
-    const anyonePermission = permissions.find((p: any) => p.type === 'anyone');
-    const domainPermission = permissions.find((p: any) => p.type === 'domain');
-
-    if (anyonePermission) {
-      accessLevel = 'anyone';
-    } else if (domainPermission) {
-      accessLevel = 'organization';
-    }
-
-    // Get file metadata for share link
-    const fileResponse = await drive.files.get({
-      fileId,
-      fields: 'webViewLink,id'
-    });
-
-    const shareLink = fileResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+    // Use handler function to get share info
+    const shareInfo = await getFileShareInfo(tokens, fileId);
 
     res.status(200).json({
       success: true,
-      sharedUsers,
-      accessLevel,
-      shareLink
+      sharedUsers: shareInfo.sharedUsers,
+      accessLevel: shareInfo.accessLevel,
+      shareLink: shareInfo.shareLink
     });
   } catch (error: any) {
     console.error('❌ Failed to get share info:', error.message);
@@ -2223,7 +2013,6 @@ router.post("/me/files/:id/share", async (req: Request, res: Response): Promise<
       return;
     }
 
-    await ensureValidAccessToken(tokens);
     const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const { email, role } = req.body;
 
@@ -2232,26 +2021,13 @@ router.post("/me/files/:id/share", async (req: Request, res: Response): Promise<
       return;
     }
 
-    const drive = getDriveClientFromTokens(tokens);
-
-    // Map our role to Google role
-    const googleRole = role === 'editor' ? 'writer' : 'reader';
-
-    // Create permission
-    const permResponse = await drive.permissions.create({
-      fileId,
-      requestBody: {
-        role: googleRole,
-        type: 'user',
-        emailAddress: email
-      },
-      fields: 'id,displayName,emailAddress'
-    });
+    // Use handler function to share with user
+    const result = await shareFileWithUser(tokens, fileId, email, role);
 
     res.status(200).json({
       success: true,
-      permissionId: permResponse.data.id,
-      displayName: permResponse.data.displayName || email
+      permissionId: result.permissionId,
+      displayName: result.displayName
     });
   } catch (error: any) {
     console.error('❌ Failed to add user to share:', error.message);
@@ -2279,7 +2055,6 @@ router.delete("/me/files/:id/share/:permissionId", async (req: Request, res: Res
       return;
     }
 
-    await ensureValidAccessToken(tokens);
     const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const permissionId = Array.isArray(req.params.permissionId) ? req.params.permissionId[0] : req.params.permissionId;
 
@@ -2288,11 +2063,8 @@ router.delete("/me/files/:id/share/:permissionId", async (req: Request, res: Res
       return;
     }
 
-    const drive = getDriveClientFromTokens(tokens);
-    await drive.permissions.delete({
-      fileId,
-      permissionId
-    });
+    // Use handler to remove file sharing
+    await removeFileSharing(tokens, fileId, permissionId);
 
     res.status(200).json({ success: true });
   } catch (error: any) {
@@ -2323,7 +2095,6 @@ router.patch("/me/files/:id/share/:permissionId", async (req: Request, res: Resp
       return;
     }
 
-    await ensureValidAccessToken(tokens);
     const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const permissionId = Array.isArray(req.params.permissionId) ? req.params.permissionId[0] : req.params.permissionId;
     const { role } = req.body;
@@ -2333,18 +2104,8 @@ router.patch("/me/files/:id/share/:permissionId", async (req: Request, res: Resp
       return;
     }
 
-    const drive = getDriveClientFromTokens(tokens);
-
-    // Map our role to Google role
-    const googleRole = role === 'editor' ? 'writer' : 'reader';
-
-    await drive.permissions.update({
-      fileId,
-      permissionId,
-      requestBody: {
-        role: googleRole
-      }
-    });
+    // Use handler to update file sharing role
+    await updateFileSharingRole(tokens, fileId, permissionId, role);
 
     res.status(200).json({ success: true });
   } catch (error: any) {
@@ -2374,7 +2135,6 @@ router.post("/me/files/:id/access-level", async (req: Request, res: Response): P
       return;
     }
 
-    await ensureValidAccessToken(tokens);
     const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const { accessLevel } = req.body;
 
@@ -2383,55 +2143,8 @@ router.post("/me/files/:id/access-level", async (req: Request, res: Response): P
       return;
     }
 
-    const drive = getDriveClientFromTokens(tokens);
-
-    // First, remove all existing anyone/domain permissions
-    const permissionsResponse = await drive.permissions.list({
-      fileId,
-      fields: 'permissions(id,type)'
-    });
-
-    const permissions = permissionsResponse.data.permissions || [];
-
-    // Remove 'anyone' and 'domain' type permissions
-    for (const perm of permissions) {
-      if ((perm.type === 'anyone' || perm.type === 'domain') && perm.id) {
-        await drive.permissions.delete({
-          fileId,
-          permissionId: perm.id
-        });
-      }
-    }
-
-    // Add new permission based on accessLevel
-    if (accessLevel === 'anyone') {
-      await drive.permissions.create({
-        fileId,
-        requestBody: {
-          role: 'reader',
-          type: 'anyone'
-        }
-      });
-    } else if (accessLevel === 'organization') {
-      // For organization, we need the domain - get it from user profile
-      const userProfile = await drive.about.get({
-        fields: 'user'
-      });
-      
-      const domain = userProfile.data.user?.emailAddress?.split('@')[1];
-      
-      if (domain) {
-        await drive.permissions.create({
-          fileId,
-          requestBody: {
-            role: 'reader',
-            type: 'domain',
-            domain
-          }
-        });
-      }
-    }
-    // If 'restricted', we just removed the public permissions
+    // Use handler to update access level
+    await updateFileAccessLevel(tokens, fileId, accessLevel);
 
     res.status(200).json({ success: true });
   } catch (error: any) {
@@ -2508,13 +2221,13 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
     // Ensure valid access token - refresh if needed
     const tokens = { access_token, refresh_token };
     await ensureValidAccessToken(tokens);
-    
+
     // Update access token after potential refresh
     access_token = tokens.access_token;
 
     // Get file metadata
     const fileMetadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,parents,createdTime,modifiedTime,lastModifyingUser(displayName,emailAddress)`;
-    
+
     const fileResponse = await fetch(fileMetadataUrl, {
       method: 'GET',
       headers: {
@@ -2534,13 +2247,9 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
     let activityData: any[] = [];
 
     if (isFolderView) {
-      // Folder: Use Activity API to get all activities
-      console.log(`📁 Loading activities for folder: ${fileMetadata.name}`);
-      
       try {
-        // Try Activity API first (v3 endpoint for file activity)
         const activityUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/activity?pageSize=100`;
-        
+
         const activityResponse = await fetch(activityUrl, {
           method: 'GET',
           headers: {
@@ -2552,8 +2261,6 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
         if (activityResponse.ok) {
           const activityDataResponse: any = await activityResponse.json();
           const activities = activityDataResponse.activities || [];
-
-          console.log(`✅ Got ${activities.length} activities from Activity API`);
 
           if (activities.length > 0) {
             // Process activities
@@ -2626,7 +2333,6 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
           }
         } else {
           const errorText = await activityResponse.text();
-          console.log(`⚠️ Activity API returned status: ${activityResponse.status}`, errorText.substring(0, 100));
         }
       } catch (error: any) {
         console.error('⚠️ Activity API error:', error.message);
@@ -2634,11 +2340,8 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
 
       // Fallback: If Activity API returned nothing, get detailed file history
       if (activityData.length === 0) {
-        console.log('📋 Falling back to file history method - querying all files to detect bulk actions');
-
-        // Get all files in folder - both active and trashed to detect moves
         const allFilesUrl = `https://www.googleapis.com/drive/v3/files?q='${fileId}' in parents&fields=files(id,name,mimeType,createdTime,modifiedTime,trashed,trashedTime,lastModifyingUser(displayName,emailAddress))&pageSize=100&orderBy=modifiedTime desc`;
-        
+
         const allFilesResponse = await fetch(allFilesUrl, {
           method: 'GET',
           headers: {
@@ -2650,7 +2353,7 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
         if (allFilesResponse.ok) {
           const allFilesData: any = await allFilesResponse.json();
           const allFiles = allFilesData.files || [];
-          
+
           const activeFiles = allFiles.filter((f: any) => !f.trashed);
           const trashedFiles = allFiles.filter((f: any) => f.trashed);
 
@@ -2664,7 +2367,7 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
             const fileType = file.mimeType?.includes('folder') ? 'folder' : 'file';
 
             const fileRevisionsUrl = `https://www.googleapis.com/drive/v3/files/${file.id}/revisions?fields=revisions(id,modifiedTime,lastModifyingUser(displayName,emailAddress))&pageSize=50`;
-            
+
             try {
               const fileRevisionsResponse = await fetch(fileRevisionsUrl, {
                 method: 'GET',
@@ -2732,9 +2435,7 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
                   ]
                 });
               }
-            } catch (err) {
-              console.log(`⚠️ Error getting revisions for ${file.name}:`, err);
-            }
+            } catch (err) { }
           }
 
           // Process trashed files as bulk "moved to bin" actions
@@ -2745,12 +2446,12 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
               const actor = file.lastModifyingUser?.displayName || 'Unknown User';
               const actorInitial = actor.charAt(0).toUpperCase();
               const fileType = file.mimeType?.includes('folder') ? 'folder' : 'file';
-              
+
               const timeKey = new Date(trashedTime).toISOString().split('T')[0] + '-' + actor;
               if (!trashedByTime[timeKey]) {
                 trashedByTime[timeKey] = [];
               }
-              
+
               trashedByTime[timeKey].push({
                 timestamp: trashedTime,
                 actor,
@@ -2800,7 +2501,7 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
     } else {
       // File: Get its revision history
       const revisionsUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/revisions?fields=revisions(id,modifiedTime,lastModifyingUser(displayName,emailAddress))&pageSize=10`;
-      
+
       const revisionsResponse = await fetch(revisionsUrl, {
         method: 'GET',
         headers: {
@@ -2817,7 +2518,7 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
         activityData = revisions.map((revision: any, index: number) => {
           const actor = revision.lastModifyingUser?.displayName || 'Unknown User';
           const actorInitial = actor.charAt(0).toUpperCase();
-          
+
           let action = 'Modified';
           let description = 'You edited an item';
           if (index === revisions.length - 1) {
@@ -2840,9 +2541,7 @@ router.get("/activity/:id", async (req: Request, res: Response): Promise<void> =
           };
         });
       } else if (revisionsResponse.status === 403) {
-        // File doesn't support revisions
-        console.log(`⚠️  File ${fileId} does not support revisions, using file metadata`);
-        
+        // File doesn't support revisions - use file metadata
         const actor = fileMetadata.lastModifyingUser?.displayName || 'Unknown User';
         const actorInitial = actor.charAt(0).toUpperCase();
 
@@ -2918,13 +2617,13 @@ router.get("/file-details/:id", async (req: Request, res: Response): Promise<voi
     // Ensure valid access token - refresh if needed
     const tokens = { access_token, refresh_token };
     await ensureValidAccessToken(tokens);
-    
+
     // Update access token after potential refresh
     access_token = tokens.access_token;
 
     // Fetch comprehensive file metadata
     const fileMetadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,description,createdTime,modifiedTime,viewedByMeTime,webViewLink,owners,size,parents,lastModifyingUser(displayName,emailAddress,photoLink)`;
-    
+
     const fileResponse = await fetch(fileMetadataUrl, {
       method: 'GET',
       headers: {
@@ -2940,7 +2639,7 @@ router.get("/file-details/:id", async (req: Request, res: Response): Promise<voi
     }
 
     const fileMetadata: any = await fileResponse.json();
-    
+
     // Get parent folder name for location
     let location = 'My Drive';
     if (fileMetadata.parents && fileMetadata.parents.length > 0) {
@@ -2958,9 +2657,7 @@ router.get("/file-details/:id", async (req: Request, res: Response): Promise<voi
           const parentData: any = await parentResponse.json();
           location = parentData.name || 'My Drive';
         }
-      } catch (error) {
-        console.log('Could not fetch parent folder name, using default');
-      }
+      } catch (error) { }
     }
 
     // Build response
