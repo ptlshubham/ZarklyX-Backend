@@ -617,6 +617,10 @@ router.post("/me/files/upload", memoryUpload.single("file"), async (req: Request
       res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
       return;
     }
+
+    // Ensure access token is valid (refresh if expired)
+    await ensureValidAccessToken(tokens);
+
     const file = (req as any).file as Express.Multer.File | undefined;
     if (!file) {
       res.status(400).json({ success: false, message: "Missing file" });
@@ -632,7 +636,21 @@ router.post("/me/files/upload", memoryUpload.single("file"), async (req: Request
     });
     res.status(200).json({ success: true, file: uploaded });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "Failed to upload file" });
+    console.error("🔴 File upload error:", error);
+
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      res.status(401).json({
+        success: false,
+        message: "Your Google Drive connection has expired. Please reconnect.",
+        errorCode: 'INVALID_GRANT',
+        requiresReauth: true
+      });
+      return;
+    }
+
+    res.status(500).json({ success: false, message: error.message || "Failed to upload file", error: error.toString() });
   }
 });
 
