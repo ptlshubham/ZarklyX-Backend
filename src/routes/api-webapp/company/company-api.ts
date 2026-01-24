@@ -540,21 +540,24 @@ router.delete("/:companyId/remove-user/:targetUserId",
 );
 
 /**
- * PATCH /company/removeCompanyAsset
+ * PATCH /company/removeCompanyAsset/:assetType
  * Remove a company asset image (Admin/Owner only)
- * Body: { companyId, userId, assetType: 'companyLogoLight' | 'companyLogoDark' | 'faviconLight' | 'faviconDark' }
+ * Params: assetType (companyLogoLight | companyLogoDark | faviconLight | faviconDark)
+ * Body: { companyId }
  */
-router.patch("/removeCompanyAsset", tokenMiddleWare, async (req: Request, res: Response): Promise<any> => {
+router.patch("/removeCompanyAsset/:assetType", tokenMiddleWare, async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const { companyId, assetType } = req.body;
+    const { companyId } = req.body;
+    let assetType = req.params.assetType as string | string[];
+    if (Array.isArray(assetType)) assetType = assetType[0];
     const userId: any = (req as any).user?.id;
 
     if (!companyId || !assetType || !userId) {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        message: "companyId, assetType and userId are required",
+        message: "companyId and userId are required and assetType must be provided as URL parameter",
       });
     }
 
@@ -612,20 +615,22 @@ router.patch("/removeCompanyAsset", tokenMiddleWare, async (req: Request, res: R
 });
 
 router.post(
-  "/uploadAsset",
+  "/uploadAsset/:assetType",
   tokenMiddleWare,
   companyAssetsUpload.single("file"),
   async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
-      const { companyId, assetType } = req.body;
+      const { companyId } = req.body;
+      let assetType = req.params.assetType as string | string[];
+      if (Array.isArray(assetType)) assetType = assetType[0];
       const userId: any = (req as any).user?.id;
 
       if (!companyId || !assetType || !userId) {
         await t.rollback();
         return res.status(400).json({
           success: false,
-          message: "companyId, assetType and userId are required",
+          message: "companyId and userId are required and assetType must be provided as URL parameter",
         });
       }
 

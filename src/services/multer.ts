@@ -51,11 +51,20 @@ export const ticketAttachmentUpload = multer({
 });
 
 // Company Assets Storage (Logos and Favicons)
-const COMPANY_ASSETS_DIR = "company/assets";
+// Files are stored in per-asset folders under the public directory (e.g., /public/company/companyLogoLight)
+const COMPANY_ASSET_DIR_MAP: { [key: string]: string } = {
+  companyLogoLight: "company/companyLogoLight",
+  companyLogoDark: "company/companyLogoDark",
+  faviconLight: "company/faviconLight",
+  faviconDark: "company/faviconDark",
+};
 
 const companyAssetsStorage = multer.diskStorage({
   destination(req, file, cb) {
-    const uploadPath = `/${config.publicPath}/${COMPANY_ASSETS_DIR}`;
+    // assetType can come from URL param (preferred) or body (fallback)
+    const assetType = (req.params && (req.params as any).assetType) || req.body?.assetType;
+    const dir = (assetType && COMPANY_ASSET_DIR_MAP[assetType]) || "company/assets"; // fallback to old path
+    const uploadPath = `/${config.publicPath}/${dir}`;
     if (!fs.existsSync(`.${uploadPath}`)) {
       fs.mkdirSync(`.${uploadPath}`, { recursive: true });
     }
@@ -79,6 +88,9 @@ export const companyAssetsUpload = multer({
     }
   },
 });
+
+// Export alias for clarity — the storage will choose folder based on the provided :assetType param
+export const companyAssetsUploadByType = companyAssetsUpload;
 
 
 
