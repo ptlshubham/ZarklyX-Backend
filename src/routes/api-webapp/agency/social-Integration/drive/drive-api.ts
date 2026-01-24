@@ -655,6 +655,155 @@ router.post("/me/files/upload", memoryUpload.single("file"), async (req: Request
 });
 
 /**
+ * ✅ POST /drive/me/folders/upload
+ * Purpose: Upload a folder with all its files and subfolder structure to Google Drive
+ * Params:
+ *   - files (required, multipart): Multiple files from folder (use webkitdirectory attribute on input)
+ *   - parentId (optional): Parent folder ID to upload into
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Content-Type: multipart/form-data
+ * Returns: { success, uploadedCount, folderId, folderName, files: [{id, name, path}, ...] }
+ * Note: Files are uploaded with their folder structure preserved
+ * Usage: Upload entire folder hierarchy from user's local machine
+ */
+router.post("/me/folders/upload", memoryUpload.array("files", 1000), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(400).json({ success: false, message: "Provide access_token or refresh_token" });
+      return;
+    }
+
+    // Ensure access token is valid (refresh if expired)
+    await ensureValidAccessToken(tokens);
+
+    const files = (req as any).files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      res.status(400).json({ success: false, message: "Missing files" });
+      return;
+    }
+
+    const parentId = (req.body?.parentId as string) || (req.query?.parentId as string);
+    
+    // Get folder name from frontend, or extract from first file's path
+    let uploadFolderName = (req.body?.folderName as string) || (req.query?.folderName as string);
+    
+    if (!uploadFolderName) {
+      // Fallback: extract folder name from first file's path (e.g., "folder/file.txt" -> "folder")
+      const firstFilePath = files[0].fieldname || "uploaded-folder";
+      const folderNameMatch = firstFilePath.split('/')[0];
+      uploadFolderName = folderNameMatch || "uploaded-folder";
+    }
+
+    // Create root folder for this upload
+    const rootFolder = await createFolder(tokens, uploadFolderName, parentId);
+    const rootFolderId = rootFolder.id;
+
+    // Map to track created folders: path -> folderId
+    const folderCache: Map<string, string> = new Map();
+    folderCache.set("", rootFolderId); // Root
+
+    const uploadedFiles: any[] = [];
+
+    // Process and upload each file
+    for (const file of files) {
+      try {
+        // Get the relative path from the file's webkitRelativePath if available
+        // Otherwise extract from form field name or multipart structure
+        let filePath = (file as any).webkitRelativePath || file.fieldname || "";
+        
+        // Use the original filename from browser (preserves exact name)
+        const fileName = file.originalname;
+        
+        // Strip the root folder name from the path (e.g., "XYZ/subfolder/file.txt" -> "subfolder/file.txt")
+        const pathParts = filePath.split('/');
+        const rootFolderNameInPath = pathParts[0];
+        
+        // Remove root folder from path if it matches the upload folder name
+        let adjustedPath = filePath;
+        if (rootFolderNameInPath === uploadFolderName) {
+          adjustedPath = pathParts.slice(1).join('/');
+        }
+        
+        // Extract folder path from adjusted path (remove the filename)
+        const adjustedParts = adjustedPath.split('/');
+        // Remove the last part (filename) to get folder path
+        const relativeFolderPath = adjustedParts.slice(0, -1).join('/');
+
+        // Determine target folder ID
+        let targetFolderId = rootFolderId;
+
+        // Create folder hierarchy if needed
+        if (relativeFolderPath) {
+          const folderParts = relativeFolderPath.split('/');
+          let currentPath = "";
+
+          for (const folderName of folderParts) {
+            currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+
+            if (!folderCache.has(currentPath)) {
+              // Folder doesn't exist, create it
+              const parentFolderPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+              const parentFolderId = folderCache.get(parentFolderPath) || rootFolderId;
+              
+              const newFolder = await createFolder(tokens, folderName, parentFolderId);
+              folderCache.set(currentPath, newFolder.id);
+              targetFolderId = newFolder.id;
+            } else {
+              targetFolderId = folderCache.get(currentPath)!;
+            }
+          }
+        }
+
+        // Upload file to target folder
+        if (fileName) { // Only upload if there's an actual filename (skip folders)
+          const uploaded = await uploadDriveFile(tokens, {
+            name: fileName,
+            mimeType: file.mimetype || "application/octet-stream",
+            data: file.buffer,
+            parents: [targetFolderId],
+          });
+
+          uploadedFiles.push({
+            id: uploaded.id,
+            name: uploaded.name,
+            path: filePath,
+            mimeType: uploaded.mimeType,
+          });
+        }
+      } catch (fileError: any) {
+        console.error(`❌ Error uploading file ${file.originalname}:`, fileError.message);
+        // Continue with next file instead of failing entire upload
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      uploadedCount: uploadedFiles.length,
+      folderId: rootFolderId,
+      folderName: uploadFolderName,
+      files: uploadedFiles,
+    });
+  } catch (error: any) {
+    console.error("🔴 Folder upload error:", error);
+
+    // Check if this is an invalid_grant error (revoked/expired refresh token)
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      res.status(401).json({
+        success: false,
+        message: "Your Google Drive connection has expired. Please reconnect.",
+        errorCode: 'INVALID_GRANT',
+        requiresReauth: true
+      });
+      return;
+    }
+
+    res.status(500).json({ success: false, message: error.message || "Failed to upload folder", error: error.toString() });
+  }
+});
+
+/**
  * ✅ POST /drive/me/folders
  * Purpose: Create a new folder in Google Drive
  * Params:
