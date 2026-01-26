@@ -405,6 +405,7 @@ router.post("/register/verify-otp",
       otpRecord.tempUserData = null;
       await otpRecord.save({ transaction: t });
 
+      await t.commit();
       // Create login history record for registration
       const loginHistoryResult = await createLoginHistory(
         user.id,
@@ -415,7 +416,6 @@ router.post("/register/verify-otp",
         undefined
       );
 
-      await t.commit();
 
       res.status(200).json({
         success: true,
@@ -1092,7 +1092,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     }
 
     //  Build  premium modules
-    const moduleIds: number[] = [];
+    const moduleIds: string[] = [];
 
     for (const item of selectedModules) {
       //  numeric ID -> must exist

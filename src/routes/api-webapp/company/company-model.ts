@@ -16,7 +16,6 @@ export class Company extends Model<
   declare description: string | null;
   declare accountType: string | null;
   declare businessArea: string | null;
-  declare industryType: string | null;
   declare website: string | null;
   declare email: string | null;
   declare contact: string | null;
@@ -87,10 +86,6 @@ export class Company extends Model<
           allowNull: true,
         },
         businessArea: {
-          type: DataTypes.STRING(255),
-          allowNull: true,
-        },
-        industryType: {
           type: DataTypes.STRING(255),
           allowNull: true,
         },
