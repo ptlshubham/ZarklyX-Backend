@@ -649,6 +649,20 @@ router.post("/register/categories",
       });
 
       await user.save({ transaction: t });
+
+      // If user has a company, update the businessArea field with the category ID
+      if (user.companyId) {
+        const company: any = await Company.findByPk(user.companyId, { transaction: t });
+        if (company) {
+          company.businessArea = categoryId;
+          await company.save({ transaction: t });
+          console.log("Company businessArea updated with categoryId:", {
+            companyId: company.id,
+            businessArea: categoryId,
+          });
+        }
+      }
+
       await t.commit();
 
       console.log("Category saved successfully for user:", user.id);
@@ -747,7 +761,6 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
       description,
       accountType,
       businessArea,
-      industryType,
       email,
       contact,
       address,
@@ -768,12 +781,12 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
       });
     }
 
-    if (!companyName || !website || !country || !timezone) {
+    if (!companyName || !country || !timezone) {
       await t.rollback();
       res.status(400).json({
         success: false,
         message:
-          "companyName, website, country and timezone are required for company registration.",
+          "companyName, country and timezone are required for company registration.",
       });
     }
 
@@ -869,8 +882,7 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
           name: companyName,
           description: description || null,
           accountType: accountType || null,
-          businessArea: businessArea || null,
-          industryType: industryType || null,
+          businessArea: businessArea || user.categories || null,
           website: website || null,
           email: email || user.email || null,
           contact: contact || user.contact || null,
@@ -966,7 +978,6 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
         description: description || null,
         accountType: accountType || null,
         businessArea: businessArea || null,
-        industryType: industryType || null,
         website: website || null,
         email: email || user.email || null,
         contact: contact || user.contact || null,
@@ -1145,6 +1156,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     //Save on company (only IDs, comma separated)
     company.no_of_clients = upperBound;
     company.selectedModules = distinctModuleIds.join(",");
+    company.accountType = user.userType; // Set accountType from user's userType
     await company.save({ transaction: t });
 
     // Finish user registration
