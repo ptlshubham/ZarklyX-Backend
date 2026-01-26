@@ -50,6 +50,48 @@ export const ticketAttachmentUpload = multer({
   },
 });
 
+// Company Assets Storage (Logos and Favicons)
+// Files are stored in per-asset folders under the public directory (e.g., /public/company/companyLogoLight)
+const COMPANY_ASSET_DIR_MAP: { [key: string]: string } = {
+  companyLogoLight: "company/companyLogoLight",
+  companyLogoDark: "company/companyLogoDark",
+  faviconLight: "company/faviconLight",
+  faviconDark: "company/faviconDark",
+};
+
+const companyAssetsStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    // assetType can come from URL param (preferred) or body (fallback)
+    const assetType = (req.params && (req.params as any).assetType) || req.body?.assetType;
+    const dir = (assetType && COMPANY_ASSET_DIR_MAP[assetType]) || "company/assets"; // fallback to old path
+    const uploadPath = `/${config.publicPath}/${dir}`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const companyAssetsUpload = multer({
+  storage: companyAssetsStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/svg+xml"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only jpeg/png/webp/svg files allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
+// Export alias for clarity — the storage will choose folder based on the provided :assetType param
+export const companyAssetsUploadByType = companyAssetsUpload;
+
 
 
 const getFileStorage = (path: string) => {
