@@ -421,6 +421,74 @@ router.get("/me/files", async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
+ * ✅ GET /drive/search
+ * Purpose: Search files and folders by name/content with dedicated endpoint
+ * Params:
+ *   - q (required, query): Search query string
+ *   - pageToken (optional, query): Pagination token
+ *   - pageSize (optional, query): Number of results per page (default: 20, max: 100)
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, data: { files: [...], nextPageToken, kind } }
+ * Features: 
+ *   - Searches file/folder names using Google Drive API
+ *   - Excludes trashed items
+ *   - Returns mixed results (folders and files in search order)
+ *   - Supports pagination
+ */
+router.get("/search", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { access_token, refresh_token } = extractTokens(req);
+    const searchQuery = (req.query.q as string) || "";
+    const pageToken = (req.query.pageToken as string) || undefined;
+    const pageSize = Math.min(parseInt((req.query.pageSize as string) || "20", 10), 100);
+
+    if (!access_token && !refresh_token) {
+      res.status(401).json({ success: false, message: "No access token provided" });
+      return;
+    }
+
+    if (!searchQuery || searchQuery.trim().length === 0) {
+      res.status(400).json({ success: false, message: "Search query (q parameter) is required" });
+      return;
+    }
+
+    // Format the search query for Google Drive API
+    // Search by name with proper escaping for special characters
+    // Filter to show only folders in search results (like Google Drive dropdown preview)
+    const escapedQuery = searchQuery.replace(/'/g, "\\'").replace(/\\/g, "\\\\");
+    const formattedQuery = `trashed=false and name contains '${escapedQuery}' and mimeType='application/vnd.google-apps.folder'`;
+    
+    // Execute the search using listMyDriveFiles service
+    const data = await listMyDriveFiles({ access_token, refresh_token }, pageToken, pageSize, formattedQuery);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        files: data.files || [],
+        nextPageToken: data.nextPageToken || undefined,
+        kind: data.kind || "drive#fileList"
+      }
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Search failed:', error.message);
+
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('invalid_grant')) {
+      res.status(401).json({
+        success: false,
+        message: "Your Google Drive connection has expired. Please reconnect.",
+        errorCode: 'INVALID_GRANT',
+        requiresReauth: true
+      });
+    } else {
+      res.status(500).json({ success: false, message: error.message || "Search failed" });
+    }
+    return;
+  }
+});
+
+/**
  * ✅ GET /drive/me/files/preview/:id
  * Purpose: Proxy image preview from Google Drive with intelligent fallback (solves CORS issues)
  * Params:
