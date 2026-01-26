@@ -50,6 +50,7 @@ import { Payments } from "../../routes/api-webapp/accounting/payments/payments-m
 import { PaymentsDocuments } from "../../routes/api-webapp/accounting/payments/payments-documents-model";
 import { AccountingDocument } from "../../routes/api-webapp/accounting/accounting-document-model";
 import { Modules, initModulesModel } from "../../routes/api-webapp/superAdmin/modules/modules-model";
+import { Permissions, initPermissionsModel } from "../../routes/api-webapp/superAdmin/permissions/permissions-model";
 
 export {
   User,
@@ -93,6 +94,7 @@ export {
   PaymentsDocuments,
   AccountingDocument,
   Modules,
+  Permissions,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -148,6 +150,7 @@ export function initControlDB(sequelize: Sequelize) {
   PaymentsDocuments.initModel(sequelize);
   AccountingDocument.initModel(sequelize);
   initModulesModel(sequelize);
+  initPermissionsModel(sequelize);
 
   // Relations and associations
   /***user <-> company */
@@ -923,6 +926,17 @@ export function initControlDB(sequelize: Sequelize) {
     as: "platforms",
   });
 
+  // Permissions <-> Modules association
+  // Each permission belongs to a module (moduleId foreign key)
+  Permissions.belongsTo(Modules, {
+    foreignKey: "moduleId",
+    as: "module"
+  });
+  // Each module has many permissions
+  Modules.hasMany(Permissions, {
+    foreignKey: "moduleId",
+    as: "permissions"
+  });
 
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
@@ -977,5 +991,6 @@ export function initControlDB(sequelize: Sequelize) {
     DebitNoteItem,
     AccountingDocument,
     Modules,
+    Permissions,
   };
 }
