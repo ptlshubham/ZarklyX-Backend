@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { Item } from './item-model';
+import { Unit } from '../unit/unit-model';
 import {
     createItem,
     getActiveItemsByCompany,
@@ -13,48 +14,136 @@ import {
 } from './item-handler';
 import { serverError } from "../../../../utils/responseHandler";
 import dbInstance from '../../../../db/core/control-db';
+import { authMiddleware } from '../../../../middleware/auth.middleware';
 
 const router = express.Router();
 
 // POST /accounting/item/createItem
-router.post("/createItem/", async (req: Request, res: Response): Promise<any> => {
+router.post("/createItem/", authMiddleware, async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
-        const { itemType, quantity, hsn, sac } = req.body;
-
-        // Validation: products should have HSN, services should have SAC
-        if (itemType === 'product' && !hsn) {
+        const { items } = req.body;
+        
+        // Check if items array exists
+        if (!items || !Array.isArray(items) || items.length === 0) {
             await t.rollback();
+            console.error("Items array validation failed:", { items });
             return res.status(400).json({
                 success: false,
-                message: "HSN code is required for products",
+                message: "Items array is required and must not be empty",
             });
         }
 
-        if (itemType === 'service' && !sac) {
+        // Get companyId from authenticated user
+        const user: any = (req as any).user;
+        const companyId = user?.companyId || req.body.companyId;
+
+        console.log("Auth user:", user);
+        console.log("CompanyId:", companyId);
+
+        if (!companyId) {
             await t.rollback();
+            console.error("Company ID not found in request:", { user, bodyCompanyId: req.body.companyId });
             return res.status(400).json({
                 success: false,
-                message: "SAC code is required for services",
+                message: "Company ID is required. Please ensure you are logged in.",
             });
         }
 
-        // Validation: quantity only for products
-        if (itemType === 'service' && quantity) {
-            await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "Quantity is not applicable for services",
-            });
+        const createdItems = [];
+
+        // Process each item
+        for (const item of items) {
+            const { itemType, hsnCode, sacCode, openingQty, unitPrice, currency, unit } = item;
+
+            // Validation: products should have HSN, services should have SAC
+            if (itemType === 'product' && !hsnCode) {
+                await t.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: "HSN code is required for products",
+                });
+            }
+
+            if (itemType === 'service' && !sacCode) {
+                await t.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: "SAC code is required for services",
+                });
+            }
+
+            // Validation: unitPrice is required
+            if (!unitPrice && unitPrice !== 0) {
+                await t.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: "Unit Price is required",
+                });
+            }
+
+            // Lookup or create unitId from unit code
+            let unitId = null;
+            if (unit && unit.trim()) {
+                let unitRecord = await Unit.findOne({
+                    where: {
+                        unitCode: unit.trim(),
+                        companyId: companyId,
+                        isDeleted: false
+                    },
+                    transaction: t
+                });
+
+                // If unit doesn't exist, create it
+                if (!unitRecord) {
+                    console.log(`Unit with code "${unit}" not found, creating new unit...`);
+                    unitRecord = await Unit.create(
+                        {
+                            companyId: companyId,
+                            unitCode: unit.trim(),
+                            unitName: unit.trim(), // Use same as code if name not provided
+                            isActive: true,
+                            isDeleted: false
+                        },
+                        { transaction: t }
+                    );
+                    console.log(`Created new unit: ${unitRecord.id}`);
+                }
+
+                unitId = unitRecord.id;
+                console.log(`Using unitId: ${unitId} for unit code: ${unit}`);
+            }
+
+            // Map frontend fields to backend model with proper null handling
+            const mappedItem = {
+                companyId: companyId,
+                itemType: itemType,
+                itemName: item.itemName?.trim() || '',
+                description: item.description?.trim() || null,
+                quantity: itemType === 'product' && openingQty ? parseFloat(openingQty.toString()) : null,
+                unitId: unitId,
+                tax: item.tax ? parseFloat(item.tax.toString()) : null,
+                hsn: itemType === 'product' ? (hsnCode?.trim() || null) : null,
+                sac: itemType === 'service' ? (sacCode?.trim() || null) : null,
+                sku: item.sku?.trim() || null,
+                unitPrice: parseFloat(unitPrice.toString()),
+                currency: currency?.trim() || 'INR',
+                cessPercentage: item.cessPercent ? parseFloat(item.cessPercent.toString()) : null,
+                isActive: true,
+                isDeleted: false,
+            };
+
+            console.log(`Creating item: ${mappedItem.itemName} (Type: ${mappedItem.itemType})`);
+            const createdItem = await createItem(mappedItem, t);
+            createdItems.push(createdItem);
         }
 
-        const data = await createItem(req.body, t);
         await t.commit();
 
         return res.status(200).json({
             success: true,
-            message: "Item created successfully",
-            data,
+            message: `${createdItems.length} item(s) created successfully`,
+            data: createdItems,
         });
 
     } catch (err: any) {
@@ -162,10 +251,69 @@ router.patch("/updateItem/:id", async (req: Request, res: Response): Promise<any
     try {
         let id = req.params.id;
         if (Array.isArray(id)) id = id[0];
+        
+        console.log('=== Update Item Request ===');
+        console.log('Item ID:', id);
+        console.log('Company ID:', req.query.companyId);
+        console.log('Request Body:', JSON.stringify(req.body, null, 2));
+        
+        // Handle unitId conversion from unitCode if needed
+        const updateData = { ...req.body };
+        
+        if (updateData.unitId) {
+            console.log('Processing unitId:', updateData.unitId, 'Type:', typeof updateData.unitId, 'Length:', updateData.unitId.length);
+            
+            // Check if it's a UUID (36 chars with dashes) or a unit code
+            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updateData.unitId);
+            
+            if (!isUUID) {
+                console.log(`Looking up unit by code: '${updateData.unitId}'`);
+                
+                // Try to find existing unit by code
+                let unit = await Unit.findOne({
+                    where: {
+                        unitCode: updateData.unitId,
+                        companyId: req.query.companyId as string,
+                        isActive: true,
+                        isDeleted: false
+                    }
+                });
+                
+                // If unit doesn't exist, create it
+                if (!unit) {
+                    console.log(`Unit not found, creating new unit with code: '${updateData.unitId}'`);
+                    const unitCodeToNameMap: any = {
+                        'box': 'Box', 'cm': 'Cms', 'doz': 'Doz', 'ft': 'FTS', 
+                        'g': 'GMS', 'in': 'Inc', 'kg': 'Kgs', 'lb': 'Lbs',
+                        'mg': 'Mgs', 'ml': 'Mlt', 'm': 'Mtr', 'pcs': 'Pcs'
+                    };
+                    
+                    unit = await Unit.create({
+                        companyId: req.query.companyId as string,
+                        unitCode: updateData.unitId,
+                        unitName: unitCodeToNameMap[updateData.unitId] || updateData.unitId.toUpperCase(),
+                        isActive: true,
+                        isDeleted: false
+                    }, { transaction: t });
+                    
+                    console.log(`Created new unit with ID: '${unit.id}'`);
+                }
+                
+                updateData.unitId = unit.id;
+                console.log(`Using unitId: '${unit.id}' for unit code '${req.body.unitId}'`);
+            } else {
+                console.log('unitId is already a UUID, using as-is');
+            }
+        } else {
+            console.log('No unitId in request body');
+        }
+        
+        console.log('Final update data:', JSON.stringify(updateData, null, 2));
+        
         const [affectedRows] = await updateItem(
             id,
             req.query.companyId as string,
-            req.body,
+            updateData,
             t
         );
 
@@ -189,6 +337,7 @@ router.patch("/updateItem/:id", async (req: Request, res: Response): Promise<any
             data: updatedItem,
         });
     } catch (err) {
+        console.error('Error updating item:', err);
         await t.rollback();
         return serverError(res, "Failed to update item");
     }
