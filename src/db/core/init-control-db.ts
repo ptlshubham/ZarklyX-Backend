@@ -51,6 +51,8 @@ import { PaymentsDocuments } from "../../routes/api-webapp/accounting/payments/p
 import { AccountingDocument } from "../../routes/api-webapp/accounting/accounting-document-model";
 import { Modules, initModulesModel } from "../../routes/api-webapp/superAdmin/modules/modules-model";
 import { Permissions, initPermissionsModel } from "../../routes/api-webapp/superAdmin/permissions/permissions-model";
+import { SubscriptionPlan, initSubscriptionPlanModel } from "../../routes/api-webapp/superAdmin/subscription-plan/subscription-plan-model";
+import { SubscriptionPlanModule, initSubscriptionPlanModuleModel } from "../../routes/api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-model";
 
 export {
   User,
@@ -95,6 +97,8 @@ export {
   AccountingDocument,
   Modules,
   Permissions,
+  SubscriptionPlan,
+  SubscriptionPlanModule,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -151,6 +155,8 @@ export function initControlDB(sequelize: Sequelize) {
   AccountingDocument.initModel(sequelize);
   initModulesModel(sequelize);
   initPermissionsModel(sequelize);
+  initSubscriptionPlanModel(sequelize);
+  initSubscriptionPlanModuleModel(sequelize);
 
   // Relations and associations
   /***user <-> company */
@@ -938,6 +944,27 @@ export function initControlDB(sequelize: Sequelize) {
     as: "permissions"
   });
 
+  /*** SubscriptionPlan <-> SubscriptionPlanModule */
+  SubscriptionPlan.hasMany(SubscriptionPlanModule, {
+    foreignKey: "subscriptionPlanId",
+    as: "planModules"
+  });
+  SubscriptionPlanModule.belongsTo(SubscriptionPlan, {
+    foreignKey: "subscriptionPlanId",
+    as: "subscriptionPlan"
+  });
+
+  /*** Modules <-> SubscriptionPlanModule */
+  Modules.hasMany(SubscriptionPlanModule, {
+    foreignKey: "moduleId",
+    as: "planModules"
+  });
+  SubscriptionPlanModule.belongsTo(Modules, {
+    foreignKey: "moduleId",
+    as: "module"
+  });
+
+
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
   // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
@@ -992,5 +1019,7 @@ export function initControlDB(sequelize: Sequelize) {
     AccountingDocument,
     Modules,
     Permissions,
+    SubscriptionPlan,
+    SubscriptionPlanModule
   };
 }

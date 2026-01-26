@@ -55,6 +55,8 @@ export default (app: Application) => {
     app.use("/accounting/debit-note",require("./api-webapp/accounting/debtit-Note/debit-note-api"));
     app.use("/superAdmin/modules",require("./api-webapp/superAdmin/modules/module-api"));
     app.use("/superAdmin/permissions",require("./api-webapp/superAdmin/permissions/permissions-api"));
+    app.use("/superAdmin/subscription-plan",require("./api-webapp/superAdmin/subscription-plan/subscription-plan-api"));
+    app.use("/superAdmin/subscription-plan-module",require("./api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-api"));
     
 };
 
