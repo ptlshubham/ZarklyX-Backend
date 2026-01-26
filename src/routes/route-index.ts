@@ -53,6 +53,7 @@ export default (app: Application) => {
     app.use("accounting/purchaseOrder",require("./api-webapp/accounting/purchaseOrder/purchase-order-api"));
     app.use("/accounting/payments",require("./api-webapp/accounting/payments/payments-api"));
     app.use("/accounting/debit-note",require("./api-webapp/accounting/debtit-Note/debit-note-api"));
+    app.use("/superAdmin/modules",require("./api-webapp/superAdmin/modules/module-api"));
     
 };
 

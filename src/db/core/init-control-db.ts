@@ -48,6 +48,8 @@ import { PurchaseOrder } from "../../routes/api-webapp/accounting/purchaseOrder/
 import { PurchaseOrderItem } from "../../routes/api-webapp/accounting/purchaseOrder/purchase-order-item-model";
 import { Payments } from "../../routes/api-webapp/accounting/payments/payments-model";
 import { PaymentsDocuments } from "../../routes/api-webapp/accounting/payments/payments-documents-model";
+import { AccountingDocument } from "../../routes/api-webapp/accounting/accounting-document-model";
+import { Modules, initModulesModel } from "../../routes/api-webapp/superAdmin/modules/modules-model";
 
 export {
   User,
@@ -88,7 +90,9 @@ export {
   PurchaseOrder,
   PurchaseOrderItem,
   Payments,
-  PaymentsDocuments
+  PaymentsDocuments,
+  AccountingDocument,
+  Modules,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -142,7 +146,8 @@ export function initControlDB(sequelize: Sequelize) {
   PurchaseOrderItem.initModel(sequelize);
   Payments.initModel(sequelize);
   PaymentsDocuments.initModel(sequelize);
-
+  AccountingDocument.initModel(sequelize);
+  initModulesModel(sequelize);
 
   // Relations and associations
   /***user <-> company */
@@ -970,5 +975,7 @@ export function initControlDB(sequelize: Sequelize) {
     CreditNoteItem,
     DebitNote,
     DebitNoteItem,
+    AccountingDocument,
+    Modules,
   };
 }
