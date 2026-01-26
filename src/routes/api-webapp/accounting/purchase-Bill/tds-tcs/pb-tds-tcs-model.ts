@@ -19,6 +19,8 @@ export class PurchaseBillTdsTcs extends Model<
     declare taxName: string;
     declare applicableOn: CreationOptional<string>; // "taxable" or "total"
     declare taxAmount: CreationOptional<number>; // Calculated TDS/TCS amount
+    declare isActive: boolean;
+    declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -69,6 +71,16 @@ export class PurchaseBillTdsTcs extends Model<
                     type: DataTypes.DECIMAL(18, 2),
                     allowNull: true,
                     comment: 'Calculated TDS/TCS amount',
+                },
+                isActive: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: true,
+                },
+                isDeleted: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
                 },
                 createdAt: {
                     type: DataTypes.DATE,

@@ -5,11 +5,14 @@ import { Item } from "../item/item-model";
 import { QuoteTdsTcs } from "./tds-tcs/quote-tds-tcs-model";
 import { Company } from "../../company/company-model";
 import { TaxSelection } from "./quote-model";
-import { calculateDueDate, InvoiceType } from "../invoice/invoice-handler";
+import { calculateDueDate, InvoiceType, CreateInvoiceInput } from "../invoice/invoice-handler";
 import { Invoice, PaymentTerms } from "../invoice/invoice-model";
 import { InvoiceItem } from "../invoice/invoice-item-model";
 import { InvoiceTdsTcs } from "../invoice/tds-tcs/invoice-tds-tcs-model";
+import { createInvoice } from "../invoice/invoice-handler";
 import { Clients } from "../../agency/clients/clients-model";
+import { sendEmail } from "../../../../services/mailService";
+import crypto from "crypto";
 
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
@@ -160,7 +163,7 @@ const calculateQuoteTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply !== companyState, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -196,7 +199,7 @@ const calculateQuoteTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply !== companyState) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -212,21 +215,37 @@ const calculateQuoteTotals = (
   // Calculate TDS and TCS amounts
   let totalTds = 0;
   let totalTcs = 0;
-  const taxableBase = subTotal - finalDiscount + (shippingAmount || 0) + (customAmount || 0) - (addDiscountTotal || 0);
-  const totalBase = taxableBase + totalCgst + totalSgst + totalIgst + totalCess;
-
+  const taxableBase = subTotal - finalDiscount;
+  // Invoice total BEFORE TDS/TCS
+  const totalBase = taxableBase
+        + totalCgst
+        + totalSgst
+        + totalIgst
+        + totalCess
+        + (shippingAmount || 0)
+        + (customAmount || 0)
+        - (addDiscountTotal || 0);
   if (tdsTcsEntries && tdsTcsEntries.length > 0) {
     tdsTcsEntries.forEach(entry => {
 
-      const baseAmount =
-      entry.applicableOn === "total" ? totalBase : taxableBase;
+      let baseAmount = 0;
+      if (entry.applicableOn === "taxable") {
+        baseAmount = taxableBase;
+      }
 
-      const taxAmount = baseAmount * (entry.taxPercentage / 100); 
-      // const taxAmount = taxableBase * (entry.taxPercentage / 100);
+      if (entry.applicableOn === "total") {
+        baseAmount = totalBase;
+      }
+
+      const taxAmount = parseFloat(
+        (baseAmount * entry.taxPercentage / 100).toFixed(2)
+      );
 
       if (entry.type.toLowerCase() === "tds") {
         totalTds += taxAmount;
-      } else if (entry.type.toLowerCase() === "tcs") {
+      }
+
+      if (entry.type.toLowerCase() === "tcs") {
         totalTcs += taxAmount;
       }
     });
@@ -294,6 +313,8 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
     body.tdsTcsEntries
   );
 
+  // Generate a unique publicToken
+  const publicToken = crypto.randomBytes(32).toString("hex");
   // Create quote
   const quote = await Quote.create(
     {
@@ -327,6 +348,7 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
       total: parseFloat(calculated.total.toFixed(2)),
       isActive: true,
       isDeleted: false,
+      publicToken,
     },
     { transaction: t }
   );
@@ -340,8 +362,18 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
     { transaction: t, validate: true }
   );
 
-    const itemTaxableBase = calculated.subTotal - calculated.finalDiscount;
-    const totalConsiderationBase = itemTaxableBase + (body.shippingAmount || 0) + (body.customAmount || 0) - (body.addDiscountTotal || 0);
+    // Calculate base amounts for TDS/TCS (should match the calculation logic)
+  const taxableBase = calculated.subTotal - calculated.finalDiscount;
+
+  const totalBase = taxableBase
+        + calculated.totalCgst
+        + calculated.totalSgst
+        + calculated.totalIgst
+        + calculated.totalCess
+        + (body.shippingAmount || 0)
+        + (body.customAmount || 0)
+        - (body.addDiscountTotal || 0);
+
 
   // Create TDS/TCS entries if provided
   let createdTdsTcs: any[] = [];
@@ -349,7 +381,7 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
     
     createdTdsTcs = await QuoteTdsTcs.bulkCreate(
       body.tdsTcsEntries.map(entry => {
-        const baseAmount = entry.applicableOn === "total" ? totalConsiderationBase : itemTaxableBase;
+        const baseAmount = entry.applicableOn === "total" ? totalBase : taxableBase;
         const taxAmount = baseAmount * (entry.taxPercentage / 100);
 
         return {
@@ -360,11 +392,45 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
           taxName: entry.taxName,
           applicableOn: entry.applicableOn,
           taxAmount: parseFloat(taxAmount.toFixed(2)),
+          isActive: true,
+          isDeleted: false,
         };
       }),
       { transaction: t, validate: true }
     );
   }
+
+  // sending email to the client about quote created
+  const client = await Clients.findOne({
+    where: {
+      id: quote.clientId
+    }
+  })
+  if(!client){
+    throw new Error("Client not found");
+  }
+    try {
+      await sendEmail({
+        from: "" as any,
+        to: client.email,
+        subject: `Quote ${quote.quotationNo}`,
+        htmlFile: "quote-created",
+        replacements: {
+          userName: client.clientfirstName || "Customer",
+          quotationNo: quote.quotationNo,
+          validUntilDate: quote.validUntilDate,
+          total: quote.total,
+          currentYear: new Date().getFullYear(),
+        },
+        html: null,
+        text: "",
+        attachments: null,
+        cc: null,
+        replyTo: null,
+      });
+    } catch (error) {
+      throw new Error("Quote create email failed");
+    }
 
   return {
     quote,
@@ -378,6 +444,14 @@ export const getQuoteById = async (id: string, companyId: string) => {
   return await Quote.findOne({
     where: { id, companyId, isDeleted: false },
     include: [
+      {
+        model: Company,
+        as: "company",
+      },
+      {
+        model: Clients,
+        as: "client",
+      },
       {
         model: QuoteItem,
         as: "quoteItems",
@@ -410,159 +484,232 @@ export const getQuotesByClient = async (clientId: string, companyId: string) => 
 export const updateQuote = async (
   id: string,
   companyId: string,
-  body: CreateQuoteInput,
+  body: any,
   t: Transaction
 ) => {
-  // First, verify the quote exists
-  const existingQuote = await Quote.findOne({
-    where: { id, companyId, isDeleted: false },
-    transaction: t,
-    lock: t.LOCK.UPDATE,
-  });
+  // Check if items or numerical values are being updated
+  const needsRecalculation = body.items || body.shippingAmount !== undefined || 
+    body.shippingTax !== undefined || body.addDiscountTotal !== undefined || 
+    body.addDiscountToAll !== undefined || body.customAmount !== undefined || 
+    body.showCess !== undefined || body.tdsTcsEntries;
 
-  if (!existingQuote) {
-    throw new Error("Quote not found");
-  }
-
-  // Check if quote can be modified
-  if (existingQuote.status === "Converted") {
-    throw new Error("Converted quotes cannot be modified");
-  }
-
-  // Calculate valid until date
-  const quotationDate = body.quotationDate || existingQuote.quotationDate;
-  const validUntilDate = body.validUntilDate || existingQuote.validUntilDate;
-
-  // Fetch all items from database to get their details
-  const itemIds = body.items.map(item => item.itemId);
-  const itemsFromDb = await Item.findAll({
-    where: { id: itemIds, companyId: body.companyId, isActive: true, isDeleted: false },
-    transaction: t,
-  });
-  const itemMap = new Map(itemsFromDb.map(item => [item.id, item]));
-
-  if (itemsFromDb.length !== itemIds.length) {
-    throw new Error("One or more items not found or inactive");
-  }
-
-  // Fetch company details to get state for tax calculation
-  const company = await Company.findByPk(body.companyId, { transaction: t });
-  if (!company) {
-    throw new Error("Company not found");
-  }
-  const companyState = company.state || '';
-
-  // Validate that all items have unitId
-  const itemsWithoutUnit = itemsFromDb.filter(item => !item.unitId);
-  if (itemsWithoutUnit.length > 0) {
-    throw new Error(`Items must have a unit assigned: ${itemsWithoutUnit.map(i => i.itemName).join(', ')}`);
-  }
-
-  // Use shared calculation logic
-  const calculated = calculateQuoteTotals(
-    body.items,
-    itemMap,
-    body.addDiscountToAll,
-    body.showCess,
-    body.placeOfSupply,
-    companyState,
-    body.shippingAmount,
-    body.shippingTax,
-    body.customAmount,
-    body.addDiscountTotal,
-    body.tdsTcsEntries
-  );
-
-  // Update the quote
-  await Quote.update(
-    {
-      clientId: body.clientId,
-      taxSelectionOn: body.taxSelectionOn,
-      placeOfSupply: body.placeOfSupply,
-      quotationNo: body.quotationNo,
-      quotationDate,
-      poNo: body.poNo,
-      validUntilDate,
-      unitId: body.unitId || null,
-      shippingChargeType: body.shippingChargeType || null,
-      shippingAmount: body.shippingAmount,
-      shippingTax: body.shippingTax,
-      addDiscountTotal: body.addDiscountTotal,
-      addDiscountToAll: body.addDiscountToAll,
-      customAmountLabel: body.customAmountLabel || null,
-      customAmount: body.customAmount,
-      showCess: body.showCess,
-      termsConditions: body.termsConditions || null,
-      privateNotes: body.privateNotes || null,
-      subTotal: parseFloat(calculated.subTotal.toFixed(2)),
-      finalDiscount: parseFloat(calculated.finalDiscount.toFixed(2)), // Sum of actual discount amounts
-      cgst: parseFloat(calculated.totalCgst.toFixed(2)), // Cumulative CGST from items
-      sgst: parseFloat(calculated.totalSgst.toFixed(2)), // Cumulative SGST from items
-      igst: parseFloat(calculated.totalIgst.toFixed(2)), // Cumulative IGST from items
-      cessValue: parseFloat(calculated.totalCess.toFixed(2)), // Cumulative CESS from items
-      total: parseFloat(calculated.total.toFixed(2)),
-    },
-    {
+  if(needsRecalculation){
+    // First, verify the quote exists
+    const existingQuote = await Quote.findOne({
       where: { id, companyId, isDeleted: false },
       transaction: t,
+      lock: t.LOCK.UPDATE,
+      include: [
+        { model: QuoteItem, as: "quoteItems" },
+        { model: QuoteTdsTcs, as: "tdsTcsEntries" },
+      ]
+    });
+
+    if (!existingQuote) {
+      throw new Error("Quote not found");
     }
-  );
 
-  // Delete existing quote items and TDS/TCS entries
-  await QuoteItem.destroy({
-    where: { quoteId: id },
-    transaction: t,
-  });
-
-  await QuoteTdsTcs.destroy({
-    where: { quoteId: id },
-    transaction: t,
-  });
-
-  // Create new quote items
-  await QuoteItem.bulkCreate(
-    calculated.quoteItemsData.map(item => ({
-      ...item,
-      quoteId: id,
-    })),
-    { transaction: t, validate: true }
-  );
-
-  if (body.tdsTcsEntries){
-    await QuoteTdsTcs.destroy({ where: { quoteId: id }, transaction: t });
-    if (body.tdsTcsEntries.length > 0) {
-      // Calculate base amounts for TDS/TCS
-        const itemTaxableBase = calculated.subTotal - calculated.finalDiscount;
-        const totalConsiderationBase = itemTaxableBase + (body.shippingAmount || 0) + (body.customAmount || 0) - (body.addDiscountTotal || 0);
-      await QuoteTdsTcs.bulkCreate(
-        body.tdsTcsEntries.map(entry => {
-          const baseAmount = entry.applicableOn === "total" ? totalConsiderationBase : itemTaxableBase;
-          const taxAmount = baseAmount * (entry.taxPercentage / 100);
-
-          return {
-            companyId: body.companyId,
-            quoteId: id,
-            taxPercentage: entry.taxPercentage,
-            type: entry.type,
-            taxName: entry.taxName,
-            applicableOn: entry.applicableOn || 'total',
-            taxAmount: parseFloat(taxAmount.toFixed(2)),
-          };
-        }),
-        { transaction: t, validate: true }
-      );
+    // Check if quote can be modified
+    if (existingQuote.status === "Converted") {
+      throw new Error("Converted quotes cannot be modified");
     }
-  } 
+
+    // Merge body with existing invoice data
+    const mergedData = {
+      ...existingQuote.toJSON(),
+      ...body,
+      items: body.items || (existingQuote as any).quoteItems?.map((item: any) => ({
+        itemId: item.itemId,
+        quantity: item.quantity,
+        discount: item.discount,
+      })) || [],
+    };
+
+    // Calculate valid until date
+    const quotationDate = body.quotationDate || existingQuote.quotationDate;
+    const validUntilDate = body.validUntilDate || existingQuote.validUntilDate;
+
+    // Fetch all items from database to get their details
+    const itemIds = mergedData.items.map((item: any) => item.itemId);
+    const itemsFromDb = await Item.findAll({
+      where: { id: itemIds, companyId, isActive: true, isDeleted: false }
+    });
+    const itemMap = new Map(itemsFromDb.map(item => [item.id, item]));
+
+    if (itemsFromDb.length !== itemIds.length) {
+      throw new Error("One or more items not found or inactive");
+    }
+
+    // Fetch company details to get state for tax calculation
+    const company = await Company.findByPk(companyId);
+    if (!company) {
+      throw new Error("Company not found");
+    }
+    const companyState: string = company.state ?? '';
+
+    // Validate that all items have unitId
+    const itemsWithoutUnit = itemsFromDb.filter(item => !item.unitId);
+    if (itemsWithoutUnit.length > 0) {
+      throw new Error(`Items must have a unit assigned: ${itemsWithoutUnit.map(i => i.itemName).join(', ')}`);
+    }
+
+    // Use shared calculation logic
+    const calculated = calculateQuoteTotals(
+      mergedData.items,
+      itemMap,
+      mergedData.addDiscountToAll,
+      mergedData.showCess,
+      mergedData.placeOfSupply,
+      companyState,
+      mergedData.shippingAmount,
+      mergedData.shippingTax,
+      mergedData.customAmount,
+      mergedData.addDiscountTotal,
+      mergedData.tdsTcsEntries
+    );
+
+    // Update the quote
+    await Quote.update(
+      {
+        ...body,
+        subTotal: parseFloat(calculated.subTotal.toFixed(2)),
+        finalDiscount: parseFloat(calculated.finalDiscount.toFixed(2)), // Sum of actual discount amounts
+        cgst: parseFloat(calculated.totalCgst.toFixed(2)), // Cumulative CGST from items
+        sgst: parseFloat(calculated.totalSgst.toFixed(2)), // Cumulative SGST from items
+        igst: parseFloat(calculated.totalIgst.toFixed(2)), // Cumulative IGST from items
+        cessValue: parseFloat(calculated.totalCess.toFixed(2)), // Cumulative CESS from items
+        total: parseFloat(calculated.total.toFixed(2)),
+      },
+      {
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+      }
+    );
+
+    // Delete existing quote items and TDS/TCS entries
+    await QuoteItem.destroy({
+      where: { quoteId: id },
+      transaction: t,
+    });
+
+    await QuoteTdsTcs.destroy({
+      where: { quoteId: id },
+      transaction: t,
+    });
+
+    // Create new quote items
+    await QuoteItem.bulkCreate(
+      calculated.quoteItemsData.map(item => ({
+        ...item,
+        quoteId: id,
+      })),
+      { transaction: t, validate: true }
+    );
+
+    if (body.tdsTcsEntries){
+      await QuoteTdsTcs.destroy({ where: { quoteId: id }, transaction: t });
+      if (mergedData.tdsTcsEntries.length > 0) {
+        // Calculate base amounts for TDS/TCS
+        const taxableBase = calculated.subTotal - calculated.finalDiscount;
+        const totalBase = taxableBase
+                + calculated.totalCgst
+                + calculated.totalSgst
+                + calculated.totalIgst
+                + calculated.totalCess
+                + (body.shippingAmount || 0)
+                + (body.customAmount || 0)
+                - (body.addDiscountTotal || 0);
+
+        await QuoteTdsTcs.bulkCreate(
+          mergedData.tdsTcsEntries.map((entry: any) => {
+            const baseAmount = entry.applicableOn === "total" ? totalBase : taxableBase;
+            const taxAmount = baseAmount * (entry.taxPercentage / 100);
+
+            return {
+              companyId: body.companyId,
+              quoteId: id,
+              taxPercentage: entry.taxPercentage,
+              type: entry.type,
+              taxName: entry.taxName,
+              applicableOn: entry.applicableOn,
+              taxAmount: parseFloat(taxAmount.toFixed(2)),
+            };
+          }),
+          { transaction: t, validate: true }
+        );
+      }
+    }
+  } else {
+    await Quote.update(body, {
+      where: { id, companyId, isDeleted: false },
+      transaction: t,
+    });
+    return await getQuoteById(id,companyId);
+  }
 
   return [1];
 };
 
 // Soft delete quote
-export const deleteQuote = async (id: string, companyId: string, t: Transaction) => {
-  return await Quote.update(
+export const deleteQuote = async (
+  id: string,
+  companyId: string,
+  t: Transaction
+) => {
+  // Fetch quote with lock
+  const quote = await Quote.findOne({
+    where: { id, companyId, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!quote) {
+    throw new Error("Quote not found");
+  }
+
+  // Status validation
+  if (quote.status === "Converted") {
+    throw new Error(
+      "Converted quotes cannot be deleted"
+    );
+  }
+
+  // Soft delete quote items
+  await QuoteItem.update(
     { isActive: false, isDeleted: true },
-    { where: { id, companyId, isDeleted: false }, transaction: t }
+    {
+      where: { quoteId: id },
+      transaction: t,
+    }
   );
+
+  // Soft delete TDS/TCS entries
+  await QuoteTdsTcs.update(
+    { isActive: false,  isDeleted: true },
+    {
+      where: { quoteId: id },
+      transaction: t,
+    }
+  );
+
+  // Soft delete quote itself
+  await Quote.update(
+    {
+      isActive: false,
+      isDeleted: true,
+      status: "Cancelled",
+    },
+    {
+      where: { id, companyId },
+      transaction: t,
+    }
+  );
+
+  return {
+    success: true,
+    message: "Quote deleted successfully",
+    quoteId: id,
+  };
 };
 
 // Search quotes with filters
@@ -587,7 +734,7 @@ export const searchQuotes = async (filters: SearchQuoteFilters) => {
 
   // Filter by quote number
   if (filters.quotationNo) {
-    whereConditions.quoteNo = {
+    whereConditions.quotationNo = {
       [Op.like]: `%${filters.quotationNo}%`,
     };
   }
@@ -610,14 +757,22 @@ export const searchQuotes = async (filters: SearchQuoteFilters) => {
     const dateFilter: any = {};
     if (filters.dueDateFrom) dateFilter[Op.gte] = filters.dueDateFrom;
     if (filters.dueDateTo) dateFilter[Op.lte] = filters.dueDateTo;
-    whereConditions.validUnilDate = dateFilter;
+    whereConditions.validUntilDate = dateFilter;
   }
 
   // Build include array for associations
   const includeArray: any[] = [
     {
+      model: Company,
+      as: "company",
+    },
+    {
+      model: Clients,
+      as: "client",
+    },
+    {
       model: QuoteItem,
-      as: "QuoteItems",
+      as: "quoteItems",
     },
     {
       model: QuoteTdsTcs,
@@ -684,30 +839,18 @@ export const searchQuotes = async (filters: SearchQuoteFilters) => {
 export const convertQuoteToInvoice = async (
   quoteId: string,
   companyId: string,
-  invoiceData: {
-    invoiceType: InvoiceType;
-    invoiceNo: string;
-    invoiceDate?: Date;
-    poNo: string;
-    poDate?: Date;
-    paymentTerms: PaymentTerms;
-    specificDueDate?: Date;
-  },
+  body: any,
   t: Transaction
 ) => {
-  // Fetch the quote with all related data
+  // Fetch quote with all related data
   const quote = await Quote.findOne({
     where: { id: quoteId, companyId, isDeleted: false },
     include: [
-      {
-        model: QuoteItem,
-        as: "quoteItems",
-      },
-      {
-        model: QuoteTdsTcs,
-        as: "tdsTcsEntries",
-      },
+      { model: QuoteItem, as: "quoteItems" },
+      { model: QuoteTdsTcs, as: "tdsTcsEntries" },
     ],
+    transaction: t,
+    lock: t.LOCK.UPDATE,
   });
 
   if (!quote) {
@@ -718,104 +861,123 @@ export const convertQuoteToInvoice = async (
     throw new Error("Quote has already been converted to an invoice");
   }
 
-  // Calculate due date
-  const invoiceDate = invoiceData.invoiceDate || new Date();
-  const dueDate = calculateDueDate(
-    invoiceDate,
-    invoiceData.paymentTerms,
-    invoiceData.specificDueDate
-  );
-
-  // Create invoice from quote data
-  const invoice = await Invoice.create(
-    {
-      companyId: quote.companyId,
-      invoiceType: invoiceData.invoiceType,
-      clientId: quote.clientId,
-      taxSelectionOn: quote.taxSelectionOn,
-      placeOfSupply: quote.placeOfSupply,
-      invoiceNo: invoiceData.invoiceNo,
-      invoiceDate,
-      poNo: invoiceData.poNo,
-      poDate: invoiceData.poDate || new Date(),
-      dueDate,
-      status: 'Unpaid',
-      paymentTerms: invoiceData.paymentTerms,
-      unitId: quote.unitId,
-      shippingChargeType: quote.shippingChargeType,
-      shippingAmount: quote.shippingAmount,
-      shippingTax: quote.shippingTax,
-      addDiscountTotal: quote.addDiscountTotal,
-      addDiscountToAll: quote.addDiscountToAll,
-      customAmountLabel: quote.customAmountLabel,
-      customAmount: quote.customAmount,
-      showCess: quote.showCess,
-      cessValue: quote.cessValue,
-      reverseCharge: false,
-      termsConditions: quote.termsConditions,
-      privateNotes: quote.privateNotes,
-      subTotal: quote.subTotal,
-      finalDiscount: 0,
-      cgst: quote.cgst,
-      sgst: quote.sgst,
-      igst: quote.igst,
-      total: quote.total,
-      balance: quote.total, // Initially balance equals total
-      isActive: true,
-      isDeleted: false,
-    },
-    { transaction: t }
-  );
-
-  // Create invoice items from quote items
-  const quoteItems = (quote as any).quoteItems || [];
-  const invoiceItems = await InvoiceItem.bulkCreate(
-    quoteItems.map((item: any) => ({
-      invoiceId: invoice.id,
-      itemId: item.itemId,
-      itemName: item.itemName,
-      description: item.description,
-      hsn: item.hsn,
-      sac: item.sac,
-      unitId: item.unitId,
-      tax: item.tax,
-      cessPercentage: item.cessPercentage,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      discount: item.discount,
-      taxAmount: item.taxAmount,
-      totalAmount: item.totalAmount,
-    })),
-    { transaction: t, validate: true }
-  );
-
-  // Create TDS/TCS entries from quote
-  const quoteTdsTcs = (quote as any).tdsTcsEntries || [];
-  let invoiceTdsTcs: any[] = [];
-  if (quoteTdsTcs.length > 0) {
-    invoiceTdsTcs = await InvoiceTdsTcs.bulkCreate(
-      quoteTdsTcs.map((entry: any) => ({
-        companyId: quote.companyId,
-        invoiceId: invoice.id,
-        taxPercentage: entry.taxPercentage,
-        type: entry.type,
-        taxName: entry.taxName,
-        applicableOn: entry.applicableOn,
-      })),
-      { transaction: t, validate: true }
-    );
+  // Validate required fields
+  if (!body.invoiceNo || !body.poNo || !body.paymentTerms) {
+    throw new Error("invoiceNo, poNo and paymentTerms are required to convert quote to invoice");
   }
 
-  // Update quote status to "Converted"
+  const quoteItems = (quote as any).quoteItems || [];
+  const quoteTdsTcs = (quote as any).tdsTcsEntries || [];
+
+  // Helper function to safely convert to number or return undefined
+  const toNumber = (val: any): number | undefined => {
+    if (val === undefined || val === null || val === "") return undefined;
+    const num = Number(val);
+    return isNaN(num) ? undefined : num;
+  };
+
+  // Prepare items for invoice (use body items if provided, otherwise use quote items)
+  const invoiceItems = body.items && body.items.length > 0 
+    ? body.items.map((item: any) => ({
+        itemId: item.itemId,
+        quantity: toNumber(item.quantity) ?? 1,
+        discount: toNumber(item.discount) ?? 0,
+      }))
+    : quoteItems.map((qi: any) => ({
+        itemId: qi.itemId,
+        quantity: toNumber(qi.quantity) ?? 1,
+        discount: toNumber(qi.discount) ?? 0,
+      }));
+
+  if (!invoiceItems || invoiceItems.length === 0) {
+    throw new Error("Invoice must contain at least one item");
+  }
+
+  // Prepare TDS/TCS entries (use body entries if provided, otherwise use quote entries)
+  const tdsTcsEntries = body.tdsTcsEntries && body.tdsTcsEntries.length > 0
+    ? body.tdsTcsEntries.map((e: any) => ({
+        taxPercentage: toNumber(e.taxPercentage) ?? 0,
+        type: e.type,
+        taxName: e.taxName,
+        applicableOn: e.applicableOn ?? "taxable",
+      }))
+    : quoteTdsTcs.map((e: any) => ({
+        taxPercentage: toNumber(e.taxPercentage) ?? 0,
+        type: e.type,
+        taxName: e.taxName,
+        applicableOn: e.applicableOn ?? "taxable",
+      }));
+
+  // Build invoice input object with proper data types and fallbacks
+  const invoiceInput: CreateInvoiceInput = {
+    companyId,
+    invoiceType: (body.invoiceType as InvoiceType) ?? "tax Invoice",
+    clientId: body.clientId ?? quote.clientId,
+    taxSelectionOn: (body.taxSelectionOn as TaxSelection) ?? quote.taxSelectionOn,
+    placeOfSupply: body.placeOfSupply ?? quote.placeOfSupply,
+    invoiceNo: body.invoiceNo,
+    invoiceDate: body.invoiceDate ? new Date(body.invoiceDate) : new Date(),
+    poNo: body.poNo,
+    poDate: body.poDate ? new Date(body.poDate) : new Date(),
+    paymentTerms: body.paymentTerms as PaymentTerms,
+    specificDueDate: body.specificDueDate ? new Date(body.specificDueDate) : undefined,
+    items: invoiceItems,
+    unitId: body.unitId ?? quote.unitId ?? undefined,
+    shippingChargeType: body.shippingChargeType ?? quote.shippingChargeType ?? undefined,
+    shippingAmount: toNumber(body.shippingAmount) ?? toNumber(quote.shippingAmount) ?? undefined,
+    shippingTax: toNumber(body.shippingTax) ?? toNumber(quote.shippingTax) ?? undefined,
+    addDiscountTotal: toNumber(body.addDiscountTotal) ?? toNumber(quote.addDiscountTotal) ?? undefined,
+    addDiscountToAll: toNumber(body.addDiscountToAll) ?? toNumber(quote.addDiscountToAll) ?? undefined,
+    customAmountLabel: body.customAmountLabel ?? quote.customAmountLabel ?? undefined,
+    customAmount: toNumber(body.customAmount) ?? toNumber(quote.customAmount) ?? undefined,
+    showCess: body.showCess !== undefined ? Boolean(body.showCess) : Boolean(quote.showCess),
+    reverseCharge: body.reverseCharge !== undefined ? Boolean(body.reverseCharge) : false,
+    tdsTcsEntries: tdsTcsEntries.length > 0 ? tdsTcsEntries : undefined,
+    eWayBillNo: body.eWayBillNo ?? undefined,
+    dispatchFrom: body.dispatchFrom ?? undefined,
+    lrNo: body.lrNo ?? undefined,
+    challanNo: body.challanNo ?? undefined,
+    vehicleNo: body.vehicleNo ?? undefined,
+    transportMode: body.transportMode ?? undefined,
+    transactionType: body.transactionType ?? undefined,
+    shippingDistanceInKm: toNumber(body.shippingDistanceInKm) ?? undefined,
+    transporterName: body.transporterName ?? undefined,
+    transporterId: toNumber(body.transporterId) ?? undefined,
+    transporterGstin: body.transporterGstin ?? undefined,
+    transporterDocDate: body.transporterDocDate ? new Date(body.transporterDocDate) : undefined,
+    transporterDocNo: toNumber(body.transporterDocNo) ?? undefined,
+    termsConditions: body.termsConditions ?? quote.termsConditions ?? undefined,
+    privateNotes: body.privateNotes ?? quote.privateNotes ?? undefined,
+  };
+
+  // Create the invoice using the invoice creation handler
+  const result = await createInvoice(invoiceInput, t);
+
+  // Mark quote as converted
   await Quote.update(
-    { status: "Converted" },
+    { 
+      status: "Converted",
+    },
     { where: { id: quoteId }, transaction: t }
   );
 
   return {
-    invoice,
-    invoiceItems,
-    tdsTcsEntries: invoiceTdsTcs,
+    invoice: result.invoice,
+    invoiceItems: result.invoiceItems,
+    tdsTcsEntries: result.invoiceTdsTcs,
     convertedFromQuote: quoteId,
   };
+};
+
+// Get quote by public token (public preview)
+export const getQuoteByPublicToken = async (publicToken: string) => {
+  return await Quote.findOne({
+    where: { publicToken, isDeleted: false },
+    include: [
+      { model: QuoteItem, as: "quoteItems" },
+      { model: QuoteTdsTcs, as: "tdsTcsEntries" },
+      { model: Clients, as: "client" },
+      { model: Company, as: "company" },
+    ],
+  });
 };

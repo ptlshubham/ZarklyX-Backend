@@ -7,6 +7,7 @@ import {
   deletePurchaseOrder,
   convertPurchaseOrderToBill,
   searchPurchaseOrder,
+  getPurchaseOrderByPublicToken
 } from "./purchase-order-handler";
 import { serverError } from "../../../../utils/responseHandler";
 import dbInstance from "../../../../db/core/control-db";
@@ -17,6 +18,18 @@ const router = express.Router();
 router.post("/createPurchaseOrder", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
+    const requiredFields = [
+      "companyId", "vendorId", "placeOfSupply", "poNo", "poDate", "referenceNo", "validUntilDate",
+    ];
+    for (const field of requiredFields) {
+      if (req.body[field] === undefined || req.body[field] === null || req.body[field] === "") {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `${field} is required`,
+        });
+      }
+    }
     const data = await createPurchaseOrder(req.body, t);
     await t.commit();
     return res.status(201).json({
@@ -33,7 +46,14 @@ router.post("/createPurchaseOrder", async (req: Request, res: Response): Promise
 // GET /accounting/purchaseOrder/getPurchaseOrderByCompany?companyId=
 router.get("/getPurchaseOrderByCompany", async (req: Request, res: Response): Promise<any> => {
   try {
-    const data = await getPurchaseOrdersByCompany(req.query.companyId as string);
+    const { companyId } = req.query;
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+    const data = await getPurchaseOrdersByCompany(companyId as string);
     res.json({
       success: true,
       data,
@@ -50,9 +70,16 @@ router.get("/getPurchaseOrderById/:id", async (req: Request, res: Response): Pro
   try {
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
+    const { companyId } = req.query;
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
     const data = await getPurchaseOrderById(
       id,
-      req.query.companyId as string
+      companyId as string
     );
     if (!data) {
       return res.status(404).json({
@@ -138,9 +165,28 @@ router.patch("/updatePurchaseOrder/:id", async (req: Request, res: Response): Pr
   try {
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
+    const { companyId } = req.query;
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+    // At least one updatable field must be present
+    const updatableFields = [
+      "vendorId", "placeOfSupply", "poNo", "poDate", "referenceNo", "validUntilDate", "finalDiscount", "unitId", "totalQuantity", "shippingChargeType", "shippingAmount", "shippingTax", "addDiscountToAll", "showCess", "cessValue", "termsConditions", "privateNotes", "subTotal", "taxable", "cgst", "sgst", "igst", "total",
+    ];
+    const hasUpdate = updatableFields.some(field => req.body[field] !== undefined);
+    if (!hasUpdate) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "At least one updatable field is required",
+      });
+    }
     const [affectedRows] = await updatePurchaseOrder(
       id,
-      req.query.companyId as string,
+      companyId as string,
       req.body,
       t
     );
@@ -169,12 +215,19 @@ router.delete("/deletePurchaseOrder/:id", async (req: Request, res: Response): P
   try {
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
-    const [affectedRows] = await deletePurchaseOrder(
+    const { companyId } = req.query;
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+    const result = await deletePurchaseOrder(
       id,
-      req.query.companyId as string,
+      companyId as string,
       t
     );
-    if (affectedRows === 0) {
+    if (!result) {
       await t.rollback();
       return res.status(404).json({
         success: false,
@@ -204,6 +257,17 @@ router.post("/convertToBill/:id", async (req: Request, res: Response): Promise<a
       await t.rollback();
       return res.status(400).json({ success: false, message: "companyId is required" });
     }
+    // Validate required fields for billData (example: vendorId, billDate, total, etc.)
+    const billRequiredFields = ["vendorId", "billDate", "total"];
+    for (const field of billRequiredFields) {
+      if (billData[field] === undefined || billData[field] === null || billData[field] === "") {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `${field} is required in bill data`,
+        });
+      }
+    }
     const result = await convertPurchaseOrderToBill(poId, companyId as string, billData, t);
     await t.commit();
     return res.status(201).json({
@@ -214,6 +278,21 @@ router.post("/convertToBill/:id", async (req: Request, res: Response): Promise<a
   } catch (err: any) {
     await t.rollback();
     return res.status(400).json({ success: false, message: err.message || "Failed to convert purchase order to bill" });
+  }
+});
+
+// GET /accounting/purchaseOrder/public/:publicToken
+router.get("/public/:publicToken", async (req: Request, res: Response): Promise<any> => {
+  try {
+    let publicToken = req.params.publicToken;
+    if (Array.isArray(publicToken)) publicToken = publicToken[0];
+    const data = await getPurchaseOrderByPublicToken(publicToken);
+    if (!data) {
+      return res.status(404).json({ success: false, message: "Purchase order not found" });
+    }
+    return res.json({ success: true, data });
+  } catch (err) {
+    return serverError(res, "Failed to fetch purchase order by public token.");
   }
 });
 

@@ -51,6 +51,8 @@ export default (app: Application) => {
     app.use("/accounting/purchase-bill/tds-tcs",require("./api-webapp/accounting/purchase-Bill/tds-tcs/pb-tds-tcs-api"));
     app.use("/accounting/purchase-bill",require("./api-webapp/accounting/purchase-Bill/purchase-bill-api"));
     app.use("accounting/purchaseOrder",require("./api-webapp/accounting/purchaseOrder/purchase-order-api"));
+    app.use("/accounting/payments",require("./api-webapp/accounting/payments/payments-api"));
+    app.use("/accounting/debit-note",require("./api-webapp/accounting/debtit-Note/debit-note-api"));
     
 };
 

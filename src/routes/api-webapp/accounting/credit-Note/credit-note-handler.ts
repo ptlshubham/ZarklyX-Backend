@@ -4,6 +4,9 @@ import { CreditNoteItem } from "./credit-note-item-model";
 import { Item } from "../item/item-model";
 import { Company } from "../../company/company-model";
 import { Clients } from "../../agency/clients/clients-model";
+import { sendEmail } from "../../../../services/mailService";
+import crypto from "crypto";
+import { Invoice } from "../invoice/invoice-model";
 
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
@@ -145,7 +148,7 @@ const calculateCreditNoteTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply !== companyState, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -181,7 +184,7 @@ const calculateCreditNoteTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (isTaxInvoice && shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply !== companyState) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -208,6 +211,8 @@ const calculateCreditNoteTotals = (
 
 // Create credit note with all related data
 export const createCreditNote = async (body: CreateCreditNoteInput, t: Transaction) => {
+  // Generate a unique publicToken
+  const publicToken = crypto.randomBytes(32).toString("hex");
   const creditDate = body.creditDate || new Date();
   const invoiceDate = body.invoiceDate || new Date();
 
@@ -279,6 +284,7 @@ export const createCreditNote = async (body: CreateCreditNoteInput, t: Transacti
       igst: parseFloat(calculated.totalIgst.toFixed(2)), // Cumulative IGST from items
       cessValue: parseFloat(calculated.totalCess.toFixed(2)), // Cumulative CESS from items
       total: parseFloat(calculated.total.toFixed(2)),
+      publicToken,
       isActive: true,
       isDeleted: false,
     },
@@ -294,6 +300,38 @@ export const createCreditNote = async (body: CreateCreditNoteInput, t: Transacti
     { transaction: t }
   );
 
+  // sending email to the client about payment created
+  const client = await Clients.findOne({
+    where: { id: creditNote?.clientId }
+  })
+  if(!client){
+    throw new Error("Client not found");
+  }
+  const invoice = await Invoice.findByPk(body.invoiceId);
+
+    try {
+      await sendEmail({
+        from: "" as any,
+        to: client.email,
+        subject: `Credit Note ${creditNote.creditNo}`,
+        htmlFile: "credit-note",
+        replacements: {
+          userName: client.clientfirstName || "Customer",
+          creditNoteNo: creditNote.creditNo,
+          invoiceNo: invoice ? invoice.invoiceNo : "",
+          amount: creditNote.total,
+          currentYear: new Date().getFullYear(),
+        },
+        html: null,
+        text: "",
+        attachments: null,
+        cc: null,
+        replyTo: null,
+      });
+    } catch (error) {
+      throw new Error("Credit Note create email failed");
+    }
+
   return {
     creditNote,
     creditNoteItems: createdCreditNoteItems,
@@ -305,6 +343,14 @@ export const getCreditNoteById = async (id: string, companyId: string) => {
   return await CreditNote.findOne({
     where: { id, companyId, isDeleted: false },
     include: [
+      {
+        model: Company,
+        as: "company"
+      },
+      {
+        model: Clients,
+        as: "client"
+      },
       {
         model: CreditNoteItem,
         as: "creditNoteItems",
@@ -451,11 +497,47 @@ export const updateCreditNote = async (
 };
 
 // Soft delete credit note
-export const deleteCreditNote = async (id: string, companyId: string, t: Transaction) => {
-  return await CreditNote.update(
+export const deleteCreditNote = async (
+  id: string,
+  companyId: string,
+  t: Transaction
+) => {
+  // Fetch credit note with lock
+  const creditNote = await CreditNote.findOne({
+    where: { id, companyId, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!creditNote) {
+    throw new Error("Credit Note not found");
+  }
+
+  // Soft delete credit note items
+  await CreditNoteItem.update(
     { isActive: false, isDeleted: true },
-    { where: { id, companyId, isDeleted: false }, transaction: t }
+    {
+      where: { creditNoteId: id },
+      transaction: t,
+    }
   );
+
+  // Soft delete credit note
+  await CreditNote.update(
+    {
+      isActive: false,
+      isDeleted: true,
+    },
+    {
+      where: { id, companyId },
+      transaction: t,
+    }
+  );
+  return {
+    success: true,
+    message: "Credit Note deleted successfully",
+    creditNoteId: id,
+  };
 };
 
 // Search credit note with filters
@@ -566,5 +648,18 @@ export const searchCreditNote = async (filters: SearchCreditNoteFilters) => {
     include: includeArray,
     order: [["creditDate", "DESC"]],
     subQuery: false,
+  });
+};
+
+// Get credit note by public token (public preview)
+export const getCreditNoteByPublicToken = async (publicToken: string) => {
+  return await CreditNote.findOne({
+    where: { publicToken, isDeleted: false },
+    include: [
+      { model: Company, as: "company" },
+      { model: Clients, as: "client" },
+      { model: CreditNoteItem, as: "creditNoteItem" }
+      // Add items association if exists
+    ],
   });
 };

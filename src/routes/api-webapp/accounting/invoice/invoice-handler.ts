@@ -8,6 +8,8 @@ import { Clients } from "../../agency/clients/clients-model";
 import { Payments, PaymentMethod } from "../payments/payments-model";
 import { PaymentsDocuments } from "../payments/payments-documents-model";
 import { PaymentTerms, TaxSelection } from "./invoice-model";
+import { sendEmail } from "../../../../services/mailService";
+import crypto from 'crypto';
 
 export type InvoiceStatus =
   | "Draft"
@@ -114,7 +116,7 @@ interface InvoiceCalculationResult {
   invoiceItemsData: any[];
 }
 
-interface CreateInvoiceInput {
+export interface CreateInvoiceInput {
   companyId: string;
   invoiceType: InvoiceType;
   clientId: string;
@@ -125,7 +127,7 @@ interface CreateInvoiceInput {
   poNo: string;
   poDate: Date;
   paymentTerms: PaymentTerms;
-  specificDueDate: Date; // For "specific date" payment term
+  specificDueDate?: Date; // For "specific date" payment term
   items: Array<{
     itemId: string;
     itemName?: string;
@@ -228,7 +230,7 @@ const calculateInvoiceTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply !== companyState, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -264,7 +266,7 @@ const calculateInvoiceTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (isTaxInvoice && shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply !== companyState) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -347,6 +349,9 @@ const calculateInvoiceTotals = (
 
 // Create invoice with all related data
 export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) => {
+  // Generate a unique public token for sharing
+  const publicToken = crypto.randomBytes(16).toString('hex');
+
   // Calculate due date based on payment terms
   const invoiceDate = body.invoiceDate || new Date();
   const dueDate = calculateDueDate(
@@ -448,6 +453,7 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
       cessValue: parseFloat(calculated.totalCess.toFixed(2)),
       total: parseFloat(calculated.total.toFixed(2)),
       balance: parseFloat(calculated.total.toFixed(2)),
+      publicToken,
       isActive: true,
       isDeleted: false,
     },
@@ -498,16 +504,51 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
           taxName: entry.taxName,
           applicableOn: entry.applicableOn,
           taxAmount: parseFloat(taxAmount.toFixed(2)),
+          isActive: true,
+          isDeleted: false,
         };
       }),
       { transaction: t, validate: true }
     );
   }
 
+  const client = await Clients.findByPk(invoice.clientId,{ transaction: t} );
+
+  if (client && client.email) {
+    try {
+      await sendEmail({
+        from: "varadchaudhari04@gmail.com",
+        to: "varadchaudhari0210@gmail.com",
+        subject: `Invoice ${invoice.invoiceNo}`,
+        htmlFile: "invoice-created",
+        replacements: {
+          userName: client.clientfirstName || "Customer",
+          invoiceNo: invoice.invoiceNo,
+          invoiceDate: invoice.invoiceDate,
+          total: invoice.total,
+          dueDate: invoice.dueDate,
+          documentLink: `${process.env.BASE_URL}/document/${publicToken}`,
+          currentYear: new Date().getFullYear(),
+        },
+        html: null,
+        text: "",
+        attachments: null,
+        cc: null,
+        replyTo: null,
+      });
+    } catch (error) {
+      throw new Error("Invoice create email failed ")
+    }
+  } else{
+    throw new Error();
+  }
+
+
   return {
     invoice,
     invoiceItems: createdInvoiceItems,
-    tdsTcsEntries: createdTdsTcs,
+    invoiceTdsTcs: createdTdsTcs,
+    documentLink: `${process.env.BASE_URL}/document/${publicToken}`,
   };
 };
 
@@ -516,6 +557,14 @@ export const getInvoiceById = async (id: string, companyId: string) => {
   return await Invoice.findOne({
     where: { id, companyId, isDeleted: false },
     include: [
+      {
+        model: Clients,
+        as: "client",
+      },
+      {
+        model: Company,
+        as: "company",
+      },
       {
         model: InvoiceItem,
         as: "invoiceItems",
@@ -715,12 +764,81 @@ export const updateInvoice = async (
 };
 
 // Soft delete invoice
-export const deleteInvoice = async (id: string, companyId: string, t: Transaction) => {
-  return await Invoice.update(
-    { isActive: false, isDeleted: true },
-    { where: { id, companyId, isDeleted: false }, transaction: t }
+export const deleteInvoice = async (
+  id: string,
+  companyId: string,
+  t: Transaction
+) => {
+  // Fetch invoice with lock
+  const invoice = await Invoice.findOne({
+    where: { id, companyId, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!invoice) {
+    throw new Error("Invoice not found");
+  }
+
+  // Status validation
+  if (["Paid", "Partially Paid"].includes(invoice.status)) {
+    throw new Error(
+      "Paid or partially paid invoices cannot be deleted"
+    );
+  }
+
+  // Check if payments exist
+  const paymentCount = await PaymentsDocuments.count({
+    where: {
+      documentId: id,
+      documentType: "Invoice",
+    },
+    transaction: t,
+  });
+
+  if (paymentCount > 0) {
+    throw new Error(
+      "Invoice with payments cannot be deleted. Cancel it instead."
+    );
+  }
+
+  // Soft delete invoice items
+  await InvoiceItem.update(
+    { isDeleted: true },
+    {
+      where: { invoiceId: id },
+      transaction: t,
+    }
   );
+
+  // Soft delete TDS/TCS entries
+  await InvoiceTdsTcs.update(
+    { isActive: false, isDeleted: true },
+    {
+      where: { invoiceId: id },
+      transaction: t,
+    }
+  );
+
+  // Soft delete invoice itself
+  await Invoice.update(
+    {
+      isActive: false,
+      isDeleted: true,
+      status: "Cancelled",
+    },
+    {
+      where: { id, companyId },
+      transaction: t,
+    }
+  );
+  return {
+    success: true,
+    message: "Invoice deleted successfully",
+    invoiceId: id,
+  };
 };
+
 
 // Search invoices with filters
 export interface SearchInvoiceFilters {
@@ -852,6 +970,7 @@ export const convertInvoiceToPayment = async (
     paymentNo: string;
     referenceNo: string;
     method: string;
+    bankCharges?: number;
   },
   t: Transaction
 ) => {
@@ -895,12 +1014,11 @@ export const convertInvoiceToPayment = async (
       paymentDate: new Date(),
       referenceNo: paymentData.referenceNo,
       method: paymentData.method as PaymentMethod,
-      bankCharges: 0,
+      bankCharges: paymentData.bankCharges,
       amountReceived: paymentData.paymentAmount,
       amountUsedForPayments: paymentData.paymentAmount,
       amountInExcess: 0,
       memo: `Payment for Invoice ${invoice.invoiceNo}`,
-      status: "Active",
       isActive: true,
       isDeleted: false,
     },
@@ -914,6 +1032,8 @@ export const convertInvoiceToPayment = async (
       documentId: invoice.id,
       documentType: "Invoice",
       paymentValue: paymentData.paymentAmount,
+      isActive: true,
+      isDeleted: false,
     },
     { transaction: t, validate: true }
   );
@@ -937,7 +1057,62 @@ export const convertInvoiceToPayment = async (
     },
     { where: { id: invoiceId }, transaction: t }
   );
+  
+  // const client = await Clients.findByPk(invoice.clientId);
+  const client = await Clients.findOne({
+    where: { id: invoice.clientId }
+  });
+  const company = await Company.findByPk(companyId,{ transaction: t} );
+  if(!client){
+    throw new Error("Client not found");
+  }
 
+    if(newBalance === 0){
+      try {
+        await sendEmail({
+          from: company && company.email ? company.email : "",
+          to: client.email,
+          subject: `Payment received for Invoice ${invoice.invoiceNo}`,
+          htmlFile: "payment-received",
+          replacements: {
+            userName: client.clientfirstName || "Customer",
+            invoiceNo: invoice.invoiceNo,
+            amount: paymentData.paymentAmount,
+            currentYear: new Date().getFullYear(),
+          },
+          html: null,
+          text: "",
+          attachments: null,
+          cc: null,
+          replyTo: null,
+        });
+      } catch (error) {
+          throw new Error("Invoice convert email failed");
+      }
+    } else{
+      try {
+        await sendEmail({
+          from: (company && company.email) ? company.email : "",
+          to: client.email,
+          subject: `Partial Payment received for Invoice ${invoice.invoiceNo}`,
+          htmlFile: "partial-payment-received",
+          replacements: {
+            userName: client.clientfirstName || "Customer",
+            invoiceNo: invoice.invoiceNo,
+            amount: paymentData.paymentAmount,
+            currentYear: new Date().getFullYear(),
+            remainingBalance: newBalance,
+          },
+          html: null,
+          text: "",
+          attachments: null,
+          cc: null,
+          replyTo: null,
+        });
+      } catch (error) {
+          throw new Error("Invoice convert email failed");
+      }
+    }
   return {
     payment,
     convertedFromInvoice: invoiceId,
@@ -946,4 +1121,29 @@ export const convertInvoiceToPayment = async (
     remainingBalance: newBalance,
     status: newStatus,
   };
+};
+
+// Handler to fetch invoice by publicToken, including related data
+export const getInvoiceByPublicToken = async (publicToken: string) => {
+  return await Invoice.findOne({
+    where: { publicToken, isDeleted: false },
+    include: [
+      {
+        model: InvoiceItem,
+        as: "invoiceItems",
+      },
+      {
+        model: InvoiceTdsTcs,
+        as:"tdsTcsEntries",
+      },
+      {
+        model: Clients,
+        as: "client",
+      },
+      {
+        model: Company,
+        as: "company",
+      },
+    ],
+  });
 };

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Op, Transaction } from "sequelize";
 import { PurchaseOrder } from "./purchase-order-model";
 import { PurchaseOrderItem } from "./purchase-order-item-model";
@@ -5,6 +6,8 @@ import { Item } from "../item/item-model";
 import { Vendor } from "../vendor/vendor-model";
 import { PurchaseBill } from "../purchase-Bill/purchase-bill-model";
 import { PurchaseBillItem } from "../purchase-Bill/purcharse-bill-item-model";
+import { sendEmail } from "../../../../services/mailService";
+import { Company } from "../../company/company-model";
 
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
@@ -62,7 +65,7 @@ interface CreatePurchaseOrderInput {
   poNo: string;
   poDate: Date;
   referenceNo: string;
-  validUnilDate: Date;
+  validUntilDate: Date;
   items: Array<{
     itemId: string;
     itemName?: string;
@@ -136,7 +139,7 @@ const calculatePurchaseOrderTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply !== companyState, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -172,7 +175,7 @@ const calculatePurchaseOrderTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply !== companyState) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -199,8 +202,10 @@ const calculatePurchaseOrderTotals = (
 
 // Create purchase order
 export const createPurchaseOrder = async (body: CreatePurchaseOrderInput, t: Transaction) => {
+  // Generate a unique publicToken
+  const publicToken = crypto.randomBytes(32).toString("hex");
   const poDate = body.poDate || new Date();
-  const validUnilDate = body.validUnilDate || new Date();
+  const validUntilDate = body.validUntilDate || new Date();
 
   // Fetch all items from database
   const itemIds = body.items.map(item => item.itemId);
@@ -246,7 +251,7 @@ export const createPurchaseOrder = async (body: CreatePurchaseOrderInput, t: Tra
       poNo: body.poNo,
       poDate: poDate,
       referenceNo: body.referenceNo,
-      validUntilDate: validUnilDate,
+      validUntilDate: validUntilDate,
       status: 'Open',
       finalDiscount: parseFloat(calculated.finalDiscount.toFixed(2)),
       unitId: body.unitId || null,
@@ -265,6 +270,7 @@ export const createPurchaseOrder = async (body: CreatePurchaseOrderInput, t: Tra
       sgst: parseFloat(calculated.totalSgst.toFixed(2)),
       igst: parseFloat(calculated.totalIgst.toFixed(2)),
       total: parseFloat(calculated.total.toFixed(2)),
+      publicToken,
       isActive: true,
       isDeleted: false,
     },
@@ -280,6 +286,24 @@ export const createPurchaseOrder = async (body: CreatePurchaseOrderInput, t: Tra
     { transaction: t }
   );
 
+  if (vendor?.email) {
+    await sendEmail({
+      from: "" as any,
+      to: vendor.email,
+      subject: `Purchase Order ${purchaseOrder.poNo}`,
+      htmlFile: "purchase-order-created",
+      replacements: {
+        vendorName: vendor.name || "Vendor",
+        poNo: purchaseOrder.poNo,
+        currentYear: new Date().getFullYear(),
+      },
+      html: null,
+      text: "",
+      attachments: null,
+      cc: null,
+      replyTo: null,
+    });
+  }
   return {
     purchaseOrder,
     items: createdItems,
@@ -400,11 +424,55 @@ export const updatePurchaseOrder = async (
 };
 
 // Soft delete purchase order
-export const deletePurchaseOrder = async (id: string, companyId: string, t: Transaction) => {
-  return await PurchaseOrder.update(
+export const deletePurchaseOrder = async (
+  id: string,
+  companyId: string,
+  t: Transaction
+) => {
+  // Fetch purchase order with lock
+  const purchaseOrder = await PurchaseOrder.findOne({
+    where: { id, companyId, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!purchaseOrder) {
+    throw new Error("Purchase order not found");
+  }
+
+  // Status validation: Cannot delete if already converted to Purchase Bill
+  if (purchaseOrder.status === "Converted") {
+    throw new Error(
+      "Converted purchase orders cannot be deleted"
+    );
+  }
+
+  // Soft delete purchase order items
+  await PurchaseOrderItem.update(
     { isActive: false, isDeleted: true },
-    { where: { id, companyId, isDeleted: false }, transaction: t }
+    {
+      where: { poId: id },
+      transaction: t,
+    }
   );
+
+  // Soft delete purchase order
+  await PurchaseOrder.update(
+    {
+      isActive: false,
+      isDeleted: true,
+      status: "Cancelled",
+    },
+    {
+      where: { id, companyId },
+      transaction: t,
+    }
+  );
+  return {
+    success: true,
+    message: "Purchase order deleted successfully",
+    purchaseOrderId: id,
+  };
 };
 
 // Search invoices with filters
@@ -546,12 +614,12 @@ export const convertPurchaseOrderToBill = async (
       vendorId: po.vendorId,
       placeOfSupply: po.placeOfSupply,
       invoiceNo: billData.invoiceNo,
-      billDate: new Date(),
+      purchaseBillDate: new Date(),
       status: 'Open',
       poNo: po.poNo,
       poDate: po.poDate,
       dueDate: billData.dueDate,
-      purchaseBillNumber: `PB-${Date.now()}`,
+      purchaseBillNo: `PB-${Date.now()}`,
       finalDiscount: po.finalDiscount,
       unitId: po.unitId,
       totalQuantity: po.totalQuantity,
@@ -608,4 +676,15 @@ export const convertPurchaseOrderToBill = async (
     bill,
     convertedFromPurchaseOrder: poId,
   };
+};
+
+// Get purchase order by public token (public preview)
+export const getPurchaseOrderByPublicToken = async (publicToken: string) => {
+  return await PurchaseOrder.findOne({
+    where: { publicToken, isDeleted: false },
+    include: [
+      { model: Vendor, as: "vendor" },
+      { model: Company, as: "company" },
+    ],
+  });
 };
