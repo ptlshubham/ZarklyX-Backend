@@ -48,6 +48,8 @@ import quoteRouter from './routes/api-webapp/accounting/quote/quote-api';
 import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-note-api';
 import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
 import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
+import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
+import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
 
 import path from "path";
 const app = express();
@@ -97,10 +99,10 @@ app.use("/google", googleRoutes);
 
 // 🔍 DEBUG: Log all /drive requests
 app.use("/drive", (req, res, next) => {
-  console.log(`📍 [DRIVE REQUEST] ${req.method} ${req.path}`, {
-    hasAccessToken: !!req.query.access_token || !!req.headers['x-access-token'],
-    hasRefreshToken: !!req.query.refresh_token || !!req.headers['x-refresh-token']
-  });
+  // console.log(`📍 [DRIVE REQUEST] ${req.method} ${req.path}`, { 
+  //   hasAccessToken: !!req.query.access_token || !!req.headers['x-access-token'],
+  //   hasRefreshToken: !!req.query.refresh_token || !!req.headers['x-refresh-token']
+  // });
   next();
 });
 
@@ -117,15 +119,18 @@ app.use("/influencerCategory", influencerCategoryRoutes);
 app.use("/influencerIndustry", influencerIndustryRoutes);
 app.use("/influencerPlatform", influencerPlatformRoutes);
 app.use("/itManagement/itTickets", itTicketsRoutes);
-app.use("/accounting/item-Category", itemCategoryRoutes);
-app.use("/accounting/unit", unitRouter);
-app.use("/accounting/vendor", vendorRouter);
-app.use("/accounting/item", itemRouter);
-app.use("/accounting/invoice", invoiceRouter);
-app.use("/accounting/quote", quoteRouter);
-app.use("/accounting/credit-note", creditNoteRouter);
-app.use("/accounting/purchase-bill", purchaseBillRouter);
-app.use("/accounting/purchaseOrder", purchaseOrderRouter);
+app.use("/accounting/item-Category",itemCategoryRoutes);
+app.use("/accounting/unit",unitRouter);
+app.use("/accounting/vendor",vendorRouter);
+app.use("/accounting/item",itemRouter);
+app.use("/accounting/invoice",invoiceRouter);
+app.use("/accounting/quote",quoteRouter);
+app.use("/accounting/credit-note",creditNoteRouter);
+app.use("/accounting/purchase-bill",purchaseBillRouter);
+app.use("/accounting/purchaseOrder",purchaseOrderRouter);
+app.use("/accounting/payments",paymentsRouter);
+app.use("/accounting/debit-note",debitNoteRouter);
+
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
 // to the mounted tiktok router at '/tiktok/auth/tiktok/callback' so it won't 404.

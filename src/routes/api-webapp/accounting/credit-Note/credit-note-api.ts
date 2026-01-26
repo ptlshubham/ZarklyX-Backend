@@ -290,7 +290,7 @@ router.delete("/deleteCreditNote/:id", async (req: Request, res: Response): Prom
     const result = await deleteCreditNote(id, companyId as string, t);
     await t.commit();
 
-    if (result[0] === 0) {
+    if (!result) {
       return res.status(404).json({
         success: false,
         message: "Credit note not found",

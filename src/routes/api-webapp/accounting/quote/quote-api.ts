@@ -117,40 +117,42 @@ router.get("/getQuoteByClientId/:clientId", async (req: Request, res: Response):
 router.patch("/updateQuote/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    // Validate required fields for update
-    const {
-      companyId,
-      clientId,
-      taxSelectionOn,
-      placeOfSupply,
-      quotationNo,
-      items,
-      showCess,
-    } = req.body;
+    if(req.body.items){
+      const { companyId, clientId, items } = req.body;
 
-    if (!companyId || !clientId || !quotationNo || !items || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields: companyId, clientId, quotationNo, items",
-      });
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "companyId is required for updating purchase bill",
+        });
+      }
+
+      if (items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "items array cannot be empty",
+        });
+      }
+
+      // Validate items structure
+      for (const item of items) {
+        if (!item.itemId || !item.quantity) {
+          return res.status(400).json({
+            success: false,
+            message: "Each item must have itemId and quantity",
+          });
+        }
+      }
     }
 
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
-    const [affectedRows] = await updateQuote(
+    const data = await updateQuote(
       id,
       req.query.companyId as string,
       req.body,
       t
     );
-
-    if (affectedRows === 0) {
-      await t.rollback();
-      return res.status(404).json({
-        success: false,
-        message: "Quote not found",
-      });
-    }
 
     await t.commit();
     return res.json({
@@ -170,13 +172,13 @@ router.delete("/deleteQuote/:id", async (req: Request, res: Response): Promise<a
   try {
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
-    const [affectedRows] = await deleteQuote(
+    const result = await deleteQuote(
       id,
       req.query.companyId as string,
       t
     );
 
-    if (affectedRows === 0) {
+    if (!result) {
       await t.rollback();
       return res.status(404).json({
         success: false,
@@ -196,22 +198,13 @@ router.delete("/deleteQuote/:id", async (req: Request, res: Response): Promise<a
   }
 });
 
-// POST /accounting/quote/convert-from-quote/:quoteId?companyId=
+// POST /accounting/quote/convertFromQuote/:quoteId?companyId=
 router.post("/convertFromQuote/:quoteId", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
     const { companyId } = req.query;
     let { quoteId } = req.params;
     if (Array.isArray(quoteId)) quoteId = quoteId[0];
-    const {
-      invoiceType,
-      invoiceNo,
-      invoiceDate,
-      poNo,
-      poDate,
-      paymentTerms,
-      specificDueDate,
-    } = req.body;
 
     if (!companyId || !quoteId) {
       return res.status(400).json({
@@ -220,44 +213,17 @@ router.post("/convertFromQuote/:quoteId", async (req: Request, res: Response): P
       });
     }
 
-    if (!invoiceType || !invoiceNo || !poNo || !paymentTerms) {
+    if (!req.body.invoiceNo || !req.body.paymentTerms) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: invoiceType, invoiceNo, poNo, paymentTerms",
-      });
-    }
-
-    // Validate payment terms
-    const validPaymentTerms = [
-      "specific date",
-      "hide payment terms",
-      "NET 7",
-      "NET 10",
-      "NET 15",
-      "NET 30",
-      "NET 45",
-      "NET 60",
-    ];
-
-    if (!validPaymentTerms.includes(paymentTerms)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid payment terms. Must be one of: ${validPaymentTerms.join(", ")}`,
+        message: "invoiceNo and paymentTerms are required",
       });
     }
 
     const data = await convertQuoteToInvoice(
       quoteId,
       companyId as string,
-      {
-        invoiceType,
-        invoiceNo,
-        invoiceDate: invoiceDate ? new Date(invoiceDate) : undefined,
-        poNo,
-        poDate: poDate ? new Date(poDate) : undefined,
-        paymentTerms,
-        specificDueDate: specificDueDate ? new Date(specificDueDate) : undefined,
-      },
+      req.body,
       t
     );
 
@@ -270,8 +236,7 @@ router.post("/convertFromQuote/:quoteId", async (req: Request, res: Response): P
     });
   } catch (err: any) {
     await t.rollback();
-    console.error("Convert Quote to Invoice Error:", err);
-    return serverError(res, err.message || "Failed to convert quote to invoice.");
+    return serverError(res, err.message);
   }
 });
 

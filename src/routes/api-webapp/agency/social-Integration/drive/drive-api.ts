@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred } from "../../../../../services/drive-service";
+import { generateDriveAuthUrl, exchangeDriveCodeForTokens, listMyDriveFiles, getDriveFileMetadata, refreshDriveAccessToken, getDriveAccessTokenInfo, downloadDriveFileStream, exportDriveFileStream, uploadDriveFile, createDriveFolder, listDriveFolderChildren, moveDriveFile, setDriveFilePermission, readDriveFileAsBase64, getGoogleUser, updateFolderColor, updateItemStarred, renameDriveItem, moveItemToFolder, getDriveClientFromTokens, moveFileToTrash } from "../../../../../services/drive-service";
 import { getPreviewStream } from "../../../../../services/drive-preview.service";
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -38,7 +38,6 @@ function extractTokens(req: Request) {
 // Helper: Ensure access token is valid, refresh if needed
 async function ensureValidAccessToken(tokens: any): Promise<void> {
   if (!tokens.access_token && tokens.refresh_token) {
-    console.log('🔄 No access token, attempting to refresh using refresh token...');
     try {
       const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
       tokens.access_token = refreshed.access_token;
@@ -381,8 +380,6 @@ router.get("/me/profile", async (req: Request, res: Response): Promise<void> => 
     } catch (apiError: any) {
       // If token expired (401), try to refresh it
       if (apiError.response?.status === 401 && refresh_token) {
-        console.log('Access token expired, attempting to refresh...');
-
         try {
           const refreshed = await refreshDriveAccessToken(refresh_token);
           access_token = refreshed.access_token;
@@ -1358,7 +1355,6 @@ router.get("/folders/:folderId/download-zip", async (req: Request, res: Response
         } catch (apiError: any) {
           // If token expired, try to refresh and retry
           if (apiError.response?.status === 401 && tokens.refresh_token) {
-            console.log('🔄 Access token expired during folder fetch, attempting to refresh...');
             try {
               const refreshed = await refreshDriveAccessToken(tokens.refresh_token);
               tokens.access_token = refreshed.access_token;
@@ -1881,4 +1877,583 @@ router.post("/company/:companyId/disconnect", async (req: Request, res: Response
   }
 });
 
+/**
+ * ✅ POST /drive/me/files/:id/rename
+ * Purpose: Rename a file or folder on Google Drive
+ * Params:
+ *   - id (required, URL): File/Folder ID to rename
+ *   - newName (required, body): New name for the file/folder
+ * Returns: { success, data: { id, name, mimeType, iconLink }, message }
+ * Usage: User renames a file/folder from the UI
+ */
+router.post("/me/files/:id/rename", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { newName } = req.body;
+
+    if (!fileId || !newName) {
+      res.status(400).json({ 
+        success: false, 
+        message: "Missing fileId or newName" 
+      });
+      return;
+    }
+
+    // Extract tokens from headers or query
+    const tokens = extractTokens(req);
+    
+    // Ensure valid access token
+    await ensureValidAccessToken(tokens);
+
+    if (!tokens.access_token) {
+      res.status(401).json({ 
+        success: false, 
+        message: "No valid access token found" 
+      });
+      return;
+    }
+
+    // Rename the file/folder
+    const result = await renameDriveItem(tokens, fileId, newName);
+
+    console.log(`✅ File/Folder ${fileId} renamed to ${newName}`);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "File/Folder renamed successfully"
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Failed to rename file/folder:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to rename file/folder"
+    });
+    return;
+  }
+});
+
+// Move multiple files/folders to a target folder
+router.post("/me/files/move", async (req: any, res: any) => {
+  try {
+    const { itemIds, targetFolderId } = req.body;
+
+    if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0 || !targetFolderId) {
+      res.status(400).json({
+        success: false,
+        message: "Missing itemIds array or targetFolderId"
+      });
+      return;
+    }
+
+    // Extract tokens from headers or query
+    const tokens = extractTokens(req);
+
+    // Ensure valid access token
+    await ensureValidAccessToken(tokens);
+
+    if (!tokens.access_token) {
+      res.status(401).json({
+        success: false,
+        message: "No valid access token found"
+      });
+      return;
+    }
+
+    // Move each item to the target folder
+    const movePromises = itemIds.map(itemId =>
+      moveItemToFolder(tokens, itemId, targetFolderId)
+    );
+
+    const results = await Promise.all(movePromises);
+
+    console.log(`✅ ${results.length} item(s) moved successfully to folder ${targetFolderId}`);
+
+    res.status(200).json({
+      success: true,
+      data: results,
+      message: `${results.length} item(s) moved successfully`
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Failed to move items:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to move items"
+    });
+    return;
+  }
+});
+
+/**
+ * ✅ POST /drive/me/files/:id/trash
+ * Purpose: Move a file/folder to trash (sets trashed=true in Google Drive)
+ * Params:
+ *   - id (required, URL): File/Folder ID to move to trash
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, data: { id, name, trashed } }
+ */
+router.post("/me/files/:id/trash", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!fileId) {
+      res.status(400).json({ 
+        success: false, 
+        message: "Missing fileId" 
+      });
+      return;
+    }
+
+    // Extract tokens from headers or query
+    const tokens = extractTokens(req);
+    
+    // Ensure valid access token
+    await ensureValidAccessToken(tokens);
+
+    if (!tokens.access_token) {
+      res.status(401).json({ 
+        success: false, 
+        message: "No valid access token found" 
+      });
+      return;
+    }
+
+    // Move file/folder to trash
+    const result = await moveFileToTrash(tokens, fileId);
+
+    console.log(`✅ File/Folder ${fileId} moved to trash`);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "File/Folder moved to trash successfully"
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Failed to move file/folder to trash:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to move file/folder to trash"
+    });
+    return;
+  }
+});
+
+/**
+ * ✅ DELETE /drive/me/files/:id/trash
+ * Purpose: Move multiple files/folders to trash
+ * Body:
+ *   - fileIds (required): Array of file/folder IDs to move to trash
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, data: array of results }
+ */
+router.delete("/me/files/trash", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { fileIds } = req.body;
+
+    if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
+      res.status(400).json({ 
+        success: false, 
+        message: "Missing or invalid fileIds array" 
+      });
+      return;
+    }
+
+    // Extract tokens from headers or query
+    const tokens = extractTokens(req);
+    
+    // Ensure valid access token
+    await ensureValidAccessToken(tokens);
+
+    if (!tokens.access_token) {
+      res.status(401).json({ 
+        success: false, 
+        message: "No valid access token found" 
+      });
+      return;
+    }
+
+    // Move all files/folders to trash
+    const trashPromises = fileIds.map(fileId => 
+      moveFileToTrash(tokens, fileId)
+    );
+
+    const results = await Promise.all(trashPromises);
+
+    console.log(`✅ ${results.length} file(s)/folder(s) moved to trash`);
+
+    res.status(200).json({
+      success: true,
+      data: results,
+      message: `${results.length} file(s)/folder(s) moved to trash successfully`
+    });
+    return;
+  } catch (error: any) {
+    console.error('❌ Failed to move files/folders to trash:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to move files/folders to trash"
+    });
+    return;
+  }
+});
+
+/**
+ * ✅ GET /drive/me/files/:id/share-info
+ * Purpose: Get all share information for a file/folder (shared users, access level, share link)
+ * Params:
+ *   - id (required, URL): File ID to get share info for
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, sharedUsers, accessLevel, shareLink }
+ */
+router.get("/me/files/:id/share-info", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "No valid tokens provided" });
+      return;
+    }
+
+    await ensureValidAccessToken(tokens);
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    const drive = getDriveClientFromTokens(tokens);
+
+    // Get file permissions
+    const permissionsResponse = await drive.permissions.list({
+      fileId,
+      fields: 'permissions(id,emailAddress,displayName,role,type,domain)',
+      pageSize: 100
+    });
+
+    const permissions = permissionsResponse.data.permissions || [];
+
+    // Map permissions to SharedUser interface
+    const sharedUsers = permissions
+      .filter((perm: any) => perm.type === 'user' && perm.emailAddress) // Only include individual users
+      .map((perm: any) => ({
+        id: perm.id,
+        email: perm.emailAddress,
+        name: perm.displayName || perm.emailAddress.split('@')[0],
+        role: perm.role === 'writer' ? 'editor' : 'viewer' // Map Google roles to our roles
+      }));
+
+    // Determine access level based on permissions
+    let accessLevel = 'restricted';
+    const anyonePermission = permissions.find((p: any) => p.type === 'anyone');
+    const domainPermission = permissions.find((p: any) => p.type === 'domain');
+
+    if (anyonePermission) {
+      accessLevel = 'anyone';
+    } else if (domainPermission) {
+      accessLevel = 'organization';
+    }
+
+    // Get file metadata for share link
+    const fileResponse = await drive.files.get({
+      fileId,
+      fields: 'webViewLink,id'
+    });
+
+    const shareLink = fileResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+
+    res.status(200).json({
+      success: true,
+      sharedUsers,
+      accessLevel,
+      shareLink
+    });
+  } catch (error: any) {
+    console.error('❌ Failed to get share info:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get share information'
+    });
+  }
+});
+
+/**
+ * ✅ POST /drive/me/files/:id/share
+ * Purpose: Add a user to share a file/folder
+ * Params:
+ *   - id (required, URL): File ID
+ *   - email (required, body): User email to add
+ *   - role (required, body): 'viewer' or 'editor'
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { email, role }
+ * Returns: { success, permissionId, displayName }
+ */
+router.post("/me/files/:id/share", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "No valid tokens provided" });
+      return;
+    }
+
+    await ensureValidAccessToken(tokens);
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { email, role } = req.body;
+
+    if (!email || !role) {
+      res.status(400).json({ success: false, message: "Email and role are required" });
+      return;
+    }
+
+    const drive = getDriveClientFromTokens(tokens);
+
+    // Map our role to Google role
+    const googleRole = role === 'editor' ? 'writer' : 'reader';
+
+    // Create permission
+    const permResponse = await drive.permissions.create({
+      fileId,
+      requestBody: {
+        role: googleRole,
+        type: 'user',
+        emailAddress: email
+      },
+      fields: 'id,displayName,emailAddress'
+    });
+
+    res.status(200).json({
+      success: true,
+      permissionId: permResponse.data.id,
+      displayName: permResponse.data.displayName || email
+    });
+  } catch (error: any) {
+    console.error('❌ Failed to add user to share:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to add user to share'
+    });
+  }
+});
+
+/**
+ * ✅ DELETE /drive/me/files/:id/share/:permissionId
+ * Purpose: Remove a user from sharing
+ * Params:
+ *   - id (required, URL): File ID
+ *   - permissionId (required, URL): Permission ID to remove
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success }
+ */
+router.delete("/me/files/:id/share/:permissionId", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "No valid tokens provided" });
+      return;
+    }
+
+    await ensureValidAccessToken(tokens);
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const permissionId = Array.isArray(req.params.permissionId) ? req.params.permissionId[0] : req.params.permissionId;
+
+    if (!fileId || !permissionId) {
+      res.status(400).json({ success: false, message: "File ID and Permission ID are required" });
+      return;
+    }
+
+    const drive = getDriveClientFromTokens(tokens);
+    await drive.permissions.delete({
+      fileId,
+      permissionId
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.error('❌ Failed to remove user from share:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to remove user from share'
+    });
+  }
+});
+
+/**
+ * ✅ PATCH /drive/me/files/:id/share/:permissionId
+ * Purpose: Update user's role in sharing
+ * Params:
+ *   - id (required, URL): File ID
+ *   - permissionId (required, URL): Permission ID to update
+ *   - role (required, body): 'viewer' or 'editor'
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { role }
+ * Returns: { success }
+ */
+router.patch("/me/files/:id/share/:permissionId", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "No valid tokens provided" });
+      return;
+    }
+
+    await ensureValidAccessToken(tokens);
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const permissionId = Array.isArray(req.params.permissionId) ? req.params.permissionId[0] : req.params.permissionId;
+    const { role } = req.body;
+
+    if (!fileId || !permissionId || !role) {
+      res.status(400).json({ success: false, message: "File ID, Permission ID, and role are required" });
+      return;
+    }
+
+    const drive = getDriveClientFromTokens(tokens);
+
+    // Map our role to Google role
+    const googleRole = role === 'editor' ? 'writer' : 'reader';
+
+    await drive.permissions.update({
+      fileId,
+      permissionId,
+      requestBody: {
+        role: googleRole
+      }
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.error('❌ Failed to update user role:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update user role'
+    });
+  }
+});
+
+/**
+ * ✅ POST /drive/me/files/:id/access-level
+ * Purpose: Update access level for a file/folder
+ * Params:
+ *   - id (required, URL): File ID
+ *   - accessLevel (required, body): 'restricted', 'organization', or 'anyone'
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Body: { accessLevel }
+ * Returns: { success }
+ */
+router.post("/me/files/:id/access-level", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "No valid tokens provided" });
+      return;
+    }
+
+    await ensureValidAccessToken(tokens);
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { accessLevel } = req.body;
+
+    if (!fileId || !accessLevel) {
+      res.status(400).json({ success: false, message: "File ID and access level are required" });
+      return;
+    }
+
+    const drive = getDriveClientFromTokens(tokens);
+
+    // First, remove all existing anyone/domain permissions
+    const permissionsResponse = await drive.permissions.list({
+      fileId,
+      fields: 'permissions(id,type)'
+    });
+
+    const permissions = permissionsResponse.data.permissions || [];
+
+    // Remove 'anyone' and 'domain' type permissions
+    for (const perm of permissions) {
+      if ((perm.type === 'anyone' || perm.type === 'domain') && perm.id) {
+        await drive.permissions.delete({
+          fileId,
+          permissionId: perm.id
+        });
+      }
+    }
+
+    // Add new permission based on accessLevel
+    if (accessLevel === 'anyone') {
+      await drive.permissions.create({
+        fileId,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone'
+        }
+      });
+    } else if (accessLevel === 'organization') {
+      // For organization, we need the domain - get it from user profile
+      const userProfile = await drive.about.get({
+        fields: 'user'
+      });
+      
+      const domain = userProfile.data.user?.emailAddress?.split('@')[1];
+      
+      if (domain) {
+        await drive.permissions.create({
+          fileId,
+          requestBody: {
+            role: 'reader',
+            type: 'domain',
+            domain
+          }
+        });
+      }
+    }
+    // If 'restricted', we just removed the public permissions
+
+    res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.error('❌ Failed to update access level:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update access level'
+    });
+  }
+});
+
+/**
+ * ✅ GET /drive/me/files/:id/share-link
+ * Purpose: Get the shareable link for a file/folder
+ * Params:
+ *   - id (required, URL): File ID
+ *   - Tokens: x-access-token, x-refresh-token (headers/query)
+ * Returns: { success, shareLink }
+ */
+router.get("/me/files/:id/share-link", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tokens = extractTokens(req);
+    if (!tokens.access_token && !tokens.refresh_token) {
+      res.status(401).json({ success: false, message: "No valid tokens provided" });
+      return;
+    }
+
+    await ensureValidAccessToken(tokens);
+    const fileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    const drive = getDriveClientFromTokens(tokens);
+
+    // Get the webViewLink
+    const fileResponse = await drive.files.get({
+      fileId,
+      fields: 'webViewLink'
+    });
+
+    const shareLink = fileResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+
+    res.status(200).json({
+      success: true,
+      shareLink
+    });
+  } catch (error: any) {
+    console.error('❌ Failed to get share link:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get share link'
+    });
+  }
+});
+
 module.exports = router;
+

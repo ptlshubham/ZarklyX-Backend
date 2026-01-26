@@ -18,6 +18,8 @@ export class PaymentsDocuments extends Model<
   declare documentId: string;
   declare documentType: DocumentType;
   declare paymentValue: number;
+  declare isActive: boolean;
+  declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
@@ -44,6 +46,16 @@ export class PaymentsDocuments extends Model<
         paymentValue: {
           type: DataTypes.DECIMAL(18,2),
           allowNull: false,
+        },
+        isActive: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: true,
+        },
+        isDeleted: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
         },
         createdAt: {
           type: DataTypes.DATE,

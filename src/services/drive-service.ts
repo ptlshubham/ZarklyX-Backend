@@ -59,14 +59,14 @@ export function getDriveClientFromTokens(tokens: DriveTokens) {
 
 export async function listMyDriveFiles(tokens: DriveTokens, pageToken?: string, pageSize: number = 25, q?: string) {
   const drive = getDriveClientFromTokens(tokens);
-  const res = await drive.files.list({ pageSize, pageToken, q, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred),nextPageToken" });
+  const res = await drive.files.list({ pageSize, pageToken, q, orderBy: "name", fields: "files(id,name,mimeType,modifiedTime,size,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred,iconLink),nextPageToken" });
   return res.data;
 }
 
 export async function getDriveFileMetadata(tokens: DriveTokens, fileId: string) {
   const drive = getDriveClientFromTokens(tokens);
-  const res = await drive.files.get({ fileId, fields: "id,name,mimeType,size,modifiedTime,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred" });
-  return res.data;
+  const folder = await drive.files.get({ fileId, fields: "id,name,mimeType,size,modifiedTime,owners,webViewLink,webContentLink,thumbnailLink,folderColorRgb,starred,iconLink" });
+  return folder.data;
 }
 
 export async function refreshDriveAccessToken(refreshToken: string) {
@@ -252,7 +252,26 @@ export async function updateItemStarred(tokens: DriveTokens, fileId: string, sta
     throw error;
   }
 }
-
+// Rename a file or folder
+export async function renameDriveItem(tokens: DriveTokens, fileId: string, newName: string) {
+  try {
+    const drive = getDriveClientFromTokens(tokens);
+    
+    const res = await drive.files.update({
+      fileId: fileId,
+      requestBody: {
+        name: newName
+      },
+      fields: "id,name,mimeType,iconLink",
+    });
+    
+    console.log(`✅ Item ${fileId} renamed to: ${newName}`);
+    return res.data;
+  } catch (error: any) {
+    console.error(`❌ Failed to rename item:`, error.message);
+    throw new Error(`Failed to rename item: ${error.message}`);
+  }
+}
 // Helper: Convert color name to hex value for Google Drive
 // All 25 official Google Drive folder colors
 function getColorHex(color: string): string {
@@ -291,6 +310,27 @@ export async function getGoogleUser(accessToken: string) {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+  });
+  return res.data;
+}
+
+export async function moveItemToFolder(tokens: DriveTokens, itemId: string, targetFolderId: string) {
+  try {
+    const result = await moveDriveFile(tokens, itemId, targetFolderId);
+    return { id: itemId, ...result };
+  } catch (error: any) {
+    console.error(`Failed to move item ${itemId}:`, error.message);
+    throw error;
+  }
+}
+
+// Move a file/folder to trash (set trashed=true)
+export async function moveFileToTrash(tokens: DriveTokens, fileId: string) {
+  const drive = getDriveClientFromTokens(tokens);
+  const res = await drive.files.update({
+    fileId,
+    requestBody: { trashed: true },
+    fields: "id,name,trashed",
   });
   return res.data;
 }

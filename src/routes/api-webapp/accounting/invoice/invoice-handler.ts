@@ -114,7 +114,7 @@ interface InvoiceCalculationResult {
   invoiceItemsData: any[];
 }
 
-interface CreateInvoiceInput {
+export interface CreateInvoiceInput {
   companyId: string;
   invoiceType: InvoiceType;
   clientId: string;
@@ -125,7 +125,7 @@ interface CreateInvoiceInput {
   poNo: string;
   poDate: Date;
   paymentTerms: PaymentTerms;
-  specificDueDate: Date; // For "specific date" payment term
+  specificDueDate?: Date; // For "specific date" payment term
   items: Array<{
     itemId: string;
     itemName?: string;
@@ -228,7 +228,7 @@ const calculateInvoiceTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply !== companyState, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -264,7 +264,7 @@ const calculateInvoiceTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (isTaxInvoice && shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply !== companyState) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -498,6 +498,8 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
           taxName: entry.taxName,
           applicableOn: entry.applicableOn,
           taxAmount: parseFloat(taxAmount.toFixed(2)),
+          isActive: true,
+          isDeleted: false,
         };
       }),
       { transaction: t, validate: true }
@@ -715,12 +717,81 @@ export const updateInvoice = async (
 };
 
 // Soft delete invoice
-export const deleteInvoice = async (id: string, companyId: string, t: Transaction) => {
-  return await Invoice.update(
-    { isActive: false, isDeleted: true },
-    { where: { id, companyId, isDeleted: false }, transaction: t }
+export const deleteInvoice = async (
+  id: string,
+  companyId: string,
+  t: Transaction
+) => {
+  // Fetch invoice with lock
+  const invoice = await Invoice.findOne({
+    where: { id, companyId, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!invoice) {
+    throw new Error("Invoice not found");
+  }
+
+  // Status validation
+  if (["Paid", "Partially Paid"].includes(invoice.status)) {
+    throw new Error(
+      "Paid or partially paid invoices cannot be deleted"
+    );
+  }
+
+  // Check if payments exist
+  const paymentCount = await PaymentsDocuments.count({
+    where: {
+      documentId: id,
+      documentType: "Invoice",
+    },
+    transaction: t,
+  });
+
+  if (paymentCount > 0) {
+    throw new Error(
+      "Invoice with payments cannot be deleted. Cancel it instead."
+    );
+  }
+
+  // Soft delete invoice items
+  await InvoiceItem.update(
+    { isDeleted: true },
+    {
+      where: { invoiceId: id },
+      transaction: t,
+    }
   );
+
+  // Soft delete TDS/TCS entries
+  await InvoiceTdsTcs.update(
+    { isActive: false, isDeleted: true },
+    {
+      where: { invoiceId: id },
+      transaction: t,
+    }
+  );
+
+  // Soft delete invoice itself
+  await Invoice.update(
+    {
+      isActive: false,
+      isDeleted: true,
+      status: "Cancelled",
+    },
+    {
+      where: { id, companyId },
+      transaction: t,
+    }
+  );
+  return {
+    success: true,
+    message: "Invoice deleted successfully",
+    invoiceId: id,
+  };
 };
+
 
 // Search invoices with filters
 export interface SearchInvoiceFilters {
@@ -852,6 +923,7 @@ export const convertInvoiceToPayment = async (
     paymentNo: string;
     referenceNo: string;
     method: string;
+    bankCharges?: number;
   },
   t: Transaction
 ) => {
@@ -895,12 +967,11 @@ export const convertInvoiceToPayment = async (
       paymentDate: new Date(),
       referenceNo: paymentData.referenceNo,
       method: paymentData.method as PaymentMethod,
-      bankCharges: 0,
+      bankCharges: paymentData.bankCharges,
       amountReceived: paymentData.paymentAmount,
       amountUsedForPayments: paymentData.paymentAmount,
       amountInExcess: 0,
       memo: `Payment for Invoice ${invoice.invoiceNo}`,
-      status: "Active",
       isActive: true,
       isDeleted: false,
     },
@@ -914,6 +985,8 @@ export const convertInvoiceToPayment = async (
       documentId: invoice.id,
       documentType: "Invoice",
       paymentValue: paymentData.paymentAmount,
+      isActive: true,
+      isDeleted: false,
     },
     { transaction: t, validate: true }
   );
