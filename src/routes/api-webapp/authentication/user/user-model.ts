@@ -24,17 +24,15 @@ export class User extends Model<
     declare isThemeDark: boolean;
     declare password: string;
     declare countryCode: string | null;
-    // declare categories: "food" | "healthCare" | "NGos";
-    // categories is stored as JSON; it can be a single category id (string),
-    // an array of category ids, or null.
-    declare categories: string | string[] | null;
+    // categories is stored as a single category ID string
+    declare categories: string | null;
 
-     // Two-factor authentication
+    // Two-factor authentication
     declare twofactorEnabled: boolean;
     declare twofactorSecret: string | null;
     declare twofactorVerified: boolean;
     declare twofactorBackupCodes: string[] | null;
-    
+
     // Temporary 2FA setup fields
     declare temp2FACode: string | null;
     declare temp2FACodeExpiry: Date | null;
@@ -43,7 +41,6 @@ export class User extends Model<
 
     declare isDeleted: boolean;
     declare deletedAt: CreationOptional<Date | null>;
-    // declare deletedAt: CreationOptional<Date>;
     declare isEmailVerified: boolean;
     declare isRegistering: boolean;
     declare registrationStep: number;
@@ -130,7 +127,7 @@ export class User extends Model<
                 },
 
                 categories: {
-                    type: DataTypes.JSON,
+                    type: DataTypes.STRING(255),
                     allowNull: true,
                     defaultValue: null,
                 },
