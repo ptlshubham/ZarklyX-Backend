@@ -32,6 +32,7 @@ export default (app: Application) => {
     app.use("/tiktok", require("./api-webapp/agency/social-Integration/tiktok/tiktok-api"));
     app.use("/influencer", require("./api-webapp/influencer/influencer-api"));
     app.use("/itManagement/itTickets", require("./api-webapp/itManagement/itTickets/itTickets-api"));
+    app.use("/itManagement/itAssetsManagement", require("./api-webapp/it-Management/it-Assets-Management/it-Assets-Management-api"));
     // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
 
     // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
@@ -51,6 +52,5 @@ export default (app: Application) => {
     app.use("/accounting/purchase-bill/tds-tcs",require("./api-webapp/accounting/purchase-Bill/tds-tcs/pb-tds-tcs-api"));
     app.use("/accounting/purchase-bill",require("./api-webapp/accounting/purchase-Bill/purchase-bill-api"));
     app.use("accounting/purchaseOrder",require("./api-webapp/accounting/purchaseOrder/purchase-order-api"));
-    
 };
 

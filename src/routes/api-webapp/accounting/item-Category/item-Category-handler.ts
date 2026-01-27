@@ -5,15 +5,32 @@ import path from "path";
 
 //create a new item category
 export async function createItemCategory(body: any,t: any) {
+  // Validate category type - only Product or Service allowed for IT Asset Management
+  if(!["Product","Service"].includes(body.categoryType))
+  {
+    throw new Error("Invalid Category Type. Must be product or service.")
+  }
   return await ItemCategory.create(
-    body, { transaction: t }
+    {
+      ...body,
+      categoryType: body.categoryType,
+    }, { transaction: t }
   );
 }
 
 //get item category by id
-export async function getActiveItemCategoriesByCompany(companyId: string) {
+export async function getActiveItemCategoriesByCompany(companyId: string,categoryType?:"Product" | "Service") {
+   const where: any = {
+    companyId,
+    isActive: true,
+    isDeleted: false,
+  };
+
+  if (categoryType) {
+    where.categoryType = categoryType;
+  }
   return await ItemCategory.findAll({
-    where: { companyId, isActive: true, isDeleted:false },
+    where,
     order: [["categoryName", "ASC"]],
   });
 }

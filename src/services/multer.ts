@@ -21,6 +21,7 @@ const profileFile = "profileFile";
 // services/multer.ts
 
 const IT_TICKET_UPLOAD_DIR = "itManagement/itTickets";
+const IT_ASSET_UPLOAD_DIR = "itManagement/itAssets";
 
 
 const itTicketStorage = multer.diskStorage({
@@ -50,7 +51,44 @@ export const ticketAttachmentUpload = multer({
   },
 });
 
+const itAssetStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = `/${config.publicPath}/${IT_ASSET_UPLOAD_DIR}`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
 
+export const assetAttachmentUpload = multer({
+  storage: itAssetStorage,
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["image/jpeg", "image/png", "application/pdf"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only jpeg/png/pdf files allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
+//filepath conversion helper function
+export function convertToRelativePath(files?: Express.Multer.File[]): string[] {
+    if (!files || files.length === 0) return [];
+
+    return files.map((file) => {
+        const relativePath = path.relative(path.join(process.cwd(), "src", "public"), file.path).replace(/\\/g, "/");
+            return `/${relativePath}`;
+
+    });
+
+}
 
 const getFileStorage = (path: string) => {
   return multer.diskStorage({
