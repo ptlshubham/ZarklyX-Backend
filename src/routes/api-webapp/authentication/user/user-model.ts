@@ -23,7 +23,8 @@ export class User extends Model<
     declare secretCode: string | null;
     declare isThemeDark: boolean;
     declare password: string;
-    declare countryCode: string | null;
+    declare isdCode: string | null;
+    declare isoCode: string | null;
     // categories is stored as a single category ID string
     declare categories: string | null;
 
@@ -120,7 +121,12 @@ export class User extends Model<
                     },
                     allowNull: true,
                 },
-                countryCode: {
+                isdCode: {
+                    type: DataTypes.STRING(10),
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                isoCode: {
                     type: DataTypes.STRING(10),
                     allowNull: true,
                     defaultValue: null,

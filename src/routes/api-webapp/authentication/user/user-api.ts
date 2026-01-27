@@ -65,7 +65,8 @@ router.post("/register/start",
         contact,
         password,
         confirmPassword,
-        countryCode,
+        isdCode,
+        isoCode,
         defaultCountry,
       } = req.body;
 
@@ -75,7 +76,7 @@ router.post("/register/start",
         lastName,
         email,
         contact,
-        countryCode,
+        isdCode,
         defaultCountry
       });
 
@@ -132,14 +133,14 @@ router.post("/register/start",
 
       const isoCountry = (defaultCountry || "IN").toUpperCase();
 
-      // Auto-detect countryCode 
-      const autoCountryCode = detectCountryCode(rawContact, isoCountry);
-      //    manual countryCode from FE
+      // Auto-detect isdCode 
+      const autoIsdCode = detectCountryCode(rawContact, isoCountry);
+      //    manual isdCode from FE
       //    auto detected
-      let finalCountryCode: string | null =
-        (countryCode && String(countryCode).trim()) || autoCountryCode || null;
+      let finalIsdCode: string | null =
+        (isdCode && String(isdCode).trim()) || autoIsdCode || null;
 
-      if (!finalCountryCode) {
+      if (!finalIsdCode) {
         await safeRollback(t);
         res.status(400).json({
           success: false,
@@ -152,7 +153,7 @@ router.post("/register/start",
 
       console.log("[register/start] Parsed contact:", {
         rawContact,
-        finalCountryCode,
+        finalIsdCode,
         localNumber,
       });
 
@@ -179,7 +180,8 @@ router.post("/register/start",
         lastName,
         email,
         contact: localNumber,
-        countryCode: finalCountryCode,
+        isdCode: finalIsdCode,
+        isoCode: isoCode || null,
         password, // raw – hash in User model
         userType: null,
         secretCode: finalSecretCode,
@@ -245,7 +247,7 @@ router.post("/register/start",
           otpRefId: otpRecord.id,
           email,
           contact: localNumber,
-          countryCode: finalCountryCode,
+          isdCode: finalIsdCode,
         },
       });
       return;
@@ -423,7 +425,8 @@ router.post("/register/verify-otp",
         data: {
           userId: user.id,
           secretCode: user.secretCode,
-          countryCode: user.countryCode,
+          isdCode: user.isdCode,
+          isoCode: user.isoCode,
           email: user.email,
           sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
         },
@@ -763,6 +766,8 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
       businessArea,
       email,
       contact,
+      isdCode,
+      isoCode,
       address,
       city,
       state,
@@ -886,6 +891,8 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
           website: website || null,
           email: email || user.email || null,
           contact: contact || user.contact || null,
+          isdCode: isdCode || user.isdCode || null,
+          isoCode: isoCode || user.isoCode || null,
           address: address || null,
           city: city || null,
           state: state || null,
@@ -981,6 +988,8 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
         website: website || null,
         email: email || user.email || null,
         contact: contact || user.contact || null,
+        isdCode: isdCode || null,
+        isoCode: isoCode || null,
         address: address || null,
         city: city || null,
         state: state || null,
@@ -2972,7 +2981,8 @@ async function processGoogleUserSignup(userData: {
         secretCode: await generateUniqueSecretCode(),
         isThemeDark: false,
         password: null as any,
-        countryCode: null as any,
+        isdCode: null as any,
+        isoCode: null as any,
         categories: null as any,
         isDeleted: false,
         deletedAt: null as any,

@@ -70,7 +70,8 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             lastName,
             email,
             contactNumber,
-            countryCode,
+
+            isdCode,
             password,
             // Employee details
             // companyId,
@@ -131,7 +132,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                     firstName,
                     lastName,
                     contact: contactNumber,
-                    countryCode: countryCode || null,
+                    isdCode: isdCode || null,
                     isActive: true,
                     companyId: companyId,
                     isEmailVerified: true,
@@ -147,7 +148,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                     email,
                     companyId: companyId,
                     contact: contactNumber,
-                    countryCode: countryCode || null,
+                    isdCode: isdCode || null,
                     password: password || null,
                     userType: "employee",
                     isActive: true,
