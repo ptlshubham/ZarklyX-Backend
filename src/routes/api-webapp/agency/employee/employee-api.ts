@@ -48,7 +48,6 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
     { name: "panDocument", maxCount: 1 },
 ]), async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
-    // console.log("req.body", req.body);
     try {
         const files = req.files as Record<string, Express.Multer.File[]>;
 
@@ -64,41 +63,75 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                 req.body[bodyKey] = files[multerKey][0].path;
             }
         });
+
         const {
             // User basic details (REQUIRED)
             firstName,
             lastName,
             email,
             contactNumber,
-
             isdCode,
+            isoCode,
             password,
             // Employee details
-            // companyId,
             employeeId,
             designation,
             dateOfJoining,
             employmentType,
             departmentId,
             reportingManagerId,
+            // Emergency contact details
+            emergencyContactNumber,
+            emergencyContactIsdCode,
+            emergencyContactIsoCode,
             // Optional fields
             ...restData
         } = req.body;
 
+        // ✅ Helper function to extract numeric part from contact number
+        const extractNumericContactNumber = (contact: string | null | undefined): string | null => {
+            if (!contact) return null;
+            return String(contact).replace(/\D/g, '').slice(-10) || null; // Get last 10 digits
+        };
+
+        // ✅ Helper function to ensure country code has + prefix
+        const ensureCountryCodePrefix = (code: string | null | undefined): string | null => {
+            if (!code) return null;
+            const trimmed = String(code).trim();
+            return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
+        };
+
+        // ✅ Sanitize primary contact number and country codes
+        const sanitizedContactNumber = extractNumericContactNumber(contactNumber);
+        const sanitizedIsdCode = ensureCountryCodePrefix(isdCode);
+        const sanitizedIsoCode = isoCode && String(isoCode).trim() !== '' && String(isoCode) !== 'undefined'
+            ? String(isoCode).trim().toUpperCase()
+            : null;
+
+        // ✅ Sanitize emergency contact number and country codes
+        const sanitizedEmergencyContactNumber = extractNumericContactNumber(emergencyContactNumber);
+        const sanitizedEmergencyIsdCode = ensureCountryCodePrefix(emergencyContactIsdCode);
+        const sanitizedEmergencyIsoCode = emergencyContactIsoCode && String(emergencyContactIsoCode).trim() !== '' && String(emergencyContactIsoCode) !== 'undefined'
+            ? String(emergencyContactIsoCode).trim().toUpperCase()
+            : null;
+
         const companyId = req.user?.companyId;
 
-
         if (req.user?.userType != 'agency') {
-            unauthorized(res, "Only Accessiable for agency");
+            await t.rollback();
+            res.status(403).json({
+                success: false,
+                message: "Only accessible for agency",
+            });
             return;
         }
 
         // ✅ Validate required user fields
-        if (!firstName || !lastName || !email || !contactNumber || !companyId || !employeeId) {
+        if (!firstName || !lastName || !email || !sanitizedContactNumber || !companyId || !employeeId) {
             await t.rollback();
             res.status(400).json({
                 success: false,
-                message: "Required fields missing: firstName, lastName, email, contactNumber, companyId, employeeId",
+                message: "Required fields missing: firstName, lastName, email, contactNumber (numeric), companyId, employeeId",
             });
             return;
         }
@@ -114,7 +147,6 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             return;
         }
 
-
         // ✅ STEP 1: Create or get User entry with basic details
         let user = await User.findOne({
             where: { email },
@@ -124,15 +156,20 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
         if (user) {
             // User already exists - update with new details if needed
             if (user.userType != 'employee') {
-                errorResponse(res, 'user already exist with other type');
+                await t.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: 'User already exists with different type',
+                });
                 return;
             }
             await user.update(
                 {
                     firstName,
                     lastName,
-                    contact: contactNumber,
-                    isdCode: isdCode || null,
+                    contact: sanitizedContactNumber,
+                    isdCode: sanitizedIsdCode,
+                    isoCode: sanitizedIsoCode,
                     isActive: true,
                     companyId: companyId,
                     isEmailVerified: true,
@@ -147,8 +184,9 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                     lastName,
                     email,
                     companyId: companyId,
-                    contact: contactNumber,
-                    isdCode: isdCode || null,
+                    contact: sanitizedContactNumber,
+                    isdCode: sanitizedIsdCode,
+                    isoCode: sanitizedIsoCode,
                     password: password || null,
                     userType: "employee",
                     isActive: true,
@@ -230,8 +268,14 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                 isDeleted: false,
                 profileStatus: "Incomplete",
                 registrationStep: 1,
-                isoCode: restData.isoCode || null,
-                isdCode: restData.isdCode || null,
+                // Primary contact details
+                contactNumber: sanitizedContactNumber,
+                isdCode: sanitizedIsdCode,
+                isoCode: sanitizedIsoCode,
+                // Emergency contact details
+                emergencyContactNumber: sanitizedEmergencyContactNumber,
+                emergencyContactIsdCode: sanitizedEmergencyIsdCode,
+                emergencyContactIsoCode: sanitizedEmergencyIsoCode,
                 ...Object.fromEntries(
                     Object.entries(restData).map(([key, value]) => [
                         key,
@@ -246,7 +290,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
 
         res.status(201).json({
             success: true,
-            message: "Employee registered successfully. User entry created first, then employee record linked.",
+            message: "Employee registered successfully.",
             data: {
                 user: {
                     id: user.id,
@@ -254,6 +298,8 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                     lastName: user.lastName,
                     email: user.email,
                     contact: user.contact,
+                    isdCode: user.isdCode,
+                    isoCode: user.isoCode,
                 },
                 employee,
             },
