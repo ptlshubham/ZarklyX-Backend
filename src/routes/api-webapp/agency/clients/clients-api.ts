@@ -2,6 +2,7 @@ import express from "express";
 import { Request, Response } from "express";
 import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
+import { clientProfilePhotoUpload } from "../../../../services/multer";
 import {
   serverError,
   unauthorized,
@@ -1215,6 +1216,7 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       accountType,
       currency,
       taxVatId,
+      profile: req.body.profile || null,
       isActive: true,
       isDeleted: false,
       isApprove: false,
@@ -1693,6 +1695,7 @@ router.put("/clients/updateById/:id", async (req: Request, res: Response): Promi
       accountType: accountType ?? existing.accountType,
       currency: currency ?? existing.currency,
       taxVatId: taxVatId ?? existing.taxVatId,
+      profile: req.body.profile ?? existing.profile,
     };
 
     await existing.update(updatePayload, { transaction: t });
@@ -2715,7 +2718,145 @@ router.post(
       console.error("[/clients/2fa/regenerate-backup-codes] ERROR:", error);
       ErrorLogger.write({ type: "clients 2fa regen backup codes error", error });
       serverError(res, error.message || "Failed to regenerate backup codes.");
-      return; 
+      return;
+    }
+  }
+);
+
+/**
+ * POST /clients/upload-profile/:clientId
+ * Upload client profile photo
+ */
+router.post(
+  "/upload-profile/:clientId",
+  tokenMiddleWare,
+  clientProfilePhotoUpload.single("file"),
+  async (req: Request, res: Response): Promise<any> => {
+    console.log(res.req.file, 'fileinfo');
+
+    const t = await dbInstance.transaction();
+    try {
+      let { clientId } = req.params;
+      if (Array.isArray(clientId)) clientId = clientId[0];
+      const userId: any = (req as any).user?.id;
+
+      if (!clientId || !userId) {
+        await t.rollback();
+        return serverError(res, "Client ID and User ID are required");
+      }
+
+      if (!req.file) {
+        await t.rollback();
+        return serverError(res, "Profile image file is required");
+      }
+
+      // Verify client exists
+      const client = await Clients.findByPk(clientId);
+      if (!client) {
+        await t.rollback();
+        return notFound(res, "Client not found");
+      }
+
+      // Construct the relative path for storage
+      const profilePath = `/client/profile/${req.file.filename}`;
+
+      // Update client with profile image path
+      await Clients.update(
+        { profile: profilePath },
+        { where: { id: clientId }, transaction: t }
+      );
+
+      await t.commit();
+
+      return res.status(200).json({
+        success: true,
+        message: "Profile image uploaded successfully",
+        data: {
+          clientId,
+          profile: profilePath,
+          filename: req.file.filename,
+        },
+      });
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "uploadClientProfile error", error });
+      return serverError(
+        res,
+        error?.message || "Failed to upload profile image"
+      );
+    }
+  }
+);
+
+/**
+ * PATCH /clients/remove-profile/:clientId
+ * Remove client profile photo (Admin/Owner only)
+ */
+router.patch(
+  "/remove-profile/:clientId",
+  tokenMiddleWare,
+  async (req: Request, res: Response): Promise<any> => {
+    const t = await dbInstance.transaction();
+    try {
+      let { clientId } = req.params;
+      if (Array.isArray(clientId)) clientId = clientId[0];
+      const userId: any = (req as any).user?.id;
+
+      if (!clientId || !userId) {
+        await t.rollback();
+        return serverError(res, "Client ID and User ID are required");
+      }
+
+      // Get client to verify it exists and get current profile path
+      const client = await Clients.findByPk(clientId);
+      if (!client) {
+        await t.rollback();
+        return notFound(res, "Client not found");
+      }
+
+      // Get current profile path for file deletion
+      const currentProfilePath = client.dataValues.profile;
+
+      // Update client to remove the profile image
+      await Clients.update(
+        { profile: null },
+        { where: { id: clientId }, transaction: t }
+      );
+
+      // Delete file from disk if it exists
+      if (currentProfilePath) {
+        try {
+          const fs = require("fs").promises;
+          const path = require("path");
+          const filePath = path.join(
+            process.cwd(),
+            "src",
+            "public",
+            currentProfilePath.replace(/^\//, "")
+          );
+          await fs.unlink(filePath).catch(() => { }); // Silently ignore if file doesn't exist
+        } catch (err) {
+          console.warn(`Failed to delete file at ${currentProfilePath}:`, err);
+        }
+      }
+
+      await t.commit();
+
+      return res.status(200).json({
+        success: true,
+        message: "Profile image removed successfully",
+        data: {
+          clientId,
+          removed: true,
+        },
+      });
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "removeClientProfile error", error });
+      return serverError(
+        res,
+        error?.message || "Failed to remove profile image"
+      );
     }
   }
 );

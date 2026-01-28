@@ -122,6 +122,36 @@ export const employeeProfilePhotoUpload = multer({
   },
 });
 
+// Client Profile Photo Storage
+// Files are stored in client/profile folder under the public directory
+const clientProfilePhotoStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = `/${config.publicPath}/client/profile`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const fileName = setFileName(file);
+    const fileExtension = setFileExtension(file);
+    cb(null, `${Date.now()}-${fileName}.${fileExtension}`);
+  },
+});
+
+export const clientProfilePhotoUpload = multer({
+  storage: clientProfilePhotoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only jpeg/png/webp files allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
 const getFileStorage = (path: string) => {
   return multer.diskStorage({
     destination: function (req: Request, file: any, cb: any) {

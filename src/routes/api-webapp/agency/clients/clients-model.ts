@@ -66,6 +66,7 @@ export class Clients extends Model<
     declare profileStatus: boolean;
     declare logo: string | null;
     declare payment: string | null;
+    declare profile: string | null;
     declare isEmailVerified: boolean;
     declare isRegistering: boolean;
     declare registrationStep: number;
@@ -324,6 +325,11 @@ export class Clients extends Model<
                     defaultValue: null,
                 },
                 payment: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                profile: {
                     type: DataTypes.STRING(255),
                     allowNull: true,
                     defaultValue: null,
