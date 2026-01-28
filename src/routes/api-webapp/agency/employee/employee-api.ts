@@ -28,6 +28,11 @@ import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { authMiddleware } from "../../../../middleware/auth.middleware";
 import { employeeFileUpload } from "../../../../middleware/employeeFileUpload";
 import { errorResponse, unauthorized } from "../../../../utils/responseHandler";
+import { employeeProfilePhotoUpload } from "../../../../services/multer";
+import fs from "fs";
+import path from "path";
+import configs from "../../../../config/config";
+import environment from "../../../../../environment";
 
 
 const router = express.Router();
@@ -634,19 +639,43 @@ router.get("/active-list", tokenMiddleWare, async (req: Request, res: Response):
 
 /**
  * PUT /employee/update/:id
- * Update employee details (excluding basic details like firstName, lastName, email which are in User table)
+ * Update employee details
+ * Supports file uploads and contact number sanitization like register endpoint
  */
-router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
+router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
+    { name: "profilePhoto", maxCount: 1 },
+    { name: "resumeFile", maxCount: 1 },
+    { name: "aadharDocument", maxCount: 1 },
+    { name: "panDocument", maxCount: 1 },
+]), async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
 
     try {
         let id = req.params.id;
         if (Array.isArray(id)) id = id[0];
+
+        // ✅ Handle file uploads
+        const files = req.files as Record<string, Express.Multer.File[]>;
+
+        Object.entries({
+            profilePhoto: "profilePhoto",
+            resumeFile: "resumeFilePath",
+            aadharDocument: "aadharDocumentPath",
+            panDocument: "panDocumentPath",
+        }).forEach(([multerKey, bodyKey]) => {
+            delete req.body[multerKey];
+
+            if (files?.[multerKey]?.[0]?.path) {
+                req.body[bodyKey] = files[multerKey][0].path;
+            }
+        });
+
         const updateData = req.body;
 
         const copmany = (req as any).user;
 
         if (!copmany || !copmany.companyId) {
+            await t.rollback();
             res.status(401).json({
                 success: false,
                 message: "Unauthorized: companyId missing",
@@ -677,34 +706,115 @@ router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): 
             return;
         }
 
+        // ✅ Delete old profile photo if new one is being uploaded
+        if (updateData.profilePhoto && employee.profilePhoto) {
+            try {
+                const oldPhotoPath = path.join(process.cwd(), 'src', 'public', employee.profilePhoto.replace(/^\//, ''));
+                if (fs.existsSync(oldPhotoPath)) {
+                    fs.unlinkSync(oldPhotoPath);
+                }
+            } catch (err) {
+                console.error("[employee/update] Error deleting old profile photo:", err);
+            }
+        }
+
+        // ✅ Helper function to extract numeric part from contact number
+        const extractNumericContactNumber = (contact: string | null | undefined): string | null => {
+            if (!contact) return null;
+            return String(contact).replace(/\D/g, '').slice(-10) || null; // Get last 10 digits
+        };
+
+        // ✅ Helper function to ensure country code has + prefix
+        const ensureCountryCodePrefix = (code: string | null | undefined): string | null => {
+            if (!code) return null;
+            const trimmed = String(code).trim();
+            return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
+        };
+
+        // ✅ Sanitize primary contact number and country codes if provided
+        if (updateData.contactNumber) {
+            updateData.contactNumber = extractNumericContactNumber(updateData.contactNumber);
+        }
+        if (updateData.isdCode) {
+            updateData.isdCode = ensureCountryCodePrefix(updateData.isdCode);
+        }
+        if (updateData.isoCode) {
+            updateData.isoCode = updateData.isoCode && String(updateData.isoCode).trim() !== '' && String(updateData.isoCode) !== 'undefined'
+                ? String(updateData.isoCode).trim().toUpperCase()
+                : null;
+        }
+
+        // ✅ Sanitize emergency contact number and country codes if provided
+        if (updateData.emergencyContactNumber) {
+            updateData.emergencyContactNumber = extractNumericContactNumber(updateData.emergencyContactNumber);
+        }
+        if (updateData.emergencyContactIsdCode) {
+            updateData.emergencyContactIsdCode = ensureCountryCodePrefix(updateData.emergencyContactIsdCode);
+        }
+        if (updateData.emergencyContactIsoCode) {
+            updateData.emergencyContactIsoCode = updateData.emergencyContactIsoCode && String(updateData.emergencyContactIsoCode).trim() !== '' && String(updateData.emergencyContactIsoCode) !== 'undefined'
+                ? String(updateData.emergencyContactIsoCode).trim().toUpperCase()
+                : null;
+        }
+
         const { aadharNumber, panNumber } = updateData || {};
 
+        // ✅ Check for duplicate Aadhar if being updated
         if (aadharNumber && aadharNumber !== employee.aadharNumber) {
             let finalId = id;
             if (Array.isArray(finalId)) finalId = finalId[0];
             const existingAadhar = await checkAadharExists(aadharNumber, finalId);
             if (existingAadhar) {
                 await t.rollback();
-                res.status(409).json({ success: false, message: "Aadhar number already registered" });
+                res.status(409).json({
+                    success: false,
+                    message: "Aadhar number already registered in another employee record",
+                });
                 return;
             }
         }
 
+        // ✅ Check for duplicate PAN if being updated
         if (panNumber && panNumber !== employee.panNumber) {
             let finalId2 = id;
             if (Array.isArray(finalId2)) finalId2 = finalId2[0];
             const existingPan = await checkPanExists(panNumber, finalId2);
             if (existingPan) {
                 await t.rollback();
-                res.status(409).json({ success: false, message: "PAN already registered" });
+                res.status(409).json({
+                    success: false,
+                    message: "PAN already registered in another employee record",
+                });
                 return;
             }
         }
 
-        // ✅ Update employee
+        // ✅ Verify Reporting Manager if being updated
+        if (updateData.reportingManagerId && updateData.reportingManagerId !== employee.reportingManagerId) {
+            const reportingManager = await getEmployeeById(updateData.reportingManagerId);
+            if (!reportingManager || reportingManager.companyId !== companyId) {
+                await t.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Reporting Manager not found or not in same company",
+                });
+                return;
+            }
+        }
+
+        // ✅ Update employee with sanitized data
         let updateId = id;
         if (Array.isArray(updateId)) updateId = updateId[0];
-        await updateEmployee(updateId, updateData as EmployeePayload, t);
+
+        // Convert empty strings to null
+        const sanitizedUpdateData = Object.fromEntries(
+            Object.entries(updateData).map(([key, value]) => [
+                key,
+                value === "" ? null : value,
+            ])
+        ) as EmployeePayload;
+
+        await updateEmployee(updateId, sanitizedUpdateData, t);
 
         const updatedEmployee = await getEmployeeById(updateId);
 
@@ -1023,6 +1133,193 @@ router.patch("/bulk-status-update", tokenMiddleWare, async (req: Request, res: R
         });
     }
 });
+
+// ===== PROFILE PHOTO MANAGEMENT =====
+
+/**
+ * POST /employee/uploadProfilePhoto/:employeeId
+ * Upload employee profile photo
+ * Body: Form data with file field containing the image
+ */
+router.post(
+    "/uploadProfilePhoto/:employeeId",
+    tokenMiddleWare,
+    employeeProfilePhotoUpload.single("file"),
+    async (req: Request, res: Response): Promise<void> => {
+        const t = await dbInstance.transaction();
+        try {
+            let { employeeId } = req.params;
+            if (Array.isArray(employeeId)) employeeId = employeeId[0];
+
+            const user = (req as any).user;
+
+            if (!user || !user.companyId) {
+                await t.rollback();
+                res.status(401).json({
+                    success: false,
+                    message: "Unauthorized: companyId missing",
+                });
+                return;
+            }
+            const { companyId } = user;
+
+            if (!req.file) {
+                await t.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: "No file uploaded",
+                });
+                return;
+            }
+
+            // ✅ Verify employee exists and belongs to company
+            const employee = await getEmployeeById(employeeId);
+
+            if (!employee || employee.isDeleted) {
+                await t.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Employee not found",
+                });
+                return;
+            }
+
+            if (employee.companyId !== companyId) {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Employee does not belong to this company",
+                });
+                return;
+            }
+
+            // ✅ Delete old profile photo if exists
+            if (employee.profilePhoto) {
+                try {
+                    const oldPhotoPath = path.join(process.cwd(), `public${employee.profilePhoto}`);
+                    if (fs.existsSync(oldPhotoPath)) {
+                        fs.unlinkSync(oldPhotoPath);
+                    }
+                } catch (err) {
+                    console.error("[employee/uploadProfilePhoto] Error deleting old photo:", err);
+                }
+            }
+
+            // ✅ Update employee with new profile photo path
+            const photoPath = `/employee/profile/${req.file.filename}`;
+
+            await updateEmployee(employeeId, { profilePhoto: photoPath } as EmployeePayload, t);
+
+            const updatedEmployee = await getEmployeeById(employeeId);
+
+            await t.commit();
+
+            res.status(200).json({
+                success: true,
+                message: "Profile photo uploaded successfully",
+                data: {
+                    employeeId: updatedEmployee?.id,
+                    profilePhoto: updatedEmployee?.profilePhoto,
+                },
+            });
+        } catch (err) {
+            await t.rollback();
+            console.error("[employee/uploadProfilePhoto] ERROR:", err);
+            res.status(500).json({
+                success: false,
+                message: "Server error",
+                error: process.env.NODE_ENV === "development" ? err : undefined,
+            });
+        }
+    }
+);
+
+/**
+ * PATCH /employee/removeProfilePhoto/:employeeId
+ * Remove employee profile photo
+ */
+router.patch(
+    "/removeProfilePhoto/:employeeId",
+    tokenMiddleWare,
+    async (req: Request, res: Response): Promise<void> => {
+        const t = await dbInstance.transaction();
+        try {
+            let { employeeId } = req.params;
+            if (Array.isArray(employeeId)) employeeId = employeeId[0];
+
+            const user = (req as any).user;
+
+            if (!user || !user.companyId) {
+                await t.rollback();
+                res.status(401).json({
+                    success: false,
+                    message: "Unauthorized: companyId missing",
+                });
+                return;
+            }
+            const { companyId } = user;
+
+            // ✅ Verify employee exists and belongs to company
+            const employee = await getEmployeeById(employeeId);
+
+            if (!employee || employee.isDeleted) {
+                await t.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Employee not found",
+                });
+                return;
+            }
+
+            if (employee.companyId !== companyId) {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Employee does not belong to this company",
+                });
+                return;
+            }
+
+            // ✅ Check if profile photo exists
+            if (!employee.profilePhoto) {
+                await t.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: "Employee has no profile photo to remove",
+                });
+                return;
+            }
+
+            // ✅ Delete profile photo from file system
+            try {
+                const photoPath = path.join(process.cwd(), 'src', 'public', employee.profilePhoto.replace(/^\//, ''));
+                if (fs.existsSync(photoPath)) {
+                    fs.unlinkSync(photoPath);
+                }
+            } catch (err) {
+                console.error("[employee/removeProfilePhoto] Error deleting photo file:", err);
+            }
+
+            // ✅ Update employee to remove profile photo reference
+            await updateEmployee(employeeId, { profilePhoto: null } as EmployeePayload, t);
+
+            await t.commit();
+
+            res.status(200).json({
+                success: true,
+                message: "Profile photo removed successfully",
+            });
+        } catch (err) {
+            await t.rollback();
+            console.error("[employee/removeProfilePhoto] ERROR:", err);
+            res.status(500).json({
+                success: false,
+                message: "Server error",
+                error: process.env.NODE_ENV === "development" ? err : undefined,
+            });
+        }
+    }
+);
 
 
 export default router;
