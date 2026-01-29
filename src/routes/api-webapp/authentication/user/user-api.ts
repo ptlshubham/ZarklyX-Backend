@@ -1256,7 +1256,8 @@ router.get("/getUserID/:id", async (req: Request, res: Response): Promise<void> 
   try {
 
     const { id } = req.params;
-    const user: any = await getUserByid(id);
+    const userId = Array.isArray(id) ? id[0] : id;
+    const user: any = await getUserByid(userId);
 
     if (!user) {
       notFound(res, "User not found");
@@ -1326,7 +1327,8 @@ router.delete("/deleteUser/:id", async (req: Request, res: Response): Promise<vo
   const { id } = req.params;
 
   // Convert 'id' to number
-  const userId = parseInt(id, 10);
+  const idString = Array.isArray(id) ? id[0] : id;
+  const userId = parseInt(idString, 10);
 
   if (isNaN(userId)) {
     res.status(400).send("Invalid user ID");
@@ -2881,6 +2883,7 @@ async function processGoogleUserLogin(userData: {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        companyId: user.companyId || null,
         token: token,
         isNew: false,
         isRegistering: user.isRegistering,
@@ -2997,6 +3000,7 @@ async function processGoogleUserSignup(userData: {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        companyId: user.companyId || null,
         token: token,
         isNew: isNew,
         isRegistering: user.isRegistering,

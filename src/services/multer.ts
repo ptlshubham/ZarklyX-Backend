@@ -13,9 +13,42 @@ import configs from "../config/config";
 import environment from "../../environment";
 const config = (configs as { [key: string]: any })[environment];
 import fs from "fs";
+import path from "path";
 
 
 const profileFile = "profileFile";
+
+// services/multer.ts
+
+const IT_TICKET_UPLOAD_DIR = "itManagement/itTickets";
+
+
+const itTicketStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = `/${config.publicPath}/${IT_TICKET_UPLOAD_DIR}`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const ticketAttachmentUpload = multer({
+  storage: itTicketStorage,
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["image/jpeg", "image/png"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only jpeg/png files allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
 
 
 
@@ -27,7 +60,7 @@ const getFileStorage = (path: string) => {
     },
     filename: function (req: Request, file: any, cb: any) {
       var d = new Date();
-      cb(null, `${Date.now()}-${file.originalname.replace(/ /g,"_")}`);
+      cb(null, `${Date.now()}-${file.originalname.replace(/ /g, "_")}`);
     },
   });
 };
@@ -134,7 +167,7 @@ const setFileName = (file: any) => {
   let fileName = '';
 
   switch (file.fieldname) {
-       case 'profile_image':  // Rinkal - Registration with profile img
+    case 'profile_image':  // Rinkal - Registration with profile img
       fileName = 'ProfilePic';
       break;
     case 'panCardImg':
@@ -146,7 +179,7 @@ const setFileName = (file: any) => {
     case 'aadharBackImg':
       fileName = 'AadhaarBack';
       break;
-       case 'drivingLicenseFrontImg':
+    case 'drivingLicenseFrontImg':
       fileName = 'DrivingLicenseFront';
       break;
     case 'drivingLicenseBackImg':
@@ -184,7 +217,7 @@ const setFileExtension = (file: any) => {
       extension = 'jpeg';
       break;
     default:
-        extension = 'jpg';
+      extension = 'jpg';
       break;
   }
 
