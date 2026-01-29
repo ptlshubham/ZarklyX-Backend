@@ -49,7 +49,8 @@ import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-
 import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
 import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
 import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-api';
-
+import seoAnalyzer from './routes/api-webapp/seo/index'
+import payrollTransaction from './routes/api-webapp/payroll/payroll-transaction/payroll-transaction-api'
 // Import cron jobs
 // import './cron/warranty-reminder.cron';
 import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
@@ -104,8 +105,8 @@ app.use(cookieSession({
 
 // console.log("FB APP ID:", process.env.FACEBOOK_APP_ID);
 app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
-app.use('/itManagement', express.static(path.join(__dirname, 'public', 'itManagement'))); 
-app.use(express.json()); 
+app.use('/itManagement', express.static(path.join(__dirname, 'public', 'itManagement')));
+app.use(express.json());
 const publicPath = path.join(process.cwd(), 'src', 'public');
 app.use(
   express.static(publicPath, { maxAge: '1d', etag: true, immutable: true })
@@ -147,36 +148,38 @@ app.use("/influencerCategory", influencerCategoryRoutes);
 app.use("/influencerIndustry", influencerIndustryRoutes);
 app.use("/influencerPlatform", influencerPlatformRoutes);
 app.use("/itManagement/itTickets", itTicketsRoutes);
-app.use("/accounting/item-Category",itemCategoryRoutes);
-app.use("/accounting/unit",unitRouter);
-app.use("/accounting/vendor",vendorRouter);
-app.use("/accounting/item",itemRouter);
-app.use("/accounting/invoice",invoiceRouter);
-app.use("/accounting/quote",quoteRouter);
-app.use("/accounting/credit-note",creditNoteRouter);
-app.use("/accounting/purchase-bill",purchaseBillRouter);
-app.use("/accounting/purchaseOrder",purchaseOrderRouter);
+app.use("/accounting/item-Category", itemCategoryRoutes);
+app.use("/accounting/unit", unitRouter);
+app.use("/accounting/vendor", vendorRouter);
+app.use("/accounting/item", itemRouter);
+app.use("/accounting/invoice", invoiceRouter);
+app.use("/accounting/quote", quoteRouter);
+app.use("/accounting/credit-note", creditNoteRouter);
+app.use("/accounting/purchase-bill", purchaseBillRouter);
+app.use("/accounting/purchaseOrder", purchaseOrderRouter);
 app.use("/itManagement/itAssetsManagement", itAssetsManagementRoutes);
-app.use("/accounting/payments",paymentsRouter);
-app.use("/accounting/debit-note",debitNoteRouter);
-app.use("/superAdmin/modules",modulesRouter);
-app.use("/superAdmin/permissions",permissionsRouter);
-app.use("/superAdmin/subscription-plan",subscriptionPlanRouter);
-app.use("/superAdmin/subscription-plan-module",subscriptionPlanModuleRouter);
-app.use("/superAdmin/subscription-plan-permission",subscriptionPlanPermissionRouter);
-app.use("/company-subscription",companySubscriptionRouter);
-app.use("/company-module",companyModuleRouter);
-app.use("/company-permission",companyPermissionRouter);
-app.use("/role-permissions",RolePermissionsRouter);
-app.use("/user-overrides",UserPermissionOverridesRouter);
-app.use("/rbac",RbacRouter);
-app.use("/superAdmin/zarklyx/auth",zarklyXAuthRouter),
-app.use("/superAdmin/zarklyx/user",zarklyXUsersRouter),
-app.use("/superAdmin/zarklyx/roles",zarklyXRolesRouter),
-app.use("/superAdmin/zarklyx/permissions",zarklyXPermissionsRouter),
-app.use("/superAdmin/zarklyx/role-permissions",zarklyXRolePermissionsRouter),
-app.use("/superAdmin/zarklyx/overrides",zarklyXOverridesRouter),
-app.use("/superAdmin/zarklyx/2fa",zarklyX2FARouter),
+app.use("/accounting/payments", paymentsRouter);
+app.use("/accounting/debit-note", debitNoteRouter);
+app.use("/superAdmin/modules", modulesRouter);
+app.use("/superAdmin/permissions", permissionsRouter);
+app.use("/superAdmin/subscription-plan", subscriptionPlanRouter);
+app.use("/superAdmin/subscription-plan-module", subscriptionPlanModuleRouter);
+app.use("/superAdmin/subscription-plan-permission", subscriptionPlanPermissionRouter);
+app.use("/company-subscription", companySubscriptionRouter);
+app.use("/company-module", companyModuleRouter);
+app.use("/company-permission", companyPermissionRouter);
+app.use("/role-permissions", RolePermissionsRouter);
+app.use("/user-overrides", UserPermissionOverridesRouter);
+app.use("/rbac", RbacRouter);
+app.use("/seo", seoAnalyzer);
+app.use("/payroll", payrollTransaction);
+app.use("/superAdmin/zarklyx/auth", zarklyXAuthRouter);
+app.use("/superAdmin/zarklyx/user", zarklyXUsersRouter);
+app.use("/superAdmin/zarklyx/roles", zarklyXRolesRouter);
+app.use("/superAdmin/zarklyx/permissions", zarklyXPermissionsRouter);
+app.use("/superAdmin/zarklyx/role-permissions", zarklyXRolePermissionsRouter);
+app.use("/superAdmin/zarklyx/overrides", zarklyXOverridesRouter);
+app.use("/superAdmin/zarklyx/2fa", zarklyX2FARouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it

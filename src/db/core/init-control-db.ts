@@ -70,6 +70,8 @@ import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/rbac/roles/roles
 import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permissions/permissions-model";
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
+import { seo } from "../../routes/api-webapp/seo/seo-model";
+import { PayrollTransaction } from "../../routes/api-webapp/payroll/payroll-transaction/payroll-transactions-model";
 
 export {
   User,
@@ -84,6 +86,8 @@ export {
   BusinessSubcategory,
   SocialToken,
   Employee,
+  seo,
+  PayrollTransaction,
   ItTickets,
   // GoogleToken
   InfluencerCategory,
@@ -161,6 +165,8 @@ export function initControlDB(sequelize: Sequelize) {
   initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
+  seo.initModel(sequelize);
+  PayrollTransaction.initModel(sequelize);
   // GoogleToken.initModel(sequelize); 
   //  initCategoryModel(sequelize);
   //  initPremiumModuleModel(sequelize);
@@ -847,99 +853,99 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
-    /*** DebitNote <-> Company */
-    Company.hasMany(DebitNote, {
-      foreignKey: "companyId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Company, {
-      foreignKey: "companyId",
-      as: "company",
-      constraints: false,
-    });
+  /*** DebitNote <-> Company */
+  Company.hasMany(DebitNote, {
+    foreignKey: "companyId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Clients */
-    Clients.hasMany(DebitNote, {
-      foreignKey: "clientId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Clients, {
-      foreignKey: "clientId",
-      as: "client",
-      constraints: false,
-    });
+  /*** DebitNote <-> Clients */
+  Clients.hasMany(DebitNote, {
+    foreignKey: "clientId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Vendor */
-    Vendor.hasMany(DebitNote, {
-      foreignKey: "vendorId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Vendor, {
-      foreignKey: "vendorId",
-      as: "vendor",
-      constraints: false,
-    });
+  /*** DebitNote <-> Vendor */
+  Vendor.hasMany(DebitNote, {
+    foreignKey: "vendorId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Invoice */
-    Invoice.hasMany(DebitNote, {
-      foreignKey: "invoiceId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Invoice, {
-      foreignKey: "invoiceId",
-      as: "invoice",
-      constraints: false,
-    });
+  /*** DebitNote <-> Invoice */
+  Invoice.hasMany(DebitNote, {
+    foreignKey: "invoiceId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> PurchaseBill */
-    PurchaseBill.hasMany(DebitNote, {
-      foreignKey: "purchaseBillId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(PurchaseBill, {
-      foreignKey: "purchaseBillId",
-      as: "purchaseBill",
-      constraints: false,
-    });
+  /*** DebitNote <-> PurchaseBill */
+  PurchaseBill.hasMany(DebitNote, {
+    foreignKey: "purchaseBillId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(PurchaseBill, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBill",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
-    DebitNote.belongsToMany(Item, {
-      through: DebitNoteItem,
-      foreignKey: "debitNoteId",
-      otherKey: "itemId",
-      as: "items",
-    });
-    Item.belongsToMany(DebitNote, {
-      through: DebitNoteItem,
-      foreignKey: "itemId",
-      otherKey: "debitNoteId",
-      as: "debitNotes",
-    });
+  /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
+  DebitNote.belongsToMany(Item, {
+    through: DebitNoteItem,
+    foreignKey: "debitNoteId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(DebitNote, {
+    through: DebitNoteItem,
+    foreignKey: "itemId",
+    otherKey: "debitNoteId",
+    as: "debitNotes",
+  });
 
-    /*** DebitNote <-> DebitNoteItem */
-    DebitNote.hasMany(DebitNoteItem, {
-      foreignKey: "debitNoteId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(DebitNote, {
-      foreignKey: "debitNoteId",
-      as: "debitNote",
-    });
+  /*** DebitNote <-> DebitNoteItem */
+  DebitNote.hasMany(DebitNoteItem, {
+    foreignKey: "debitNoteId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(DebitNote, {
+    foreignKey: "debitNoteId",
+    as: "debitNote",
+  });
 
-    /*** Item <-> DebitNoteItem */
-    Item.hasMany(DebitNoteItem, {
-      foreignKey: "itemId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(Item, {
-      foreignKey: "itemId",
-      as: "item",
-    });
+  /*** Item <-> DebitNoteItem */
+  Item.hasMany(DebitNoteItem, {
+    foreignKey: "itemId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
 
   /*** InfluencerCategory <-> Influencer (Many-to-Many) */
   InfluencerCategory.belongsToMany(Influencer, {
@@ -982,7 +988,7 @@ export function initControlDB(sequelize: Sequelize) {
     otherKey: "platformId",
     as: "platforms",
   });
-      /*** ItemCategory <-> ItAssetsManagement */
+  /*** ItemCategory <-> ItAssetsManagement */
   ItemCategory.hasMany(ItAssetsManagement, {
     foreignKey: "categoryId",
     as: "assets",
@@ -993,8 +999,8 @@ export function initControlDB(sequelize: Sequelize) {
     as: "category",
   });
 
-    /*** Company <-> ItAssetsManagement */
-   Company.hasMany(ItAssetsManagement, {
+  /*** Company <-> ItAssetsManagement */
+  Company.hasMany(ItAssetsManagement, {
     foreignKey: "companyId",
     as: "assets",
   });
@@ -1014,7 +1020,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "clientId",
     as: "client",
   });
-   /***ItTicketsAttachments<->ItTickets */
+  /***ItTicketsAttachments<->ItTickets */
   ItTickets.hasMany(ItTicketsAttachments, {
     foreignKey: "itTicketId",
     as: "attachments",
@@ -1024,7 +1030,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "itTicketId",
     as: "itTickets",
   });
-  
+
   //***ItAssetsAttachments<->ItAssetsManagement */
   ItAssetsManagement.hasMany(ItAssetsAttachments, {
     foreignKey: "itAssetId",
@@ -1035,7 +1041,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "itAssetId",
     as: "asset",
   });
-    /***ItTickets<->ItTicketsTimeline */
+  /***ItTickets<->ItTicketsTimeline */
   ItTickets.hasMany(ItTicketsTimeline, {
     foreignKey: "itTicketId",
     as: "timeline",
@@ -1095,6 +1101,26 @@ export function initControlDB(sequelize: Sequelize) {
   SubscriptionPlanModule.belongsTo(Modules, {
     foreignKey: "moduleId",
     as: "module"
+  });
+  Company.hasMany(PayrollTransaction, {
+    foreignKey: "companyId",
+    as: "payrollTransactions", // company.getPayrollTransactions()
+  });
+
+  PayrollTransaction.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company", // payrollTransaction.getCompany()
+  });
+
+  /*** Employee <-> PayrollTransaction */
+  Employee.hasMany(PayrollTransaction, {
+    foreignKey: "employeeId",
+    as: "payrolls", // employee.getPayrolls()
+  });
+
+  PayrollTransaction.belongsTo(Employee, {
+    foreignKey: "employeeId",
+    as: "employee", // payrollTransaction.getEmployee()
   });
 
   /*** SubscriptionPlan <-> SubscriptionPlanPermission */
@@ -1258,7 +1284,7 @@ export function initControlDB(sequelize: Sequelize) {
   // ============================================================
   // ZarklyX RBAC Associations (Platform Admin System)
   // ============================================================
-  
+
   // ZarklyXUser <-> ZarklyXRole
   ZarklyXUser.belongsTo(ZarklyXRole, {
     foreignKey: "roleId",
@@ -1396,5 +1422,7 @@ export function initControlDB(sequelize: Sequelize) {
     Role,
     RolePermissions,
     UserPermissionOverrides,
+    seo,
+    PayrollTransaction
   };
 }
