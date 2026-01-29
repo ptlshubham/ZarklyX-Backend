@@ -476,13 +476,31 @@ export async function getSystemRoleByName(name: string) {
 }
 
 /**
- * Validate role assignment based on user context
- * Enforces separation between ZarklyX roles and company roles
+ * Validate role assignment for company/freelancer users
+ * ZarklyX users have their own separate RBAC system
  */
 export async function validateRoleAssignment(
-  userCompanyId: string | null,
+  userId: string,
   roleId: string
 ): Promise<{ valid: boolean; error?: string }> {
+  // Get user to check their companyId
+  const user = await User.findOne({
+    where: { id: userId, isDeleted: false },
+  });
+
+  if (!user) {
+    return { valid: false, error: "User not found" };
+  }
+
+  // Only company/freelancer users should use this validation
+  // ZarklyX users have their own separate RBAC system
+  if (user.companyId === null) {
+    return {
+      valid: false,
+      error: "This validation is only for company/freelancer users. ZarklyX users have a separate RBAC system.",
+    };
+  }
+
   const role = await Role.findOne({
     where: { id: roleId, isDeleted: false },
   });
@@ -491,53 +509,21 @@ export async function validateRoleAssignment(
     return { valid: false, error: "Role not found" };
   }
 
-  // ZarklyX staff (companyId === null)
-  if (userCompanyId === null) {
-    if (role.scope !== "platform") {
-      return {
-        valid: false,
-        error: "ZarklyX users can only have platform-scoped roles",
-      };
-    }
-    // ZarklyX users can only be assigned ZarklyX system roles
-    // Note: We don't restrict to isSystemRole here to allow flexibility
+  // Company/Freelancer users can be assigned:
+  // 1. Default platform roles (Company Admin, Manager, Employee, Client)
+  if (role.scope === "platform" && role.isSystemRole) {
     return { valid: true };
   }
 
-  // Company/Tenant users (companyId !== null)
-  if (userCompanyId !== null) {
-    // Can be assigned default platform roles (Company Admin, Manager, Employee, Client)
-    if (role.scope === "platform" && role.isSystemRole) {
-      return { valid: true };
-    }
-
-    // Can be assigned company-specific custom roles
-    if (role.scope === "company" && role.companyId === userCompanyId) {
-      return { valid: true };
-    }
-
-    return {
-      valid: false,
-      error: "Invalid role for this user. Role must be a default platform role or a custom role for this company.",
-    };
+  // 2. Company-specific custom roles for their own company
+  if (role.scope === "company" && role.companyId === user.companyId) {
+    return { valid: true };
   }
 
-  return { valid: false, error: "Invalid user context" };
-}
-
-/**
- * Get roles available for ZarklyX staff (internal use only)
- */
-export async function getZarklyXRoles() {
-  return await Role.findAll({
-    where: {
-      scope: "platform",
-      isSystemRole: true,
-      isDeleted: false,
-      isActive: true,
-    },
-    order: [["priority", "ASC"]],
-  });
+  return {
+    valid: false,
+    error: "Invalid role for this user. Role must be a default platform role or a custom role for this company.",
+  };
 }
 
 /**
@@ -564,7 +550,7 @@ export async function assignRoleToUser(
     }
 
     // Validate role assignment
-    const validation = await validateRoleAssignment(user.companyId, roleId);
+    const validation = await validateRoleAssignment(userId, roleId);
     if (!validation.valid) {
       if (shouldCommit) await t.rollback();
       return { success: false, message: validation.error || "Invalid role assignment" };

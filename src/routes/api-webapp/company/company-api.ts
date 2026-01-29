@@ -1,6 +1,5 @@
 import express, { Request, Response } from "express";
 import { Company } from "../../../routes/api-webapp/company/company-model";
-import { UserCompany } from "../../../routes/api-webapp/company/user-company-model"
 import { User } from "../../../routes/api-webapp/authentication/user/user-model";
 import {
   getUserCompanies,
@@ -51,7 +50,6 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
     }
 
     const formattedCompanies = companies.map((company: any) => {
-      const userCompanyData = company.UserCompanies?.[0] || {};
       return {
         id: company.id,
         name: company.name,
@@ -62,9 +60,6 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
         no_of_clients: company.no_of_clients,
         address: company.address,
         website: company.website,
-        userRole: userCompanyData.role,
-        isOwner: userCompanyData.isOwner,
-        joinedAt: userCompanyData.joinedAt,
         isActive: company.isActive,
       };
     });
@@ -449,14 +444,14 @@ router.post("/:companyId/add-user",
       }
 
       // Check if user already in company
-      const existingRelation = await UserCompany.findOne({
+      const existingUser = await User.findOne({
         where: {
-          userId: targetUserId,
+          id: targetUserId,
           companyId: companyId,
         },
       });
 
-      if (existingRelation) {
+      if (existingUser) {
         await t.rollback();
         return alreadyExist(res, "User already associated with this company");
       }

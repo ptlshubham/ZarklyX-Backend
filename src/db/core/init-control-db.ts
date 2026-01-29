@@ -4,7 +4,6 @@ import type { Sequelize } from "sequelize";
 import { Role, initRoleModel } from "../../routes/api-webapp/roles/role-model";
 import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
-import { UserCompany, initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
 import { LoginHistory } from "../../routes/api-webapp/loginHistory/loginHistory-model";
 import { Category } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
@@ -74,7 +73,6 @@ import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmi
 export {
   User,
   Company,
-  UserCompany,
   Otp,
   LoginHistory,
   Category,
@@ -154,11 +152,7 @@ export function initControlDB(sequelize: Sequelize) {
   // Roles
   // Role.initModel(sequelize);
   // SubRole.initModel(sequelize);
-  initUserCompanyModel(sequelize);
   SocialToken.initModel(sequelize);
-  // Role.initModel(sequelize);
-  // SubRole.initModel(sequelize);
-  initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
   // GoogleToken.initModel(sequelize); 
@@ -217,22 +211,6 @@ export function initControlDB(sequelize: Sequelize) {
   Company.hasMany(User, {
     foreignKey: "companyId",
   });
-
-  /***user <-> userCompany */
-  User.hasMany(UserCompany, {
-    foreignKey: "userId",
-  });
-  UserCompany.belongsTo(User, {
-    foreignKey: "userId",
-  });
-
-  Company.hasMany(UserCompany, {
-    foreignKey: "companyId",
-  });
-  UserCompany.belongsTo(Company, {
-    foreignKey: "companyId",
-  });
-
 
   /***user <-> otp */
   //   User.hasMany(Otp, {
@@ -1346,7 +1324,6 @@ export function initControlDB(sequelize: Sequelize) {
     Company,
     Otp,
     LoginHistory,
-    UserCompany,
     Category,
     PremiumModule,
     Clients,
