@@ -21,6 +21,7 @@ const profileFile = "profileFile";
 // services/multer.ts
 
 const IT_TICKET_UPLOAD_DIR = "itManagement/itTickets";
+const IT_ASSET_UPLOAD_DIR = "itManagement/itAssets";
 
 
 const itTicketStorage = multer.diskStorage({
@@ -50,6 +51,9 @@ export const ticketAttachmentUpload = multer({
   },
 });
 
+const itAssetStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = `/${config.publicPath}/${IT_ASSET_UPLOAD_DIR}`;
 // Company Assets Storage (Logos and Favicons)
 // Files are stored in per-asset folders under the public directory (e.g., /public/company/companyLogoLight)
 const COMPANY_ASSET_DIR_MAP: { [key: string]: string } = {
@@ -76,6 +80,13 @@ const companyAssetsStorage = multer.diskStorage({
   },
 });
 
+export const assetAttachmentUpload = multer({
+  storage: itAssetStorage,
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["image/jpeg", "image/png", "application/pdf"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only jpeg/png/pdf files allowed"));
 export const companyAssetsUpload = multer({
   storage: companyAssetsStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -89,6 +100,17 @@ export const companyAssetsUpload = multer({
   },
 });
 
+//filepath conversion helper function
+export function convertToRelativePath(files?: Express.Multer.File[]): string[] {
+    if (!files || files.length === 0) return [];
+
+    return files.map((file) => {
+        const relativePath = path.relative(path.join(process.cwd(), "src", "public"), file.path).replace(/\\/g, "/");
+            return `/${relativePath}`;
+
+    });
+
+}
 // Export alias for clarity — the storage will choose folder based on the provided :assetType param
 export const companyAssetsUploadByType = companyAssetsUpload;
 

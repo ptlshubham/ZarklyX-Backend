@@ -48,6 +48,10 @@ import quoteRouter from './routes/api-webapp/accounting/quote/quote-api';
 import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-note-api';
 import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
 import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
+import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-api';
+
+// Import cron jobs
+// import './cron/warranty-reminder.cron';
 import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
 import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
 
@@ -78,6 +82,9 @@ app.use(cookieSession({
 }));
 
 // console.log("FB APP ID:", process.env.FACEBOOK_APP_ID);
+app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
+app.use('/itManagement', express.static(path.join(__dirname, 'public', 'itManagement'))); 
+app.use(express.json()); 
 const publicPath = path.join(process.cwd(), 'src', 'public');
 app.use(
   express.static(publicPath, { maxAge: '1d', etag: true, immutable: true })
@@ -128,6 +135,7 @@ app.use("/accounting/quote",quoteRouter);
 app.use("/accounting/credit-note",creditNoteRouter);
 app.use("/accounting/purchase-bill",purchaseBillRouter);
 app.use("/accounting/purchaseOrder",purchaseOrderRouter);
+app.use("/itManagement/itAssetsManagement", itAssetsManagementRoutes);
 app.use("/accounting/payments",paymentsRouter);
 app.use("/accounting/debit-note",debitNoteRouter);
 
