@@ -66,11 +66,13 @@ export class Clients extends Model<
     declare profileStatus: boolean;
     declare logo: string | null;
     declare payment: string | null;
+    declare profile: string | null;
     declare isEmailVerified: boolean;
     declare isRegistering: boolean;
     declare registrationStep: number;
     declare isMobileVerified: boolean;
     declare isFirstLogin: boolean;
+    declare isassigned: boolean;
 
     // Timestamps
     declare createdAt: CreationOptional<Date>;
@@ -328,6 +330,11 @@ export class Clients extends Model<
                     allowNull: true,
                     defaultValue: null,
                 },
+                profile: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                    defaultValue: null,
+                },
                 isEmailVerified: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: false,
@@ -350,6 +357,11 @@ export class Clients extends Model<
                     type: DataTypes.BOOLEAN,
                     allowNull: false,
                     defaultValue: true,
+                },
+                isassigned: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
                 },
 
                 // timestamps

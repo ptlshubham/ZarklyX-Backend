@@ -18,9 +18,13 @@ export interface EmployeePayload {
     bloodGroup?: string | null;
     emergencyContactName?: string | null;
     emergencyContactNumber?: string | null;
+    emergencyContactIsdCode?: string | null;
+    emergencyContactIsoCode?: string | null;
     emergencyContactRelationship?: string | null;
     permanentAddress?: string | null;
     currentAddress?: string | null;
+    isoCode?: string | null;
+    isdCode?: string | null;
     // Employment Details
     designation?: string | null;
     dateOfJoining?: Date | null;
