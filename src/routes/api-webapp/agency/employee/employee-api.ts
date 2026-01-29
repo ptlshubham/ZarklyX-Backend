@@ -26,6 +26,7 @@ import {
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { authMiddleware } from "../../../../middleware/auth.middleware";
+import { cloneRoleToCompany } from "../../../../routes/api-webapp/roles/role-handler";
 import { employeeFileUpload } from "../../../../middleware/employeeFileUpload";
 import { errorResponse, unauthorized } from "../../../../utils/responseHandler";
 import { employeeProfilePhotoUpload } from "../../../../services/multer";
@@ -89,6 +90,11 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             emergencyContactNumber,
             emergencyContactIsdCode,
             emergencyContactIsoCode,
+            // Role assignment (optional)
+            platformRoleId,
+            roleName,
+            roleDescription,
+            permissionIds,
             // Optional fields
             ...restData
         } = req.body;
@@ -291,6 +297,45 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             t
         );
 
+        // ✅ STEP 3: Clone role and assign to user (if platformRoleId provided)
+        let customRole = null;
+        if (platformRoleId) {
+            // Validate permissionIds if provided
+            if (permissionIds !== undefined && !Array.isArray(permissionIds)) {
+                await t.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: "permissionIds must be an array"
+                });
+                return;
+            }
+
+            try {
+                // Clone the platform role to create a custom role for this employee
+                customRole = await cloneRoleToCompany(
+                    platformRoleId,
+                    companyId,
+                    roleName, // Optional: custom name for the role
+                    roleDescription, // Optional: custom description
+                    permissionIds, // Optional: specific permissions to assign
+                    t
+                );
+
+                // Assign the custom role to the user by updating their roleId
+                await user.update(
+                    { roleId: customRole.id },
+                    { transaction: t }
+                );
+            } catch (roleError: any) {
+                await t.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: roleError.message || "Failed to assign role",
+                });
+                return;
+            }
+        }
+
         await t.commit();
 
         res.status(201).json({
@@ -307,6 +352,11 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                     isoCode: user.isoCode,
                 },
                 employee,
+                role: customRole ? {
+                    id: customRole.id,
+                    name: customRole.name,
+                    description: customRole.description,
+                } : null,
             },
         });
     } catch (err) {
