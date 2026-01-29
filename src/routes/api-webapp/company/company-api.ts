@@ -23,6 +23,8 @@ import { sendEncryptedResponse } from "../../../services/encryptResponse-service
 import { notFound, other } from "../../../services/response";
 import dbInstance from "../../../db/core/control-db";
 import ErrorLogger from "../../../db/core/logger/error-logger";
+import { companyAssetsUpload } from "../../../services/multer";
+import path from "path";
 
 const router = express.Router();
 
@@ -31,7 +33,7 @@ const router = express.Router();
  * Get all companies associated with the logged-in user
  * Returns list of companies with user's role in each
  */
-router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promise<any>=> {
+router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promise<any> => {
   try {
     const userId: any = (req as any).user?.id;
     if (!userId) {
@@ -60,7 +62,6 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
         no_of_clients: company.no_of_clients,
         address: company.address,
         website: company.website,
-        industryType: company.industryType,
         userRole: userCompanyData.role,
         isOwner: userCompanyData.isOwner,
         joinedAt: userCompanyData.joinedAt,
@@ -80,11 +81,11 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
 });
 
 /**
- * GET /company/:companyId/details
+ * GET /company/details/:companyId
  * Get detailed information about a specific company
  * (Same as Facebook profile view)
  */
-router.get("/:companyId/details",
+router.get("/details/:companyId",
   tokenMiddleWare,
   async (req: Request, res: Response): Promise<any> => {
     try {
@@ -138,7 +139,7 @@ router.get("/:companyId/details",
  */
 router.post("/switch/:companyId",
   tokenMiddleWare,
-  async (req: Request, res: Response): Promise<any>=> {
+  async (req: Request, res: Response): Promise<any> => {
     try {
       const userId: any = (req as any).user?.id;
       let { companyId } = req.params;
@@ -191,7 +192,7 @@ router.post("/switch/:companyId",
  * Create a new company (Admin only)
  */
 router.post("/addCompany",
-  async (req: Request, res: Response): Promise<any>=> {
+  async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -200,6 +201,8 @@ router.post("/addCompany",
         description,
         email,
         contact,
+        isdCode,
+        isoCode,
         address,
         city,
         state,
@@ -210,9 +213,28 @@ router.post("/addCompany",
         website,
         logo,
         registrationNumber,
-        industryType,
         accountType,
         businessArea,
+        bankName,
+        branchName,
+        adCode,
+        upiId,
+        accountNumber,
+        ifscCode,
+        swiftCode,
+        accountHolderName,
+        tin,
+        lst,
+        pan,
+        fssaiNo,
+        dlNo,
+        cst,
+        tan,
+        currency,
+        gstin,
+        serviceTaxNumber,
+        taxationType,
+        taxInclusiveRate,
       } = req.body;
 
       if (!userId) {
@@ -239,6 +261,8 @@ router.post("/addCompany",
           description,
           email,
           contact,
+          isdCode,
+          isoCode,
           address,
           city,
           state,
@@ -249,9 +273,28 @@ router.post("/addCompany",
           no_of_clients,
           logo,
           registrationNumber,
-          industryType,
           accountType,
           businessArea,
+          bankName,
+          branchName,
+          adCode,
+          upiId,
+          accountNumber,
+          ifscCode,
+          swiftCode,
+          accountHolderName,
+          tin,
+          lst,
+          pan,
+          fssaiNo,
+          dlNo,
+          cst,
+          tan,
+          currency,
+          gstin,
+          serviceTaxNumber,
+          taxationType,
+          taxInclusiveRate,
           isActive: true,
         },
         t
@@ -321,40 +364,31 @@ router.post("/addCompany",
 //   }
 // });
 /**
- * PUT /company/:companyId/update
+ * PUT /company/updateById/:id
  * Update company details (Admin/Owner only)
  */
-router.put("/:companyId/update",
-  async (req: Request, res: Response): Promise<any>=> {
+router.put("/updateById/:id",
+  async (req: Request, res: Response): Promise<any> => {
+    console.log("Update Company API called", req.body);
     const t = await dbInstance.transaction();
     try {
-      const userId: any = (req as any).user?.id;
-      let { companyId } = req.params;
-      if (Array.isArray(companyId)) companyId = companyId[0];
+      const userId: any = (req as any).user?.id || req.body.user_id;
+      let { id } = req.params;
+      if (Array.isArray(id)) id = id[0];
 
       if (!userId) {
         await t.rollback();
         return serverError(res, "User ID not found in token");
       }
 
-      if (!companyId) {
+      if (!id) {
         await t.rollback();
         return serverError(res, "Company ID is required");
       }
 
-      // Check if user is admin/owner of company
-      //   const userCompany = await UserCompany.findOne({
-      //     where: { userId, companyId: parseInt(companyId) },
-      //   });
-
-      //   if (!userCompany || !["admin", "manager"].includes(userCompany.role)) {
-      //     await t.rollback();
-      //     return serverError(res, "You do not have permission to update this company");
-      //   }
-
       // Update company
       const updatedCompany = await updateCompany(
-        companyId,
+        id,
         req.body,
         t
       );
@@ -379,7 +413,7 @@ router.put("/:companyId/update",
  * Add a user to a company (Admin/Owner only)
  */
 router.post("/:companyId/add-user",
-  async (req: Request, res: Response): Promise<any>=> {
+  async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -456,7 +490,7 @@ router.post("/:companyId/add-user",
  * Remove a user from a company (Admin/Owner only)
  */
 router.delete("/:companyId/remove-user/:targetUserId",
-  async (req: Request, res: Response): Promise<any>=> {
+  async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
       const userId: any = (req as any).user?.id;
@@ -498,6 +532,167 @@ router.delete("/:companyId/remove-user/:targetUserId",
       await t.rollback();
       ErrorLogger.write({ type: "removeUserFromCompany error", error });
       return serverError(res, error?.message || "Failed to remove user from company");
+    }
+  }
+);
+
+/**
+ * PATCH /company/removeCompanyAsset/:assetType
+ * Remove a company asset image (Admin/Owner only)
+ * Params: assetType (companyLogoLight | companyLogoDark | faviconLight | faviconDark)
+ * Body: { companyId }
+ */
+router.patch("/removeCompanyAsset/:assetType", tokenMiddleWare, async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    const { companyId } = req.body;
+    let assetType = req.params.assetType as string | string[];
+    if (Array.isArray(assetType)) assetType = assetType[0];
+    const userId: any = (req as any).user?.id;
+
+    if (!companyId || !assetType || !userId) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "companyId and userId are required and assetType must be provided as URL parameter",
+      });
+    }
+
+    if (!['companyLogoLight', 'companyLogoDark', 'faviconLight', 'faviconDark'].includes(assetType)) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Invalid assetType. Must be one of: companyLogoLight, companyLogoDark, faviconLight, faviconDark",
+      });
+    }
+
+    // Get company to verify it exists
+    const company = await Company.findByPk(companyId);
+    if (!company) {
+      await t.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+      });
+    }
+
+    // Get current asset path for file deletion
+    const currentAssetPath = (company.dataValues as any)[assetType];
+
+    // Update company to remove the asset
+    await company.update({ [assetType]: null }, { transaction: t });
+
+    // Delete file from disk if it exists
+    if (currentAssetPath) {
+      try {
+        const fs = require('fs').promises;
+        const filePath = path.join(process.cwd(), 'src', 'public', currentAssetPath.replace(/^\//, ''));
+        await fs.unlink(filePath).catch(() => { }); // Silently ignore if file doesn't exist
+      } catch (err) {
+        console.warn(`Failed to delete file at ${currentAssetPath}:`, err);
+      }
+    }
+
+    await t.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: `${assetType} removed successfully`,
+      data: {
+        companyId,
+        assetType,
+        removed: true,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    ErrorLogger.write({ type: "removeCompanyAsset error", error });
+    return serverError(res, error?.message || "Failed to remove company asset");
+  }
+});
+
+router.post(
+  "/uploadAsset/:assetType",
+  tokenMiddleWare,
+  companyAssetsUpload.single("file"),
+  async (req: Request, res: Response): Promise<any> => {
+    const t = await dbInstance.transaction();
+    try {
+      const { companyId } = req.body;
+      let assetType = req.params.assetType as string | string[];
+      if (Array.isArray(assetType)) assetType = assetType[0];
+      const userId: any = (req as any).user?.id;
+
+      if (!companyId || !assetType || !userId) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "companyId and userId are required and assetType must be provided as URL parameter",
+        });
+      }
+
+      if (!['companyLogoLight', 'companyLogoDark', 'faviconLight', 'faviconDark'].includes(assetType)) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Invalid assetType. Must be one of: companyLogoLight, companyLogoDark, faviconLight, faviconDark",
+        });
+      }
+
+      if (!req.file) {
+        await t.rollback();
+        return res.status(400).json({ success: false, message: "No file uploaded. Use form-data field 'file'" });
+      }
+
+      // Verify company exists
+      const company = await Company.findByPk(companyId);
+      if (!company) {
+        // cleanup uploaded file
+        try {
+          const fs = require("fs").promises;
+          const uploadedPath = path.join(process.cwd(), "src", "public", `${path.relative(path.join(process.cwd(), "src/public"), req.file.path)}`);
+          await fs.unlink(uploadedPath).catch(() => { });
+        } catch (e) { }
+
+        await t.rollback();
+        return res.status(404).json({ success: false, message: "Company not found" });
+      }
+
+      const oldAssetPath = (company.dataValues as any)[assetType];
+
+      // Build relative URL for returned path (matches frontend expectation: filePath)
+      const filePathRelative = `/${path.relative(path.join(process.cwd(), "src/public"), req.file.path).replace(/\\/g, "/")}`;
+
+      // Update DB immediately
+      await company.update({ [assetType]: filePathRelative } as any, { transaction: t });
+
+      await t.commit();
+
+      // Remove old file from disk after commit
+      if (oldAssetPath) {
+        try {
+          const fs = require("fs").promises;
+          const oldFilePath = path.join(process.cwd(), "src", "public", oldAssetPath.replace(/^\//, ""));
+          await fs.unlink(oldFilePath).catch(() => { });
+        } catch (err) {
+          console.warn(`Failed to delete old asset ${oldAssetPath}:`, err);
+        }
+      }
+
+      return res.status(200).json({ success: true, data: { filePath: filePathRelative }, message: `${assetType} uploaded successfully` });
+    } catch (error: any) {
+      // cleanup uploaded file on error
+      try {
+        if (req.file) {
+          const fs = require("fs").promises;
+          const newFilePath = path.join(process.cwd(), "src", "public", `${path.relative(path.join(process.cwd(), "src/public"), req.file.path)}`);
+          await fs.unlink(newFilePath).catch(() => { });
+        }
+      } catch (e) { }
+
+      await t.rollback();
+      ErrorLogger.write({ type: "uploadAsset error", error });
+      return serverError(res, error?.message || "Failed to upload asset");
     }
   }
 );

@@ -13,6 +13,11 @@ import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 import { ItTickets } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-model";
+import { ItAssetsManagement } from "../../routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-model";
+import { ItTicketsAttachments } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-Attachments/it-Tickets-Attachments-model";
+import { ItAssetsAttachments } from "../../routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-Attachments/it-Assets-Management-Attachments-model";
+import { ItTicketsTimeline } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-Timeline/it-Tickets-Timeline-model";
+
 // import { Role } from "../../routes/api-webapp/roles/role-model";
 // import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 // Use a relative path to the route-local Google token model to avoid module alias issues
@@ -123,6 +128,11 @@ export {
   ZarklyXPermission,
   ZarklyXRolePermission,
   ZarklyXUserPermissionOverride,
+  ItAssetsManagement,
+  ItTicketsAttachments,
+  ItAssetsAttachments,
+  ItTicketsTimeline,
+  PaymentsDocuments
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -137,6 +147,11 @@ export function initControlDB(sequelize: Sequelize) {
   Otp.initModel(sequelize);
   LoginHistory.initModel(sequelize);
   ItTickets.initModel(sequelize);
+  ItAssetsManagement.initModel(sequelize);
+  ItemCategory.initModel(sequelize);
+  ItTicketsAttachments.initModel(sequelize);
+  ItTicketsTimeline.initModel(sequelize);
+  ItAssetsAttachments.initModel(sequelize);
   // Roles
   // Role.initModel(sequelize);
   // SubRole.initModel(sequelize);
@@ -314,14 +329,14 @@ export function initControlDB(sequelize: Sequelize) {
   });
 
   /*** User <-> ItTickets */
-  User.hasMany(ItTickets, {
-    foreignKey: "userId",
-    as: "itTickets",
-  });
-  ItTickets.belongsTo(User, {
-    foreignKey: "userId",
-    as: "user",
-  });
+  // User.hasMany(ItTickets, {
+  //   foreignKey: "userId",
+  //   as: "itTickets",
+  // });
+  // ItTickets.belongsTo(User, {
+  //   foreignKey: "userId",
+  //   as: "user",
+  // });
 
   /*** Company <-> ItTickets */
   Company.hasMany(ItTickets, {
@@ -968,6 +983,88 @@ export function initControlDB(sequelize: Sequelize) {
     otherKey: "platformId",
     as: "platforms",
   });
+      /*** ItemCategory <-> ItAssetsManagement */
+  ItemCategory.hasMany(ItAssetsManagement, {
+    foreignKey: "categoryId",
+    as: "assets",
+  });
+
+  ItAssetsManagement.belongsTo(ItemCategory, {
+    foreignKey: "categoryId",
+    as: "category",
+  });
+
+    /*** Company <-> ItAssetsManagement */
+   Company.hasMany(ItAssetsManagement, {
+    foreignKey: "companyId",
+    as: "assets",
+  });
+
+  ItAssetsManagement.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Clients <-> ItAssetsManagement */
+  Clients.hasMany(ItAssetsManagement, {
+    foreignKey: "clientId",
+    as: "assets",
+  });
+
+  ItAssetsManagement.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+  });
+   /***ItTicketsAttachments<->ItTickets */
+  ItTickets.hasMany(ItTicketsAttachments, {
+    foreignKey: "itTicketId",
+    as: "attachments",
+  });
+
+  ItTicketsAttachments.belongsTo(ItTickets, {
+    foreignKey: "itTicketId",
+    as: "itTickets",
+  });
+  
+  //***ItAssetsAttachments<->ItAssetsManagement */
+  ItAssetsManagement.hasMany(ItAssetsAttachments, {
+    foreignKey: "itAssetId",
+    as: "attachments",
+  });
+
+  ItAssetsAttachments.belongsTo(ItAssetsManagement, {
+    foreignKey: "itAssetId",
+    as: "asset",
+  });
+    /***ItTickets<->ItTicketsTimeline */
+  ItTickets.hasMany(ItTicketsTimeline, {
+    foreignKey: "itTicketId",
+    as: "timeline",
+  });
+
+  ItTicketsTimeline.belongsTo(ItTickets, {
+    foreignKey: "itTicketId",
+    as: "itTickets",
+  });
+
+  /***ItTickets<->Employee */
+  Employee.hasMany(ItTickets, {
+    foreignKey: "employeeId",
+    as: "itTickets",
+  });
+  ItTickets.belongsTo(Employee, {
+    foreignKey: "employeeId", as: "assignedEmployee"
+  });
+
+  // /***ItTicketsTimeline<->Employee */
+  Employee.hasMany(ItTicketsTimeline, {
+    foreignKey: "employeeId",
+    as: "timeline",
+  });
+
+  ItTicketsTimeline.belongsTo(Employee, {
+    foreignKey: "employeeId", as: "assignedEmployee"
+  });
 
   // Permissions <-> Modules association
   // Each permission belongs to a module (moduleId foreign key)
@@ -1264,6 +1361,10 @@ export function initControlDB(sequelize: Sequelize) {
     Industry,
     Platform,
     ItemCategory,
+    ItAssetsManagement,
+    ItTicketsAttachments,
+    ItTicketsTimeline,
+    ItAssetsAttachments,
     Unit,
     Item,
     Vendor,
