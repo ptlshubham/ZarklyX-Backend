@@ -140,9 +140,11 @@ router.patch("/updatePayment/:id", async (req: Request, res: Response): Promise<
         message: "documents array must not be empty if provided",
       });
     }
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
 
     const success = await updatePayment(
-      req.params.id,
+      id,
       companyId as string,
       req.body,
       t
@@ -160,7 +162,7 @@ router.patch("/updatePayment/:id", async (req: Request, res: Response): Promise<
 
     // Fetch updated payment with documents
     const linkedDocs = await PaymentsDocuments.findAll({
-      where: { paymentId: req.params.id },
+      where: { paymentId: id },
     });
 
     return res.json({
@@ -188,8 +190,11 @@ router.delete("/deletePayment/:id", async (req: Request, res: Response): Promise
         message: "companyId query parameter is required",
       });
     }
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
 
-    const success = await deletePayment(req.params.id, companyId as string, t);
+
+    const success = await deletePayment(id, companyId as string, t);
 
     if (!success) {
       await t.rollback();
@@ -222,8 +227,10 @@ router.get("/getPaymentById/:id", async (req: Request, res: Response): Promise<a
         message: "companyId query parameter is required",
       });
     }
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
 
-    const data = await getPaymentById(req.params.id, companyId as string);
+    const data = await getPaymentById(id, companyId as string);
 
     if (!data) {
       return res.status(404).json({
@@ -275,9 +282,11 @@ router.get("/getPaymentsByClient/:clientId", async (req: Request, res: Response)
         message: "companyId query parameter is required",
       });
     }
+    let clientId = req.params.clientId;
+    if (Array.isArray(clientId)) clientId = clientId[0];
 
     const data = await getPaymentsByClient(
-      req.params.clientId,
+      clientId,
       companyId as string
     );
 
@@ -304,8 +313,11 @@ router.get("/getPaymentsByVendor/:vendorId", async (req: Request, res: Response)
       });
     }
 
+    let vendorId = req.params.vendorId;
+    if (Array.isArray(vendorId)) vendorId = vendorId[0];
+
     const data = await getPaymentsByVendor(
-      req.params.vendorId,
+      vendorId,
       companyId as string
     );
 
@@ -332,7 +344,10 @@ router.get("/getUnpaidInvoices/:clientId", async (req: Request, res: Response): 
       });
     }
 
-    const data = await getUnpaidInvoices(req.params.clientId, companyId as string);
+    let clientId = req.params.clientId;
+    if (Array.isArray(clientId)) clientId = clientId[0];
+
+    const data = await getUnpaidInvoices(clientId, companyId as string);
 
     res.json({
       success: true,
@@ -357,8 +372,11 @@ router.get("/getUnpaidPurchaseBills/:vendorId", async (req: Request, res: Respon
       });
     }
 
+    let vendorId = req.params.vendorId;
+    if (Array.isArray(vendorId)) vendorId = vendorId[0];
+
     const data = await getUnpaidPurchaseBills(
-      req.params.vendorId,
+      vendorId,
       companyId as string
     );
 

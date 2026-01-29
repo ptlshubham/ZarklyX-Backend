@@ -73,7 +73,8 @@ router.post("/createDebitNote", async (req: Request, res: Response): Promise<any
 // GET /accounting/debit-note/getDebitNoteById/:id?companyId=
 router.get("/getDebitNoteById/:id", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { id } = req.params;
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -105,7 +106,8 @@ router.get("/getDebitNoteById/:id", async (req: Request, res: Response): Promise
 // GET /accounting/debit-note/getDebitNoteByCompanyId/:companyId
 router.get("/getDebitNoteByCompanyId/:companyId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { companyId } = req.params;
+    let companyId = req.params.companyId;
+    if (Array.isArray(companyId)) companyId = companyId[0];
 
     const debitNotes = await getDebitNotesByCompany(companyId);
 
@@ -122,7 +124,8 @@ router.get("/getDebitNoteByCompanyId/:companyId", async (req: Request, res: Resp
 // GET /accounting/debit-note/getDebitNoteByClientId/:clientId?companyId=
 router.get("/getDebitNoteByClientId/:clientId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { clientId } = req.params;
+    let clientId = req.params.clientId;
+    if (Array.isArray(clientId)) clientId = clientId[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -147,7 +150,8 @@ router.get("/getDebitNoteByClientId/:clientId", async (req: Request, res: Respon
 // GET /accounting/debit-note/getDebitNoteByVendorId/:vendorId?companyId=
 router.get("/getDebitNoteByVendorId/:vendorId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { vendorId } = req.params;
+    let vendorId = req.params.vendorId;
+    if (Array.isArray(vendorId)) vendorId = vendorId[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -172,7 +176,8 @@ router.get("/getDebitNoteByVendorId/:vendorId", async (req: Request, res: Respon
 // GET /accounting/debit-note/getDebitNoteByInvoiceId/:invoiceId?companyId=
 router.get("/getDebitNoteByInvoiceId/:invoiceId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { invoiceId } = req.params;
+    let invoiceId = req.params.invoiceId;
+    if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -197,7 +202,8 @@ router.get("/getDebitNoteByInvoiceId/:invoiceId", async (req: Request, res: Resp
 // GET /accounting/debit-note/getDebitNoteByPurchaseBillId/:purchaseBillId?companyId=
 router.get("/getDebitNoteByPurchaseBillId/:purchaseBillId", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { purchaseBillId } = req.params;
+    let purchaseBillId = req.params.purchaseBillId;
+    if (Array.isArray(purchaseBillId)) purchaseBillId = purchaseBillId[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -223,7 +229,8 @@ router.get("/getDebitNoteByPurchaseBillId/:purchaseBillId", async (req: Request,
 router.put("/updateDebitNote/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const { id } = req.params;
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -268,7 +275,8 @@ router.put("/updateDebitNote/:id", async (req: Request, res: Response): Promise<
 router.delete("/deleteDebitNote/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const { id } = req.params;
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -281,7 +289,7 @@ router.delete("/deleteDebitNote/:id", async (req: Request, res: Response): Promi
     const result = await deleteDebitNote(id, companyId as string, t);
     await t.commit();
 
-    if (result[0] === 0) {
+    if (!result) {
       return res.status(404).json({
         success: false,
         message: "Debit note not found",

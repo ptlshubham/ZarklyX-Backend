@@ -23,6 +23,8 @@ export class ExpenseLineItem extends Model<
     declare taxAmount: number | null;
     declare taxable: number | null;
     declare totalAmount: number;
+    declare isActive: boolean;
+    declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -97,6 +99,16 @@ export class ExpenseLineItem extends Model<
             totalAmount: {
                 type: DataTypes.DECIMAL(12, 2),
                 allowNull: false,
+            },
+            isActive: {
+                type: DataTypes.BOOLEAN,
+                allowNull: false,
+                defaultValue: true,
+            },
+            isDeleted: {
+                type: DataTypes.BOOLEAN,
+                allowNull: false,
+                defaultValue: false,
             },
             createdAt: {
                 type: DataTypes.DATE,

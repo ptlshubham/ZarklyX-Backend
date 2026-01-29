@@ -253,7 +253,6 @@ export const createPayment = async (body: CreatePaymentInput, t: Transaction) =>
       amountReceived: parseFloat(paymentAmount.toFixed(2)),
       amountUsedForPayments: parseFloat(amountUsedForPayments.toFixed(2)),
       amountInExcess: parseFloat(amountInExcess.toFixed(2)),
-      status: "Active",
       isActive: true,
       isDeleted: false,
     },
@@ -268,6 +267,8 @@ export const createPayment = async (body: CreatePaymentInput, t: Transaction) =>
         documentId: doc.documentId,
         documentType: doc.documentType,
         paymentValue: parseFloat(doc.paymentValue.toFixed(2)),
+        isActive: true,
+        isDeleted: false,
       },
       { transaction: t, validate: true }
     );
@@ -414,7 +415,7 @@ export const getUnpaidPurchaseBills = async (vendorId: string, companyId: string
       vendorId,
       companyId,
       isDeleted: false,
-      status: { [Op.in]: ["unpaid", "partially paid"] },
+      status: { [Op.in]: ["Open", "Partially Paid"] },
     },
     attributes: [
       "id",
@@ -504,6 +505,8 @@ export const updatePayment = async (
         documentId: doc.documentId,
         documentType: doc.documentType,
         paymentValue: parseFloat(doc.paymentValue.toFixed(2)),
+        isActive: true,
+        isDeleted: false
       },
       { transaction: t, validate: true }
     );
@@ -578,7 +581,7 @@ export const deletePayment = async (
 
   // Soft delete payment
   const [affectedRows] = await Payments.update(
-    { isActive: false, isDeleted: true, status: "Deleted" },
+    { isActive: false, isDeleted: true },
     { where: { id, companyId }, transaction: t }
   );
 
@@ -699,18 +702,9 @@ export const getPaymentStatistics = async (companyId: string) => {
     },
   });
 
-  const pendingPayments = await Payments.count({
-    where: {
-      companyId,
-      status: "Pending",
-      isDeleted: false,
-    },
-  });
-
   return {
     totalReceived: totalReceived || 0,
     totalPaid: totalPaid || 0,
-    netCashFlow: (totalReceived || 0) - (totalPaid || 0),
-    pendingPayments,
+    netCashFlow: (totalReceived || 0) - (totalPaid || 0)
   };
 };

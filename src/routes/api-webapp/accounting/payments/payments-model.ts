@@ -11,8 +11,6 @@ export type PaymentType = "Payment Made" | "Payment Received" | "Advance Payment
 
 export type PaymentMethod = "Cash" | "Cash Memo" | "TDS" | "TCS" | "Credit Card" | "Cheque" | "Bank Transfer" | "Pay Slip" | "Credit Note" | "Payment Gateway" | "UPI" | "QR Code" | "Other";
 
-export type PaymentStatus = "Active" | "Deleted" | "Reconciled" | "Pending";
-
 export class Payments extends Model<
     InferAttributes<Payments>,
     InferCreationAttributes<Payments>
@@ -29,7 +27,6 @@ export class Payments extends Model<
     declare referenceNo: string | null;
     declare bankCharges: number | null;
     declare memo: string | null;
-    declare status: PaymentStatus;
     declare isActive: boolean;
     declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
@@ -90,10 +87,6 @@ export class Payments extends Model<
                 memo: {
                     type: DataTypes.TEXT,
                     allowNull: true,
-                },
-                status: {
-                    type: DataTypes.ENUM('Active', 'Deleted', 'Reconciled', 'Pending'),
-                    defaultValue: 'Active',
                 },
                 isActive: {
                     type: DataTypes.BOOLEAN,

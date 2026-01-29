@@ -67,8 +67,10 @@ router.post("/bulkCreateInvoiceTdsTcs", async (req: Request, res: Response): Pro
 // GET /accounting/invoice/tds-tcs/getTdsTcsById/:id?companyId=
 router.get("/getTdsTcsById/:id", async (req: Request, res: Response): Promise<any> => {
     try {
+      let id = req.params.id;
+      if (Array.isArray(id)) id = id[0];
       const data = await getTdsTcsById(
-        req.params.id,
+        id,
         req.query.companyId as string
       );
 
@@ -88,9 +90,12 @@ router.get("/getTdsTcsById/:id", async (req: Request, res: Response): Promise<an
 
 // GET /accounting/invoice/tds-tcs/getInvoiceTdsTcsById/:invoiceId?companyId=
 router.get("/getInvoiceTdsTcsById/:invoiceId", async (req: Request, res: Response): Promise<any> => {
+    
     try {
+      let invoiceId = req.params.invoiceId;
+      if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
       const data = await getTdsTcsByInvoiceId(
-        req.params.invoiceId,
+        invoiceId,
         req.query.companyId as string
       );
 
@@ -127,8 +132,10 @@ router.get("/getInvoiceTdsTcsByCompanyId", async (req: Request, res: Response): 
 router.patch("/updateInvoiceTdsTcs/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+      let id = req.params.id;
+      if (Array.isArray(id)) id = id[0];
       const [affectedRows] = await updateTdsTcs(
-        req.params.id,
+        id,
         req.query.companyId as string,
         req.body,
         t
@@ -159,8 +166,10 @@ router.patch("/updateInvoiceTdsTcs/:id", async (req: Request, res: Response): Pr
 router.delete("/deleteInvoiceTdsTcs/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+      let id = req.params.id;
+      if (Array.isArray(id)) id = id[0];
       const affectedRows = await deleteTdsTcs(
-        req.params.id,
+        id,
         req.query.companyId as string,
         t
       );
@@ -190,8 +199,10 @@ router.delete("/deleteInvoiceTdsTcs/:id", async (req: Request, res: Response): P
 router.delete("/deleteInvoiceTdsTcsByInvoiceId/:invoiceId", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
+      let invoiceId = req.params.invoiceId;
+      if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
       const affectedRows = await deleteTdsTcsByInvoiceId(
-        req.params.invoiceId,
+        invoiceId,
         req.query.companyId as string,
         t
       );

@@ -13,7 +13,7 @@ import userRoutes from "./routes/api-webapp/authentication/user/user-api";
 import companyRoutes from './routes/api-webapp/company/company-api';
 import otpRoutes from './routes/api-webapp/otp/otp-api';
 import Category from './routes/api-webapp/superAdmin/generalSetup/category/category-api';
-import PremiumModule  from './routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api';
+import PremiumModule from './routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api';
 import ClientsRoutes from './routes/api-webapp/agency/clients/clients-api';
 import businessTypeRoutes from './routes/api-webapp/superAdmin/generalSetup/businessType/businessType-api';
 const youtubeRoutes = require('./routes/api-webapp/agency/social-Integration/youtube/youtube-api');
@@ -39,7 +39,7 @@ const cookieSession = require('cookie-session');
 
 import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
 import itTicketsRoutes from './routes/api-webapp/it-Management/it-Tickets/it-Tickets-api';
-import  itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/item-Category-api';
+import itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/item-Category-api';
 import unitRouter from './routes/api-webapp/accounting/unit/unit-api';
 import itemRouter from './routes/api-webapp/accounting/item/item-api';
 import vendorRouter from './routes/api-webapp/accounting/vendor/vendor-api';
@@ -52,6 +52,8 @@ import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Asset
 
 // Import cron jobs
 // import './cron/warranty-reminder.cron';
+import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
+import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
 
 import path from "path";
 const app = express();
@@ -83,6 +85,12 @@ app.use(cookieSession({
 app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
 app.use('/itManagement', express.static(path.join(__dirname, 'public', 'itManagement'))); 
 app.use(express.json()); 
+const publicPath = path.join(process.cwd(), 'src', 'public');
+app.use(
+  express.static(publicPath, { maxAge: '1d', etag: true, immutable: true })
+);
+
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/user", userRoutes);
 app.use("/company", companyRoutes);
@@ -98,10 +106,10 @@ app.use("/google", googleRoutes);
 
 // 🔍 DEBUG: Log all /drive requests
 app.use("/drive", (req, res, next) => {
-  console.log(`📍 [DRIVE REQUEST] ${req.method} ${req.path}`, { 
-    hasAccessToken: !!req.query.access_token || !!req.headers['x-access-token'],
-    hasRefreshToken: !!req.query.refresh_token || !!req.headers['x-refresh-token']
-  });
+  // console.log(`📍 [DRIVE REQUEST] ${req.method} ${req.path}`, { 
+  //   hasAccessToken: !!req.query.access_token || !!req.headers['x-access-token'],
+  //   hasRefreshToken: !!req.query.refresh_token || !!req.headers['x-refresh-token']
+  // });
   next();
 });
 
@@ -128,6 +136,8 @@ app.use("/accounting/credit-note",creditNoteRouter);
 app.use("/accounting/purchase-bill",purchaseBillRouter);
 app.use("/accounting/purchaseOrder",purchaseOrderRouter);
 app.use("/itManagement/itAssetsManagement", itAssetsManagementRoutes);
+app.use("/accounting/payments",paymentsRouter);
+app.use("/accounting/debit-note",debitNoteRouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it

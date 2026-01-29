@@ -44,12 +44,15 @@ import { QuoteItem } from "../../routes/api-webapp/accounting/quote/quote-item-m
 import { QuoteTdsTcs } from "../../routes/api-webapp/accounting/quote/tds-tcs/quote-tds-tcs-model";
 import { CreditNote } from "../../routes/api-webapp/accounting/credit-Note/credit-note-model";
 import { CreditNoteItem } from "../../routes/api-webapp/accounting/credit-Note/credit-note-item-model";
+import { DebitNote } from "../../routes/api-webapp/accounting/debtit-Note/debit-note-model";
+import { DebitNoteItem } from "../../routes/api-webapp/accounting/debtit-Note/debit-note-item-model";
 import { PurchaseBill } from "../../routes/api-webapp/accounting/purchase-Bill/purchase-bill-model";
 import { PurchaseBillItem } from "../../routes/api-webapp/accounting/purchase-Bill/purcharse-bill-item-model";
 import { PurchaseBillTdsTcs } from "../../routes/api-webapp/accounting/purchase-Bill/tds-tcs/pb-tds-tcs-model";
 import { PurchaseOrder } from "../../routes/api-webapp/accounting/purchaseOrder/purchase-order-model";
 import { PurchaseOrderItem } from "../../routes/api-webapp/accounting/purchaseOrder/purchase-order-item-model";
 import { Payments } from "../../routes/api-webapp/accounting/payments/payments-model";
+import { PaymentsDocuments } from "../../routes/api-webapp/accounting/payments/payments-documents-model";
 
 export {
   User,
@@ -82,6 +85,8 @@ export {
   QuoteTdsTcs,
   CreditNote,
   CreditNoteItem,
+  DebitNote,
+  DebitNoteItem,
   PurchaseBill,
   PurchaseBillItem,
   PurchaseBillTdsTcs,
@@ -92,6 +97,7 @@ export {
   ItTicketsAttachments,
   ItAssetsAttachments,
   ItTicketsTimeline,
+  PaymentsDocuments
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -141,13 +147,15 @@ export function initControlDB(sequelize: Sequelize) {
   QuoteTdsTcs.initModel(sequelize);
   CreditNote.initModel(sequelize);
   CreditNoteItem.initModel(sequelize);
+  DebitNote.initModel(sequelize);
+  DebitNoteItem.initModel(sequelize);
   PurchaseBill.initModel(sequelize);
   PurchaseBillItem.initModel(sequelize);
   PurchaseBillTdsTcs.initModel(sequelize);
   PurchaseOrder.initModel(sequelize);
   PurchaseOrderItem.initModel(sequelize);
   Payments.initModel(sequelize);
-
+  PaymentsDocuments.initModel(sequelize);
 
 
   // Relations and associations
@@ -752,6 +760,136 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
+  // Payments <-> PaymentsDocuments
+  Payments.hasMany(PaymentsDocuments, {
+    foreignKey: "paymentId",
+    as: "documents",
+  });
+  PaymentsDocuments.belongsTo(Payments, {
+    foreignKey: "paymentId",
+    as: "payment",
+  });
+
+  // Invoice <-> PaymentsDocuments
+  Invoice.hasMany(PaymentsDocuments, {
+    foreignKey: "documentId",
+    as: "paymentDocuments",
+    constraints: false,
+    scope: { documentType: "Invoice" },
+  });
+  PaymentsDocuments.belongsTo(Invoice, {
+    foreignKey: "documentId",
+    as: "invoice",
+    constraints: false,
+  });
+
+  // PurchaseBill <-> PaymentsDocuments
+  PurchaseBill.hasMany(PaymentsDocuments, {
+    foreignKey: "documentId",
+    as: "paymentDocuments",
+    constraints: false,
+    scope: { documentType: "PurchaseBill" },
+  });
+  PaymentsDocuments.belongsTo(PurchaseBill, {
+    foreignKey: "documentId",
+    as: "purchaseBill",
+    constraints: false,
+  });
+
+    /*** DebitNote <-> Company */
+    Company.hasMany(DebitNote, {
+      foreignKey: "companyId",
+      as: "debitNotes",
+      constraints: false,
+    });
+    DebitNote.belongsTo(Company, {
+      foreignKey: "companyId",
+      as: "company",
+      constraints: false,
+    });
+
+    /*** DebitNote <-> Clients */
+    Clients.hasMany(DebitNote, {
+      foreignKey: "clientId",
+      as: "debitNotes",
+      constraints: false,
+    });
+    DebitNote.belongsTo(Clients, {
+      foreignKey: "clientId",
+      as: "client",
+      constraints: false,
+    });
+
+    /*** DebitNote <-> Vendor */
+    Vendor.hasMany(DebitNote, {
+      foreignKey: "vendorId",
+      as: "debitNotes",
+      constraints: false,
+    });
+    DebitNote.belongsTo(Vendor, {
+      foreignKey: "vendorId",
+      as: "vendor",
+      constraints: false,
+    });
+
+    /*** DebitNote <-> Invoice */
+    Invoice.hasMany(DebitNote, {
+      foreignKey: "invoiceId",
+      as: "debitNotes",
+      constraints: false,
+    });
+    DebitNote.belongsTo(Invoice, {
+      foreignKey: "invoiceId",
+      as: "invoice",
+      constraints: false,
+    });
+
+    /*** DebitNote <-> PurchaseBill */
+    PurchaseBill.hasMany(DebitNote, {
+      foreignKey: "purchaseBillId",
+      as: "debitNotes",
+      constraints: false,
+    });
+    DebitNote.belongsTo(PurchaseBill, {
+      foreignKey: "purchaseBillId",
+      as: "purchaseBill",
+      constraints: false,
+    });
+
+    /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
+    DebitNote.belongsToMany(Item, {
+      through: DebitNoteItem,
+      foreignKey: "debitNoteId",
+      otherKey: "itemId",
+      as: "items",
+    });
+    Item.belongsToMany(DebitNote, {
+      through: DebitNoteItem,
+      foreignKey: "itemId",
+      otherKey: "debitNoteId",
+      as: "debitNotes",
+    });
+
+    /*** DebitNote <-> DebitNoteItem */
+    DebitNote.hasMany(DebitNoteItem, {
+      foreignKey: "debitNoteId",
+      as: "debitNoteItems",
+    });
+    DebitNoteItem.belongsTo(DebitNote, {
+      foreignKey: "debitNoteId",
+      as: "debitNote",
+    });
+
+    /*** Item <-> DebitNoteItem */
+    Item.hasMany(DebitNoteItem, {
+      foreignKey: "itemId",
+      as: "debitNoteItems",
+    });
+    DebitNoteItem.belongsTo(Item, {
+      foreignKey: "itemId",
+      as: "item",
+    });
+
   /*** InfluencerCategory <-> Influencer (Many-to-Many) */
   InfluencerCategory.belongsToMany(Influencer, {
     through: 'influencer_category_mapping',
@@ -927,5 +1065,10 @@ export function initControlDB(sequelize: Sequelize) {
     PurchaseOrder,
     PurchaseOrderItem,
     Payments,
+    PaymentsDocuments,
+    CreditNote,
+    CreditNoteItem,
+    DebitNote,
+    DebitNoteItem,
   };
 }

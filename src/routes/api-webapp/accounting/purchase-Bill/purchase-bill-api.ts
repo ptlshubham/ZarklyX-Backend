@@ -124,7 +124,7 @@ router.get("/getPurchaseBillByVendorId/:vendorId", async (req: Request, res: Res
   }
 );
 
-// GET /accounting/purchase-bill/searchPurchaseBill/?companyId=...&vendorName=...&purchaseBillNumber=...&status=...&city=...&type=...&itemName=...&issueDateFrom=...&issueDateTo=...&dueDateFrom=...&dueDateTo=...
+// GET /accounting/purchase-bill/searchPurchaseBill/?companyId=...&vendorName=...&purchaseBillNo=...&status=...&city=...&type=...&itemName=...&issueDateFrom=...&issueDateTo=...&dueDateFrom=...&dueDateTo=...
 router.get("/searchPurchaseBill", async (req: Request, res: Response): Promise<any> => {
   try {
     const { companyId } = req.query;
@@ -145,8 +145,8 @@ router.get("/searchPurchaseBill", async (req: Request, res: Response): Promise<a
       filters.vendorName = req.query.vendorName as string;
     }
 
-    if (req.query.purchaseBillNumber) {
-      filters.purchaseBillNumber = req.query.purchaseBillNumber as string;
+    if (req.query.purchaseBillNo) {
+      filters.purchaseBillNo = req.query.purchaseBillNo as string;
     }
 
     if (req.query.status) {
@@ -276,15 +276,15 @@ router.delete("/deletePurchaseBill/:id", async (req: Request, res: Response): Pr
 router.post("/convertToPayment/:id",async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const { companyId } = req.query;
-    let { invoiceId } = req.params;
-    if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
-    const invoiceData = req.body;
+    const companyId = req.query.companyId;
+    let purchaseBillId = req.params.id;
+    if (Array.isArray(purchaseBillId)) purchaseBillId = purchaseBillId[0];
+    const purchaseBillData = req.body;
     if(!companyId) {
       await t.rollback();
       return res.status(400).json({ success: false, message: "companyId is required" });
     }
-    const result = await convertPurchaseBillToPayment(companyId as string, invoiceId, invoiceData, t);
+    const result = await convertPurchaseBillToPayment(companyId as string, purchaseBillId, purchaseBillData, t);
     await t.commit();
     return res.status(201).json({
       success: true,

@@ -29,6 +29,8 @@ export class PurchaseBillItem extends Model<
     declare taxable: number | null; // Taxable amount (after discount, before tax)
     declare taxAmount: number | null;
     declare totalAmount: number;
+    declare isActive: boolean;
+    declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -111,11 +113,13 @@ export class PurchaseBillItem extends Model<
                     allowNull: true,
                     defaultValue: 0,
                     comment: 'Item-specific discount for this purchase bill',
-                },                taxable: {
+                },                
+                taxable: {
                     type: DataTypes.DECIMAL(12, 2),
                     allowNull: true,
                     comment: 'Taxable amount after discount but before tax',
-                },                taxAmount: {
+                },                
+                taxAmount: {
                     type: DataTypes.DECIMAL(10, 2),
                     allowNull: true,
                     comment: 'Calculated tax amount for this line item',
@@ -124,6 +128,16 @@ export class PurchaseBillItem extends Model<
                     type: DataTypes.DECIMAL(12, 2),
                     allowNull: false,
                     comment: 'Total amount for this line item',
+                },
+                isActive: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: true,
+                },
+                isDeleted: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
                 },
                 createdAt: {
                     type: DataTypes.DATE,

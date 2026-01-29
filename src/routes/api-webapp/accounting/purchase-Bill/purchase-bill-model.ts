@@ -14,10 +14,10 @@ export class PurchaseBill extends Model<
     declare id: CreationOptional<string>;
     declare companyId: string; // Foreign key to Company table
     declare vendorId: string; // Foreign key to Vendor table
-    declare purchaseBillNumber: string
+    declare purchaseBillNo: string
     declare placeOfSupply: string;
     declare invoiceNo: string;
-    declare billDate: CreationOptional<Date>;
+    declare purchaseBillDate: CreationOptional<Date>;
     declare status: string;
     declare poNo: string;
     declare poDate: CreationOptional<Date>;
@@ -62,7 +62,7 @@ export class PurchaseBill extends Model<
                     type: DataTypes.UUID,
                     allowNull: false,
                 },
-                purchaseBillNumber: {
+                purchaseBillNo: {
                     type: DataTypes.STRING,
                     allowNull: false,
                 },
@@ -74,7 +74,7 @@ export class PurchaseBill extends Model<
                     type: DataTypes.STRING(100),
                     allowNull: false,
                 },
-                billDate: {
+                purchaseBillDate: {
                     type: DataTypes.DATE,
                     allowNull: false,
                     defaultValue: DataTypes.NOW,
@@ -215,7 +215,7 @@ export class PurchaseBill extends Model<
                         unique: true,
                     },
                     {
-                        fields: ['billDate'],
+                        fields: ['purchaseBillDate'],
                     },
                 ],
             }
