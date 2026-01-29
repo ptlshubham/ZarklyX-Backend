@@ -1,6 +1,7 @@
 import type { Sequelize } from "sequelize";
 
 // Models for Web -app
+import { Role, initRoleModel } from "../../routes/api-webapp/roles/role-model";
 import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
 import { UserCompany, initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
@@ -53,6 +54,17 @@ import { Modules, initModulesModel } from "../../routes/api-webapp/superAdmin/mo
 import { Permissions, initPermissionsModel } from "../../routes/api-webapp/superAdmin/permissions/permissions-model";
 import { SubscriptionPlan, initSubscriptionPlanModel } from "../../routes/api-webapp/superAdmin/subscription-plan/subscription-plan-model";
 import { SubscriptionPlanModule, initSubscriptionPlanModuleModel } from "../../routes/api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-model";
+import { CompanyModule, initCompanyModuleModel } from "../../routes/api-webapp/company/company-module/company-module-model";
+import { CompanySubscription, initCompanySubscriptionModel } from "../../routes/api-webapp/company/company-subscription/company-subscription-model";
+import { CompanyPermission, initCompanyPermissionModel } from "../../routes/api-webapp/company/company-permission/company-permission-model";
+import { SubscriptionPlanPermission, initSubscriptionPlanPermissionModel } from "../../routes/api-webapp/superAdmin/subscription-plan-permission/subscription-plan-permission-model";
+import { RolePermissions, initRolePermissionsModel } from "../../routes/api-webapp/role-permissions/role-permissions-model";
+import { UserPermissionOverrides, initUserPermissionOverridesModel } from "../../routes/api-webapp/user-permission-overrides/user-permission-overrides-model";
+import { ZarklyXUser } from "../../routes/api-webapp/superAdmin/zarklyX-users/zarklyX-users-model";
+import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/zarklyX-roles/zarklyX-roles-model";
+import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/zarklyX-permissions/zarklyX-permissions-model";
+import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/zarklyX-role-permissions/zarklyX-role-permissions-model";
+import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/zarklyX-user-permission-overrides/zarklyX-user-permission-overrides-model";
 
 export {
   User,
@@ -99,12 +111,25 @@ export {
   Permissions,
   SubscriptionPlan,
   SubscriptionPlanModule,
+  SubscriptionPlanPermission,
+  CompanyModule,
+  CompanySubscription,
+  CompanyPermission,
+  Role,
+  RolePermissions,
+  UserPermissionOverrides,
+  ZarklyXUser,
+  ZarklyXRole,
+  ZarklyXPermission,
+  ZarklyXRolePermission,
+  ZarklyXUserPermissionOverride,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
   // User.initModel(sequelize);
-  User.initModel(sequelize);
   Company.initModel(sequelize);
+  initRoleModel(sequelize);
+  User.initModel(sequelize);
   PremiumModule.initModel(sequelize);
   Category.initModel(sequelize);
   Clients.initModel(sequelize);
@@ -157,6 +182,18 @@ export function initControlDB(sequelize: Sequelize) {
   initPermissionsModel(sequelize);
   initSubscriptionPlanModel(sequelize);
   initSubscriptionPlanModuleModel(sequelize);
+  initSubscriptionPlanPermissionModel(sequelize);
+  initCompanyModuleModel(sequelize);
+  initCompanySubscriptionModel(sequelize);
+  initCompanyPermissionModel(sequelize);
+  initRolePermissionsModel(sequelize);
+  initUserPermissionOverridesModel(sequelize);
+  ZarklyXRole.initModel(sequelize);
+  ZarklyXPermission.initModel(sequelize);
+  ZarklyXUser.initModel(sequelize);
+  ZarklyXRolePermission.initModel(sequelize);
+  ZarklyXUserPermissionOverride.initModel(sequelize);
+
 
   // Relations and associations
   /***user <-> company */
@@ -964,6 +1001,237 @@ export function initControlDB(sequelize: Sequelize) {
     as: "module"
   });
 
+  /*** SubscriptionPlan <-> SubscriptionPlanPermission */
+  SubscriptionPlan.hasMany(SubscriptionPlanPermission, {
+    foreignKey: "subscriptionPlanId",
+    as: "planPermissions"
+  });
+  SubscriptionPlanPermission.belongsTo(SubscriptionPlan, {
+    foreignKey: "subscriptionPlanId",
+    as: "subscriptionPlan"
+  });
+
+  /*** Permissions <-> SubscriptionPlanPermission */
+  Permissions.hasMany(SubscriptionPlanPermission, {
+    foreignKey: "permissionId",
+    as: "planPermissions"
+  });
+  SubscriptionPlanPermission.belongsTo(Permissions, {
+    foreignKey: "permissionId",
+    as: "permission"
+  });
+
+  /*** Company <-> CompanyModule */
+  Company.hasMany(CompanyModule, {
+    foreignKey: "companyId",
+    as: "companyModules"
+  });
+  CompanyModule.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company"
+  });
+
+  /*** Modules <-> CompanyModule */
+  Modules.hasMany(CompanyModule, {
+    foreignKey: "moduleId",
+    as: "companyModules"
+  });
+  CompanyModule.belongsTo(Modules, {
+    foreignKey: "moduleId",
+    as: "module"
+  });
+
+  /*** Company <-> CompanySubscription */
+  Company.hasMany(CompanySubscription, {
+    foreignKey: "companyId",
+    as: "subscriptions"
+  });
+  CompanySubscription.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company"
+  });
+
+  /*** SubscriptionPlan <-> CompanySubscription */
+  SubscriptionPlan.hasMany(CompanySubscription, {
+    foreignKey: "subscriptionPlanId",
+    as: "companySubscriptions"
+  });
+  CompanySubscription.belongsTo(SubscriptionPlan, {
+    foreignKey: "subscriptionPlanId",
+    as: "subscriptionPlan"
+  });
+
+  /*** Company <-> CompanyPermission */
+  Company.hasMany(CompanyPermission, {
+    foreignKey: "companyId",
+    as: "companyPermissions"
+  });
+  CompanyPermission.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company"
+  });
+
+  /*** Permissions <-> CompanyPermission */
+  Permissions.hasMany(CompanyPermission, {
+    foreignKey: "permissionId",
+    as: "companyPermissions"
+  });
+  CompanyPermission.belongsTo(Permissions, {
+    foreignKey: "permissionId",
+    as: "permission"
+  });
+
+  /*** Company <-> Role (for company-scoped roles) */
+  Company.hasMany(Role, {
+    foreignKey: "companyId",
+    as: "customRoles"
+  });
+  Role.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company"
+  });
+
+  /*** User <-> Role */
+  Role.hasMany(User, {
+    foreignKey: "roleId",
+    as: "users"
+  });
+  User.belongsTo(Role, {
+    foreignKey: "roleId",
+    as: "role"
+  });
+
+  /*** Role <-> RolePermissions */
+  Role.hasMany(RolePermissions, {
+    foreignKey: "roleId",
+    as: "rolePermissions",
+    onDelete: "CASCADE",
+    hooks: true
+  });
+  RolePermissions.belongsTo(Role, {
+    foreignKey: "roleId",
+    as: "role"
+  });
+
+  /*** Permissions <-> RolePermissions */
+  Permissions.hasMany(RolePermissions, {
+    foreignKey: "permissionId",
+    as: "rolePermissions",
+    onDelete: "CASCADE",
+    hooks: true
+  });
+  RolePermissions.belongsTo(Permissions, {
+    foreignKey: "permissionId",
+    as: "permission"
+  });
+
+  /*** User <-> UserPermissionOverrides */
+  User.hasMany(UserPermissionOverrides, {
+    foreignKey: "userId",
+    as: "permissionOverrides",
+    onDelete: "CASCADE",
+    hooks: true
+  });
+  UserPermissionOverrides.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user"
+  });
+
+  /*** Permissions <-> UserPermissionOverrides */
+  Permissions.hasMany(UserPermissionOverrides, {
+    foreignKey: "permissionId",
+    as: "userOverrides",
+    onDelete: "CASCADE",
+    hooks: true
+  });
+  UserPermissionOverrides.belongsTo(Permissions, {
+    foreignKey: "permissionId",
+    as: "permission"
+  });
+
+  /*** User <-> UserPermissionOverrides (grantedBy self-reference) */
+  User.hasMany(UserPermissionOverrides, {
+    foreignKey: "grantedByUserId",
+    as: "grantedOverrides"
+  });
+  UserPermissionOverrides.belongsTo(User, {
+    foreignKey: "grantedByUserId",
+    as: "grantedBy"
+  });
+
+  // ============================================================
+  // ZarklyX RBAC Associations (Platform Admin System)
+  // ============================================================
+  
+  // ZarklyXUser <-> ZarklyXRole
+  ZarklyXUser.belongsTo(ZarklyXRole, {
+    foreignKey: "roleId",
+    as: "role",
+  });
+  ZarklyXRole.hasMany(ZarklyXUser, {
+    foreignKey: "roleId",
+    as: "users",
+  });
+
+  // ZarklyXUser <-> ZarklyXUserPermissionOverride
+  ZarklyXUser.hasMany(ZarklyXUserPermissionOverride, {
+    foreignKey: "userId",
+    as: "permissionOverrides",
+  });
+  ZarklyXUserPermissionOverride.belongsTo(ZarklyXUser, {
+    foreignKey: "userId",
+    as: "user",
+  });
+  ZarklyXUserPermissionOverride.belongsTo(ZarklyXUser, {
+    foreignKey: "grantedByUserId",
+    as: "grantedBy",
+  });
+
+  // ZarklyXRole <-> ZarklyXRolePermission
+  ZarklyXRole.hasMany(ZarklyXRolePermission, {
+    foreignKey: "roleId",
+    as: "rolePermissions",
+  });
+  ZarklyXRolePermission.belongsTo(ZarklyXRole, {
+    foreignKey: "roleId",
+    as: "role",
+  });
+
+  // ZarklyXRole <-> ZarklyXPermission (Many-to-Many through RolePermission)
+  ZarklyXRole.belongsToMany(ZarklyXPermission, {
+    through: ZarklyXRolePermission,
+    foreignKey: "roleId",
+    otherKey: "permissionId",
+    as: "permissions",
+  });
+  ZarklyXPermission.belongsToMany(ZarklyXRole, {
+    through: ZarklyXRolePermission,
+    foreignKey: "permissionId",
+    otherKey: "roleId",
+    as: "roles",
+  });
+
+  // ZarklyXPermission <-> ZarklyXRolePermission
+  ZarklyXPermission.hasMany(ZarklyXRolePermission, {
+    foreignKey: "permissionId",
+    as: "rolePermissions",
+  });
+  ZarklyXRolePermission.belongsTo(ZarklyXPermission, {
+    foreignKey: "permissionId",
+    as: "permission",
+  });
+
+  // ZarklyXPermission <-> ZarklyXUserPermissionOverride
+  ZarklyXPermission.hasMany(ZarklyXUserPermissionOverride, {
+    foreignKey: "permissionId",
+    as: "userOverrides",
+  });
+  ZarklyXUserPermissionOverride.belongsTo(ZarklyXPermission, {
+    foreignKey: "permissionId",
+    as: "permission",
+  });
+
+  console.log("✅ ZarklyX RBAC associations initialized");
 
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
@@ -1020,6 +1288,13 @@ export function initControlDB(sequelize: Sequelize) {
     Modules,
     Permissions,
     SubscriptionPlan,
-    SubscriptionPlanModule
+    SubscriptionPlanModule,
+    SubscriptionPlanPermission,
+    CompanySubscription,
+    CompanyModule,
+    CompanyPermission,
+    Role,
+    RolePermissions,
+    UserPermissionOverrides,
   };
 }

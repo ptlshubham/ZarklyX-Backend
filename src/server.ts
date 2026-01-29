@@ -28,7 +28,7 @@ import twitterRoutes from './routes/api-webapp/agency/social-Integration/twitter
 import tiktokRoutes from './routes/api-webapp/agency/social-Integration/tiktok/tiktok-api';
 // const twitterRoutes = require('./routes/api-webapp/agency/social-Integration/twitter/twitter-api');
 // import rolesRoutes from './routes/api-webapp/roles/roles-api';
-import rolesRoutes from './routes/api-webapp/roles/roles-api';
+import rolesRoutes from './routes/api-webapp/roles/role-api';
 // const influencerRoutes = require ('./routes/api-webapp/influencer/influencer-api');
 import influencerRoutes from './routes/api-webapp/influencer/influencer-api';
 import influencerCategoryRoutes from './routes/api-webapp/superAdmin/influencer/category/influencerCategory-api';
@@ -54,6 +54,21 @@ import modulesRouter from './routes/api-webapp/superAdmin/modules/module-api';
 import permissionsRouter from './routes/api-webapp/superAdmin/permissions/permissions-api';
 import subscriptionPlanRouter from './routes/api-webapp/superAdmin/subscription-plan/subscription-plan-api';
 import subscriptionPlanModuleRouter from './routes/api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-api';
+import subscriptionPlanPermissionRouter from './routes/api-webapp/superAdmin/subscription-plan-permission/subscription-plan-permission-api';
+import companySubscriptionRouter from './routes/api-webapp/company/company-subscription/company-subscription-api';
+import companyModuleRouter from './routes/api-webapp/company/company-module/company-module-api';
+import companyPermissionRouter from './routes/api-webapp/company/company-permission/company-permission-api';
+import RolePermissionsRouter from './routes/api-webapp/role-permissions/role-permissions-api'
+import UserPermissionOverridesRouter from './routes/api-webapp/user-permission-overrides/user-permission-overrides-api'
+import RbacRouter from './routes/api-webapp/rbac/rbac-api';
+import zarklyXAuthRouter from "./routes/api-webapp/superAdmin/zarklyX-auth/zarklyX-auth-api";
+import zarklyXUsersRouter from "./routes/api-webapp/superAdmin/zarklyX-users/zarklyX-users-api";
+import zarklyXRolesRouter from "./routes/api-webapp/superAdmin/zarklyX-roles/zarklyX-roles-api";
+import zarklyXPermissionsRouter from "./routes/api-webapp/superAdmin/zarklyX-permissions/zarklyX-permissions-api";
+import zarklyXOverridesRouter from "./routes/api-webapp/superAdmin/zarklyX-user-permission-overrides/zarklyX-user-permission-overrides-api";
+import zarklyX2FARouter from "./routes/api-webapp/superAdmin/zarklyX-2fa/zarklyX-2fa-api";
+import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/zarklyX-role-permissions/zarklyX-role-permissions-api';
+
 
 import path from "path";
 const app = express();
@@ -134,6 +149,20 @@ app.use("/superAdmin/modules",modulesRouter);
 app.use("/superAdmin/permissions",permissionsRouter);
 app.use("/superAdmin/subscription-plan",subscriptionPlanRouter);
 app.use("/superAdmin/subscription-plan-module",subscriptionPlanModuleRouter);
+app.use("/superAdmin/subscription-plan-permission",subscriptionPlanPermissionRouter);
+app.use("/company-subscription",companySubscriptionRouter);
+app.use("/company-module",companyModuleRouter);
+app.use("/company-permission",companyPermissionRouter);
+app.use("/role-permissions",RolePermissionsRouter);
+app.use("/user-overrides",UserPermissionOverridesRouter);
+app.use("/rbac",RbacRouter);
+app.use("/superAdmin/zarklyx/auth",zarklyXAuthRouter),
+app.use("/superAdmin/zarklyx/user",zarklyXUsersRouter),
+app.use("/superAdmin/zarklyx/roles",zarklyXRolesRouter),
+app.use("/superAdmin/zarklyx/permissions",zarklyXPermissionsRouter),
+app.use("/superAdmin/zarklyx/role-permissions",zarklyXRolePermissionsRouter),
+app.use("/superAdmin/zarklyx/overrides",zarklyXOverridesRouter),
+app.use("/superAdmin/zarklyx/2fa",zarklyX2FARouter),
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
