@@ -54,7 +54,7 @@ router.post("/createItAssets", assetAttachmentUpload.array("attachments", 100), 
 
                 });
             }
-            clientId= client.id;
+            clientId= String(client.id);
         }
        const attachments = convertToRelativePath(
             req.files as Express.Multer.File[]

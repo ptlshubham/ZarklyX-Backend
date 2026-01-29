@@ -54,6 +54,17 @@ export const ticketAttachmentUpload = multer({
 const itAssetStorage = multer.diskStorage({
   destination(req, file, cb) {
     const uploadPath = `/${config.publicPath}/${IT_ASSET_UPLOAD_DIR}`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
 // Company Assets Storage (Logos and Favicons)
 // Files are stored in per-asset folders under the public directory (e.g., /public/company/companyLogoLight)
 const COMPANY_ASSET_DIR_MAP: { [key: string]: string } = {
@@ -87,6 +98,12 @@ export const assetAttachmentUpload = multer({
     const allowed = ["image/jpeg", "image/png", "application/pdf"];
     if (!allowed.includes(file.mimetype)) {
       cb(new Error("Only jpeg/png/pdf files allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
 export const companyAssetsUpload = multer({
   storage: companyAssetsStorage,
   limits: { fileSize: 5 * 1024 * 1024 },

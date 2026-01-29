@@ -12,7 +12,7 @@ export class Clients extends Model<
     InferAttributes<Clients>,
     InferCreationAttributes<Clients>
 > {
-    declare id: CreationOptional<number>;
+    declare id: CreationOptional<string>;
     //   declare icon: string | null;
     // Basic business info
     declare userId: string | null; // UUID FK to User
@@ -92,10 +92,10 @@ export class Clients extends Model<
         Clients.init(
             {
                 id: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.UUID,
                     primaryKey: true,
-                    autoIncrement: true,
                     allowNull: false,
+                    defaultValue: DataTypes.UUIDV4,
                     unique: true,
                 },
                 userId: {

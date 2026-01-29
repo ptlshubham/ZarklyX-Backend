@@ -137,10 +137,10 @@ export async function createItAssets(assetData: any, t: any) {
         throw new Error("Invalid or inactive category");
     }
 
-    if (assetData.assetType === "Product" && category.categoryType !== "Product") {
+    if (assetData.assetType === "Product" && category.categoryName !== "Product") {
         throw new Error("Product asset must use Product category");
     }
-    if (assetData.assetType === "Service" && category.categoryType !== "Service") {
+    if (assetData.assetType === "Service" && category.categoryName !== "Service") {
         throw new Error("Service asset must use Service category");
     }
     validateAssetDates(assetData);
