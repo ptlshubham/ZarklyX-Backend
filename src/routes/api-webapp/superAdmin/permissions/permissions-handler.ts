@@ -8,6 +8,7 @@ export const createPermission = async (fields: {
   description: string;
   moduleId: string;
   action: string;
+  price: number;
   isActive?: boolean;
   isDeleted?: boolean;
   isSystemPermission?: boolean;
@@ -29,6 +30,7 @@ export const createPermissions = async (
     description: string;
     moduleId: string;
     action: string;
+    price: number;
     isActive?: boolean;
     isDeleted?: boolean;
     isSystemPermission?: boolean;

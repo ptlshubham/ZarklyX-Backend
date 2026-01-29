@@ -16,6 +16,7 @@ export class Permissions extends Model<
   declare description: string;
   declare moduleId: string;
   declare action: string;
+  declare price: number; // Price for individual permission addon
   declare isSystemPermission: boolean; // Protects critical permissions from overrides
   declare isSubscriptionExempt: boolean; // Allows access even without subscription (account survival)
   declare isActive: boolean;
@@ -52,6 +53,12 @@ export class Permissions extends Model<
         action: {
             type: DataTypes.STRING,
             allowNull: false,
+        },
+        price: {
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: false,
+          defaultValue: 0,
+          comment: "Price for individual permission addon",
         },
         isSystemPermission: {
           type: DataTypes.BOOLEAN,

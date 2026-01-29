@@ -17,12 +17,12 @@ const router = Router();
 router.post("/createPermission", async (req, res) => {
   const t = await dbInstance.transaction();
   try {
-    const { name, description, moduleId, action, isActive, isDeleted, isSystemPermission, isSubscriptionExempt } = req.body;
+    const { name, description, moduleId, action, price, isActive, isDeleted, isSystemPermission, isSubscriptionExempt } = req.body;
     if (!name || !description || !moduleId || !action) {
       await t.rollback();
       return res.status(400).json({ error: "All fields (name, description, moduleId, action) are required" });
     }
-    const permission = await createPermission({ name, description, moduleId, action, isActive, isDeleted, isSystemPermission, isSubscriptionExempt }, t);
+    const permission = await createPermission({ name, description, moduleId, action, price: price || 0, isActive, isDeleted, isSystemPermission, isSubscriptionExempt }, t);
     await t.commit();
     return res.status(201).json({ success: true, data: permission });
   } catch (error: any) {
