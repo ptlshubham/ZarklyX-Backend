@@ -130,27 +130,27 @@ export class Company extends Model<
           allowNull: true,
         },
         logo: {
-          type: DataTypes.STRING(500),
+          type: DataTypes.TEXT,
           allowNull: true,
         },
         companyLogoLight: {
-          type: DataTypes.STRING(500),
+          type: DataTypes.TEXT,
           allowNull: true,
         },
         companyLogoDark: {
-          type: DataTypes.STRING(500),
+          type: DataTypes.TEXT,
           allowNull: true,
         },
         faviconLight: {
-          type: DataTypes.STRING(500),
+          type: DataTypes.TEXT,
           allowNull: true,
         },
         faviconDark: {
-          type: DataTypes.STRING(500),
+          type: DataTypes.TEXT,
           allowNull: true,
         },
         timezone: {
-          type: DataTypes.STRING(500),
+          type: DataTypes.STRING(100),
           allowNull: true,
         },
         registrationNumber: {
@@ -158,7 +158,7 @@ export class Company extends Model<
           allowNull: true,
         },
         selectedModules: {
-          type: DataTypes.STRING(500),
+          type: DataTypes.TEXT,
           allowNull: true,
         },
         no_of_clients: {
@@ -166,15 +166,15 @@ export class Company extends Model<
           allowNull: true,
         },
         bankName: {
-          type: DataTypes.STRING(255),
+          type: DataTypes.STRING(100),
           allowNull: true,
         },
         branchName: {
-          type: DataTypes.STRING(255),
+          type: DataTypes.STRING(100),
           allowNull: true,
         },
         adCode: {
-          type: DataTypes.STRING(100),
+          type: DataTypes.STRING(50),
           allowNull: true,
         },
         upiId: {
@@ -182,7 +182,7 @@ export class Company extends Model<
           allowNull: true,
         },
         accountNumber: {
-          type: DataTypes.STRING(100),
+          type: DataTypes.STRING(50),
           allowNull: true,
         },
         ifscCode: {
@@ -194,7 +194,7 @@ export class Company extends Model<
           allowNull: true,
         },
         accountHolderName: {
-          type: DataTypes.STRING(255),
+          type: DataTypes.STRING(100),
           allowNull: true,
         },
         tin: {
