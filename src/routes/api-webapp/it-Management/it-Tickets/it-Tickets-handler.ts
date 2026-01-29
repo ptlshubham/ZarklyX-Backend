@@ -5,45 +5,95 @@ import fs from "fs";
 import path from "path";
 
 //create a new ticket
-export async function createTicket(ticketData: any, t: any) {
+export async function createItTickets(ticketData: any, t: any) {
     return await ItTickets.create(ticketData, { transaction: t });
 }
 
 
 //get individual ticket by id
-export async function getTicketById(id: string) {
+export async function getItTicketsById(id: string) {
     return await ItTickets.findOne({
-        where: { id: id }
+        where: { id },
+        include: [
+            { association: "attachments" },
+            {
+                association: "timeline",
+                separate: true,
+                order: [["createdAt", "DESC"]],
+                include: [
+                    {
+                        association: "assignedEmployee",
+                        attributes: ["id", "profilePhoto", "designation", "employeeStatus"],
+                        include: [
+                            {
+                                association: "user",
+                                attributes: ["firstName", "lastName", "email", "contact"],
+                            },
+                        ],
+                    },
+                ]
+            },
+            {
+                association: "assignedEmployee",
+                attributes: ["id", "profilePhoto", "designation", "employeeStatus"],
+                include: [
+                    {
+                        association: "user",
+                        attributes: ["firstName", "lastName", "email", "contact"]
+
+                    },
+                ],
+            },
+        ],
     })
 }
 
 //get all tickets by user id
-export async function getAllTicketsByUserId(userId: string) {
+export async function getAllItTicketsByEmployeeId(employeeId: string) {
     return await ItTickets.findAll({
         where: {
-            userId: userId
-        }
+            employeeId: employeeId, isDeleted: false
+        },
+        include: [
+            { association: "attachments" },
+            {
+                association: "timeline",
+                separate: true,
+                order: [["createdAt", "DESC"]],
+                include: [
+                    {
+                        association: "assignedEmployee",
+                        attributes: ["id", "profilePhoto", "designation", "employeeStatus"],
+                        include: [
+                            {
+                                association: "user",
+                                attributes: ["firstName", "lastName", "email", "contact"],
+                            },
+                        ],
+                    },
+                ]
+            },
+            {
+                association: "assignedEmployee",
+                attributes: ["id", "profilePhoto", "designation", "employeeStatus"],
+                include: [
+                    {
+                        association: "user",
+                        attributes: ["firstName", "lastName", "email", "contact"]
+
+                    },
+                ],
+            },
+        ],
     });
 }
 
-function normalizeAttachments(
-    attachments: string[] | string | null
-): string[] {
-    if (Array.isArray(attachments)) return attachments;
-    if (typeof attachments === "string") {
-        try {
-            return JSON.parse(attachments);
-        } catch {
-            return [];
-        }
-    }
-    return [];
-}
 
-//update ticket details by user
-export async function updateTicketDetails(id: string, userId: string, ticketData: any, t: any) {
+
+//update ticket details by employee
+export async function updateItTicketsDetailsByEmployee(id: string, employeeId: string, companyId: string, ticketData: any, t: any) {
     const ticket = await ItTickets.findOne({
-        where: { id, userId, isDeleted: false },
+        where: { id, employeeId, isDeleted: false },
         transaction: t,
     });
     if (!ticket) return null;
@@ -57,101 +107,117 @@ export async function updateTicketDetails(id: string, userId: string, ticketData
         (key) => allowedData[key] === undefined && delete allowedData[key]
     );
 
-    if (ticketData.attachments?.length) {
-        const existing = normalizeAttachments(ticket.attachments);
-        allowedData.attachments = [...existing, ...ticketData.attachments];
-    }
 
     await ItTickets.update(allowedData, {
         where: {
             id: id,
-            userId: userId,
+            employeeId: employeeId,
             isDeleted: false,
         },
         transaction: t,
     })
     // Fetch the updated ticket again
     const updatedTicket = await ItTickets.findOne({
-        where: { id, userId, isDeleted: false },
+        where: { id, employeeId, isDeleted: false },
         transaction: t,
     });
 
     if (!updatedTicket) return null;
 
     const ticketObj = updatedTicket.get({ plain: true });
-    ticketObj.attachments = normalizeAttachments(ticketObj.attachments);
-
     return ticketObj;
 
 }
 
-//remove ticket attachment by user
-export async function removeTicketAttachmentsByUser(id: string, userId: string, attachment: string, t: Transaction) {
-    const ticket = await ItTickets.findOne({
-        where: {
-            id: id, userId: userId, isDeleted: false
-        },
-        transaction: t
-    });
-    if (!ticket) return null;
 
-    const existingAttachments = normalizeAttachments(ticket.attachments);
-
-    const updatedAttachments = existingAttachments.filter(
-        (filePath) => filePath !== attachment
-    );
-
-    if (updatedAttachments.length === existingAttachments.length) {
-        return [0];
-    }
-
-    try {
-        const absolutePath = path.join(
-            process.cwd(),
-            "src",
-            "public",
-            attachment
-        );
-
-        if (fs.existsSync(absolutePath)) {
-            fs.unlinkSync(absolutePath);
-        }
-    } catch (err) {
-        console.error("File delete failed:", err);
-    }
-
-    return await ItTickets.update(
-        { attachments: updatedAttachments },
-        { where: { id: id, userId: userId, isDeleted: false }, transaction: t }
-    );
-}
 //get all tickets by company id
-export async function getAllTicketByCompanyId(companyId: string) {
+export async function getAllItTicketsByCompanyId(companyId: string) {
     return await ItTickets.findAll({
         where: {
             companyId: companyId
-        }
+        },
+        include: [
+            { association: "attachments" },
+            {
+                association: "timeline",
+                separate: true,
+                order: [["createdAt", "DESC"]],
+                include: [
+                    {
+                        association: "assignedEmployee",
+                        attributes: ["id", "profilePhoto", "designation", "employeeStatus"],
+                        include: [
+                            {
+                                association: "user",
+                                attributes: ["firstName", "lastName", "email", "contact"],
+                            },
+                        ],
+                    },
+                ]
+            },
+            {
+                association: "assignedEmployee",
+                attributes: ["id", "profilePhoto", "designation", "employeeStatus"],
+                include: [
+                    {
+                        association: "user",
+                        attributes: ["firstName", "lastName", "email", "contact"]
+
+                    },
+                ],
+            },
+        ],
     });
 }
 
 //update ticket status
-export async function updateTicketStatus(id: string, status: string, t: Transaction) {
-    return await ItTickets.update(
+export async function updateItTicketsStatus(id: string, companyId: string, status: string, t: Transaction) {
+    const updatedRows = await ItTickets.update(
         { status },
         {
-            where: { id },
+            where: { id, companyId },
+            transaction: t,
+        },
+    );
+    if (!updatedRows) return null;
+
+    const updatedTicket = await ItTickets.findOne({ where: { id, companyId }, transaction: t });
+    return updatedTicket;
+}
+
+//soft delete ticket
+export async function deleteItTickets(id: string, companyId: string, t: Transaction) {
+    const ticket = await ItTickets.findOne({
+        where: {
+            id: id, companyId: companyId, isDeleted: false
+        }
+        ,
+        transaction: t
+    });
+    if (!ticket) return null;
+
+    await ItTickets.update({
+        isDeleted: true
+    }, {
+        where: { id: id, companyId: companyId, isDeleted: false },
+        transaction: t
+    });
+    return ticket;
+}
+
+//update itticket priority
+export async function updateItTicketsPriority(
+    id: string,
+    companyId: string,
+    priority: "Low" | "Medium" | "High",
+    t: Transaction
+) {
+    return await ItTickets.update(
+        { priority },
+        {
+            where: { id, companyId, isDeleted: false },
             transaction: t,
         }
     );
-}
-
-//delete ticket
-export async function deleteTicket(id: string, t: Transaction) {
-    return await ItTickets.update({
-        isDeleted: true
-    }, {
-        where: { id },
-        transaction: t
-    });
 }
 

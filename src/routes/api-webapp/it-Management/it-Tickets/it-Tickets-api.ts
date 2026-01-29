@@ -1,15 +1,21 @@
 import express, { Request, Response } from 'express';
 import { ItTickets } from './it-Tickets-model';
 import {
-    createTicket,
-    getTicketById,
-    getAllTicketsByUserId,
-    getAllTicketByCompanyId,
-    updateTicketStatus,
-    deleteTicket, updateTicketDetails,
-    removeTicketAttachmentsByUser
+    createItTickets,
+    getItTicketsById,
+    getAllItTicketsByEmployeeId,
+    getAllItTicketsByCompanyId,
+    updateItTicketsStatus,
+    deleteItTickets,
+    updateItTicketsDetailsByEmployee,
+    updateItTicketsPriority,
+    // assignItTickets
 } from './it-Tickets-handler';
+import { createItTicketsAttachments, removeItTicketsAttachmentByEmployee } from './it-Tickets-Attachments/it-Tickets-Attachments-handler';
+import { createItTicketsTimeline } from './it-Tickets-Timeline/it-Tickets-Timeline-handler';
 import { serverError, success, unauthorized } from "../../../../utils/responseHandler";
+import { convertToRelativePath } from '../../../../services/multer';
+import { Employee } from '../../agency/employee/employee-model';
 // import { tokenMiddleWare } from 'src/services/jwtToken-service';
 import dbInstance from '../../../../db/core/control-db';
 import { ticketAttachmentUpload } from '../../../../services/multer';
@@ -19,96 +25,122 @@ const router = express.Router();
 
 
 //create ticket route PATCH /itManagement/itTickets/createItTickets
-router.post("/createItTickets", ticketAttachmentUpload.array("attachments", 5), async (req: Request, res: Response): Promise<any> => {
-        const t = await dbInstance.transaction();
-        try {
-            if (req.files?.length) {
-                req.body.attachments = (req.files as Express.Multer.File[]).map(
-                    (f) => {
-                        const relativePath = path
-                            .relative(
-                                path.join(process.cwd(), "src/public"),
-                                f.path
-                            )
-                            .replace(/\\/g, "/");
+router.post("/createItTickets", ticketAttachmentUpload.array("attachments", 100), async (req: Request, res: Response): Promise<any> => {
+    const t = await dbInstance.transaction();
+    try {
+        const { userId, companyId, userType } = req.body;
 
-                        return `/${relativePath}`;
-                    }
-                );
-            } else {
-                req.body.attachments = null;
-            }
-
-            const data = await createTicket(req.body, t);
-            await t.commit();
-
-            return res.status(200).json({
-                success: true,
-                message: "Ticket created successfully",
-                data,
-            });
-        } catch (error) {
+        if (!userId || !companyId || !userType) {
             await t.rollback();
-            console.error("Create Ticket Error:", error);
-            return serverError(res, "Failed to create ticket.");
+            return res.status(400).json({
+                success: false,
+                message: "userId, companyId and userType are required."
+            })
         }
+        if (typeof userType !== "string" || userType.toLowerCase() !== "employee") {
+            await t.rollback();
+            return unauthorized(res, "Only employees are allowed to create it tickets.");
+        }
+        const employee = await Employee.findOne({
+            where: {
+                userId, companyId, isDeleted: false
+            },
+            transaction: t,
+
+        });
+
+        if (!employee) {
+            await t.rollback();
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found.",
+            });
+        }
+        const attachments = convertToRelativePath(
+            req.files as Express.Multer.File[]
+        );
+        const ticketPayload = {
+            ...req.body,
+            priority: req.body.priority || "Low",
+            employeeId: employee.id,
+            attachments,
+        }
+
+        const data = await createItTickets(ticketPayload, t);
+        await createItTicketsTimeline(data.id, data.employeeId, data.status, t);
+
+        if (attachments.length > 0) {
+            await createItTicketsAttachments(data.id, attachments, t);
+        }
+
+        await t.commit();
+        return res.status(200).json({
+            success: true,
+            message: "Ticket is created successfully",
+            data,
+        });
+    } catch (error) {
+        await t.rollback();
+        return serverError(res, "Failed to create  ticket.");
     }
+}
 );
 
 
 
-//GET /itManagement/itTickets/getById/:id
+//GET /itManagement/itTickets/getItTicketsById/:id
 router.get("/getItTicketsById/:id", async (req, res): Promise<any> => {
     try {
-        const data = await getTicketById(req.params.id);
+        let id = req.params.id;
+        if (Array.isArray(id)) id = id[0];
+        const data = await getItTicketsById(id);
+
         return res.status(200).json({
             success: true,
             data,
         })
     }
     catch (error) {
-        console.error("Get Ticket Error:", error);
-        return serverError(res, "Failed to get ticket");
+        return serverError(res, "Failed to get  ticket");
     }
 });
 
-//GET /itManagement/itTickets/getItTicketsByUserId/:userId
-router.get("/getItTicketsByUserId/:userId", async (req, res): Promise<any> => {
+//GET /itManagement/itTickets/getAllItTicketsByEmployeeId/:employeeId
+router.get("/getAllItTicketsByEmployeeId/:employeeId", async (req, res): Promise<any> => {
     try {
-        const data = await getAllTicketsByUserId(req.params.userId);
+        let employeeId = req.params.employeeId;
+        if (Array.isArray(employeeId)) employeeId = employeeId[0];
+        const data = await getAllItTicketsByEmployeeId(employeeId);
         return res.status(200).json({
             success: true,
             data,
         });
     } catch (error) {
-        return serverError(res, "Failed to fetch tickets bu userId.")
+        return serverError(res, "Failed to fetch  tickets by employeeId.")
     }
 });
 
-//PATCH /itManagement/itTickets/updateItTicketsDetailsByUser
-router.patch("/updateItTicketsDetailsByUser", ticketAttachmentUpload.array("attachments", 5), async (req, res): Promise<any> => {
+//PATCH /itManagement/itTickets/updateItTicketsDetailsByEmployee/:id/:employeeId/:companyId
+router.patch("/updateItTicketsDetailsByEmployee/:id/:employeeId/:companyId", ticketAttachmentUpload.array("attachments", 5), async (req, res): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
-        const { id, userId, subject, description, preferredDate } = req.body;
-        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-            req.body.attachments = (req.files as Express.Multer.File[]).map(
-                (f) => {
-                    const relativePath = path
-                        .relative(
-                            path.join(process.cwd(), "src/public"),
-                            f.path
-                        )
-                        .replace(/\\/g, "/");
+        // const { id, employeeId, companyId } = req.params;
+        let id = req.params.id;
+        let employeeId = req.params.employeeId;
+        let companyId = req.params.companyId;
+        if (Array.isArray(id)) id = id[0];
+        if (Array.isArray(employeeId)) employeeId = employeeId[0];
+        if (Array.isArray(companyId)) companyId = companyId[0];
+        const { subject, description, preferredDate } = req.body;
+        const newAttachments = convertToRelativePath(
+            req.files as Express.Multer.File[]
+        );
 
-                    return `/${relativePath}`;
-                }
-            );
-        }
-        if (!id || !userId) {
+        if (!id || !employeeId || !companyId) {
             await t.rollback();
             return res.status(400).json({
                 success: false,
-                message: "Ticket id and userId are required.",
+                message: "Ticket id, employeeId and companyId are required.",
             });
         }
 
@@ -116,7 +148,7 @@ router.patch("/updateItTicketsDetailsByUser", ticketAttachmentUpload.array("atta
             subject === undefined &&
             description === undefined &&
             preferredDate === undefined &&
-            req.body.attachments === undefined
+            newAttachments.length === 0
         ) {
             await t.rollback();
             return res.status(400).json({
@@ -125,7 +157,7 @@ router.patch("/updateItTicketsDetailsByUser", ticketAttachmentUpload.array("atta
             });
         }
 
-        const updatedTicket = await updateTicketDetails(id, userId, req.body, t);
+        const updatedTicket = await updateItTicketsDetailsByEmployee(id, employeeId, companyId, req.body, t);
 
         // If helper returned [0], it means no ticket found
         if (!updatedTicket) {
@@ -136,11 +168,15 @@ router.patch("/updateItTicketsDetailsByUser", ticketAttachmentUpload.array("atta
             });
         }
 
+        if (newAttachments.length > 0) {
+            await createItTicketsAttachments(updatedTicket.id, newAttachments, t);
+
+        }
 
         await t.commit();
         return res.status(200).json({
             success: true,
-            message: "Ticket details updated successfully.",
+            message: "Ticket details are updated successfully.",
             data: updatedTicket,
         })
     }
@@ -150,19 +186,26 @@ router.patch("/updateItTicketsDetailsByUser", ticketAttachmentUpload.array("atta
     }
 });
 
-//PATCH /itManagement/itTickets/removeItTicketsAttachmentsByUser
-router.patch("/removeItTicketsAttachmentsByUser", async (req, res): Promise<any> => {
+//PATCH /itManagement/itTickets/removeItTicketsAttachmentByEmployee/:id/:employeeId/:companyId"
+router.patch("/removeItTicketsAttachmentByEmployee/:id/:employeeId/:companyId", async (req, res): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
-        const { id, userId, attachment } = req.body;
-        if (!id || !userId || !attachment) {
+        // const { id, employeeId, companyId } = req.params;
+        let id = req.params.id;
+        let employeeId = req.params.employeeId;
+        let companyId = req.params.companyId;
+        if (Array.isArray(id)) id = id[0];
+        if (Array.isArray(employeeId)) employeeId = employeeId[0];
+        if (Array.isArray(companyId)) companyId = companyId[0];
+        const { attachmentId } = req.body;
+        if (!id || !employeeId || !companyId || !attachmentId) {
             await t.rollback();
             return res.status(400).json({
                 success: false,
-                message: "ticketId, userId and attachment path are required",
+                message: "ticketId, employeeId , companyId and attachmentId are required",
             });
         }
-        const data = await removeTicketAttachmentsByUser(id, userId, attachment, t);
+        const data = await removeItTicketsAttachmentByEmployee(id, employeeId, companyId, attachmentId, t);
         if (!data) {
             await t.rollback();
             return res.status(404).json({
@@ -170,45 +213,75 @@ router.patch("/removeItTicketsAttachmentsByUser", async (req, res): Promise<any>
                 message: "Ticket not found or unauthorized",
             });
         }
+
         await t.commit();
         return res.status(200).json({
             success: true,
-            message: "Attachment removed successfully.",
+            message: "Attachment is removed successfully.",
             data
         });
 
     } catch (error) {
-        return serverError(res, "Failed to update remove ticket attachment.")
+        return serverError(res, "Failed to remove attachment of ticket.")
     }
 });
 
 //GET /itManagement/itTickets/getItTicketsByCompanyId/:companyId
 router.get("/getItTicketsByCompanyId/:companyId", async (req, res): Promise<any> => {
     try {
-        const data = await getAllTicketByCompanyId(req.params.companyId);
+        let companyId = req.params.companyId;
+        if (Array.isArray(companyId)) companyId = companyId[0];
+        const data = await getAllItTicketsByCompanyId(companyId);
         return res.status(200).json({
             sucess: true,
             data
         })
     }
     catch {
-        return serverError(res, "Failed to fetch tickets by companyId.")
+        return serverError(res, "Failed to fetch  tickets by companyId.")
     }
 });
 
-//PATCH /itManagement/itTickets/updateItTicketsStatus
-router.patch("/updateItTicketsStatus", async (req, res): Promise<any> => {
+//PATCH /itManagement/itTickets/updateItTicketsStatus/:id/:companyId
+router.patch("/updateItTicketsStatus/:id/:employeeId/:companyId", async (req, res): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
 
+        // const { id, employeeId, companyId } = req.params;
+        let id = req.params.id;
+        let employeeId = req.params.employeeId;
+        let companyId = req.params.companyId;
+        if (Array.isArray(id)) id = id[0];
+        if (Array.isArray(employeeId)) employeeId = employeeId[0];
+        if (Array.isArray(companyId)) companyId = companyId[0];
+        const { status } = req.body;
+        await updateItTicketsStatus(id, companyId, status, t);
 
-        const { id, status } = req.body;
-        const data = await updateTicketStatus(id, status, t);
+        if (!employeeId) {
+            await t.rollback();
+            return res.status(400).json({ message: "employeeId is required" });
+        }
+        const updatedTicket = await ItTickets.findOne({
+            where: { id, companyId },
+            transaction: t,
+        });
+
+        if (!updatedTicket) {
+            await t.rollback();
+            return res.status(404).json({ success: false, message: "Ticket not found" });
+        }
+
+        await createItTicketsTimeline(
+            updatedTicket.id,
+            employeeId,
+            status ?? updatedTicket.status ?? "Pending", // ensure a valid status
+            t
+        );
         await t.commit();
         return res.status(200).json({
             success: true,
-            message: "Ticket status updated",
-            data,
+            message: "Ticket status is updated",
+            data: updatedTicket,
         });
 
     } catch (error) {
@@ -218,23 +291,71 @@ router.patch("/updateItTicketsStatus", async (req, res): Promise<any> => {
 });
 
 
-//DELETE /itManagement/itTickets/deleteItTickets/:id
-router.delete("/deleteItTickets/:id", async (req, res): Promise<any> => {
+//DELETE /itManagement/itTickets/deleteItTickets/:id/:companyId
+router.delete("/deleteItTickets/:id/:companyId", async (req, res): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
-
-        const data = await deleteTicket(req.params.id, t);
+        // const { id, companyId } = req.params;
+        let id = req.params.id;
+        let companyId = req.params.companyId;
+        if (Array.isArray(id)) id = id[0];
+        if (Array.isArray(companyId)) companyId = companyId[0];
+        const data = await deleteItTickets(id, companyId, t);
+        if (!data) {
+            await t.rollback();
+            return res.status(404).json({ success: false, message: "Ticket not found" });
+        }
         await t.commit();
         return res.status(200).json({
             success: true,
-            message: "Ticket deleted",
-            data,
+            message: "Ticket is deleted",
+            id: data.id,
         });
     }
     catch (error) {
         await t.rollback();
+        console.error("Delete Asset Error:", error);
         return serverError(res, "Failed to delete the ticket.");
     }
 })
+
+// PATCH /itManagement/itTickets/updateItTicketsPriority/:id/:companyId
+router.patch("/updateItTicketsPriority/:id/:companyId", async (req, res): Promise<any> => {
+    const t = await dbInstance.transaction();
+    try {
+        // const { id, companyId } = req.params;
+        let id = req.params.id;
+        let companyId = req.params.companyId;
+        if (Array.isArray(id)) id = id[0];
+        if (Array.isArray(companyId)) companyId = companyId[0];
+        const { priority } = req.body;
+
+        const updated = await updateItTicketsPriority(
+            id,
+            companyId,
+            priority,
+            t
+        );
+
+        if (!updated) {
+            await t.rollback();
+            return res.status(404).json({
+                success: false,
+                message: "Ticket not found",
+            });
+        }
+
+        await t.commit();
+        return res.status(200).json({
+            success: true,
+            message: "Ticket priority updated",
+        });
+    } catch (error) {
+        await t.rollback();
+        return serverError(res, "Failed to update ticket priority");
+    }
+}
+);
+
 
 export default router;

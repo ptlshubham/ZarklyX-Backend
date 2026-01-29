@@ -50,8 +50,18 @@ router.get("/getItemCategoryById/:id", async (req: Request, res: Response): Prom
 
 //GET accounting/item-Category?companyId=
 router.get("/getActiveItemCategoriesByCompany", async (req, res): Promise<any> => {
+     const companyId =typeof req.query.companyId === "string" ? req.query.companyId: undefined; 
+    const categoryType = req.query.categoryType === "Product" || req.query.categoryType === "Service" ? req.query.categoryType : undefined;
+
+    if (!companyId) {
+        return res.status(400).json({
+            success: false,
+            message: "companyId is required",
+        });
+    }
     const data = await getActiveItemCategoriesByCompany(
-        req.query.companyId as string
+        companyId,
+        categoryType
     );
     res.json({ success: true, data });
 });
