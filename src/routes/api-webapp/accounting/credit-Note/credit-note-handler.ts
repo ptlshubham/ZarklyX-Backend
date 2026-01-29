@@ -4,6 +4,9 @@ import { CreditNoteItem } from "./credit-note-item-model";
 import { Item } from "../item/item-model";
 import { Company } from "../../company/company-model";
 import { Clients } from "../../agency/clients/clients-model";
+import { sendEmail } from "../../../../services/mailService";
+import crypto from "crypto";
+import { Invoice } from "../invoice/invoice-model";
 
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
@@ -208,6 +211,8 @@ const calculateCreditNoteTotals = (
 
 // Create credit note with all related data
 export const createCreditNote = async (body: CreateCreditNoteInput, t: Transaction) => {
+  // Generate a unique publicToken
+  const publicToken = crypto.randomBytes(32).toString("hex");
   const creditDate = body.creditDate || new Date();
   const invoiceDate = body.invoiceDate || new Date();
 
@@ -279,6 +284,7 @@ export const createCreditNote = async (body: CreateCreditNoteInput, t: Transacti
       igst: parseFloat(calculated.totalIgst.toFixed(2)), // Cumulative IGST from items
       cessValue: parseFloat(calculated.totalCess.toFixed(2)), // Cumulative CESS from items
       total: parseFloat(calculated.total.toFixed(2)),
+      publicToken,
       isActive: true,
       isDeleted: false,
     },
@@ -294,6 +300,38 @@ export const createCreditNote = async (body: CreateCreditNoteInput, t: Transacti
     { transaction: t }
   );
 
+  // sending email to the client about payment created
+  const client = await Clients.findOne({
+    where: { id: creditNote?.clientId }
+  })
+  if(!client){
+    throw new Error("Client not found");
+  }
+  const invoice = await Invoice.findByPk(body.invoiceId);
+
+    try {
+      await sendEmail({
+        from: "" as any,
+        to: client.email,
+        subject: `Credit Note ${creditNote.creditNo}`,
+        htmlFile: "credit-note",
+        replacements: {
+          userName: client.clientfirstName || "Customer",
+          creditNoteNo: creditNote.creditNo,
+          invoiceNo: invoice ? invoice.invoiceNo : "",
+          amount: creditNote.total,
+          currentYear: new Date().getFullYear(),
+        },
+        html: null,
+        text: "",
+        attachments: null,
+        cc: null,
+        replyTo: null,
+      });
+    } catch (error) {
+      throw new Error("Credit Note create email failed");
+    }
+
   return {
     creditNote,
     creditNoteItems: createdCreditNoteItems,
@@ -305,6 +343,14 @@ export const getCreditNoteById = async (id: string, companyId: string) => {
   return await CreditNote.findOne({
     where: { id, companyId, isDeleted: false },
     include: [
+      {
+        model: Company,
+        as: "company"
+      },
+      {
+        model: Clients,
+        as: "client"
+      },
       {
         model: CreditNoteItem,
         as: "creditNoteItems",
@@ -602,5 +648,18 @@ export const searchCreditNote = async (filters: SearchCreditNoteFilters) => {
     include: includeArray,
     order: [["creditDate", "DESC"]],
     subQuery: false,
+  });
+};
+
+// Get credit note by public token (public preview)
+export const getCreditNoteByPublicToken = async (publicToken: string) => {
+  return await CreditNote.findOne({
+    where: { publicToken, isDeleted: false },
+    include: [
+      { model: Company, as: "company" },
+      { model: Clients, as: "client" },
+      { model: CreditNoteItem, as: "creditNoteItem" }
+      // Add items association if exists
+    ],
   });
 };

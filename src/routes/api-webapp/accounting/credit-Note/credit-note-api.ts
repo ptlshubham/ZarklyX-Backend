@@ -8,6 +8,7 @@ import {
   updateCreditNote,
   deleteCreditNote,
   searchCreditNote,
+  getCreditNoteByPublicToken
 } from "./credit-note-handler";
 import { serverError } from "../../../../utils/responseHandler";
 import dbInstance from "../../../../db/core/control-db";
@@ -254,7 +255,7 @@ router.put("/updateCreditNote/:id", async (req: Request, res: Response): Promise
     const result = await updateCreditNote(id, companyId, req.body, t);
     await t.commit();
 
-    if (result[0] === 0) {
+    if (!result) {
       return res.status(404).json({
         success: false,
         message: "Credit note not found",
@@ -305,6 +306,21 @@ router.delete("/deleteCreditNote/:id", async (req: Request, res: Response): Prom
     await t.rollback();
     console.error("Delete Credit Note Error:", err);
     return serverError(res, err instanceof Error ? err.message : "Failed to delete credit note.");
+  }
+});
+
+// GET /accounting/credit-note/public/:publicToken
+router.get("/public/:publicToken", async (req: Request, res: Response): Promise<any> => {
+  try {
+    let { publicToken } = req.params;
+    if (Array.isArray(publicToken)) publicToken = publicToken[0];
+    const data = await getCreditNoteByPublicToken(publicToken);
+    if (!data) {
+      return res.status(404).json({ success: false, message: "Credit note not found" });
+    }
+    return res.json({ success: true, data });
+  } catch (err) {
+    return serverError(res, "Failed to fetch credit note by public token.");
   }
 });
 

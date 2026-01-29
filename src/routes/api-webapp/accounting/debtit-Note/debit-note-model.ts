@@ -44,6 +44,7 @@ export class DebitNote extends Model<
     declare status: string 
     declare isActive: boolean;
     declare isDeleted: boolean;
+    declare lastReminderSentAt: CreationOptional<Date> | null;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -186,6 +187,10 @@ export class DebitNote extends Model<
                     type: DataTypes.BOOLEAN,
                     allowNull: false,
                     defaultValue: false,
+                },
+                lastReminderSentAt: {
+                    type: DataTypes.DATE,
+                    allowNull: true,
                 },
                 createdAt: {
                     type: DataTypes.DATE,

@@ -7,6 +7,7 @@ import {
     Sequelize,
 } from "sequelize";
 import { checkPassword, hashPassword } from "../../../../services/password-service";
+import { Role } from "../../../api-webapp/roles/role-model";
 
 export class User extends Model<
     InferAttributes<User>,
@@ -15,6 +16,7 @@ export class User extends Model<
     declare id: CreationOptional<string>; // UUID
     declare referId: string;
     declare companyId: string | null;
+    declare roleId: string | null;
     declare firstName: string;
     declare lastName: string;
     declare email: string | null;
@@ -71,6 +73,15 @@ export class User extends Model<
                     type: DataTypes.UUID,
                     allowNull: true,
                     defaultValue: null,
+                },
+                roleId: {
+                    type: DataTypes.UUID,
+                    allowNull: true,
+                    defaultValue: null,
+                    references:{
+                        model: Role,
+                        key: "id",
+                    }
                 },
                 referId: {
                     type: DataTypes.STRING,

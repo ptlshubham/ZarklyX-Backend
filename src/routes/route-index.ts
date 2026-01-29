@@ -10,7 +10,7 @@ export default (app: Application) => {
     app.use("/company", require("./api-webapp/company/company-api"));
     app.use("/otp", require("./api-webapp/otp/otp-api"));
     app.use("/login-history", require("./api-webapp/loginHistory/loginHistory-api"));
-    app.use("/roles", require("./api-webapp/roles/roles-api"));
+    app.use("/roles", require("./api-webapp/roles/role-api"));
     app.use("/premiumModule", require("./api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api"));
     app.use("/category", require("./api-webapp/superAdmin/generalSetup/category/category-api"));
     // app.use("/clients", require("./api-webapp/superAdmin/agency/clients/clients-api"));
@@ -54,6 +54,24 @@ export default (app: Application) => {
     app.use("accounting/purchaseOrder",require("./api-webapp/accounting/purchaseOrder/purchase-order-api"));
     app.use("/accounting/payments",require("./api-webapp/accounting/payments/payments-api"));
     app.use("/accounting/debit-note",require("./api-webapp/accounting/debtit-Note/debit-note-api"));
+    app.use("/superAdmin/modules",require("./api-webapp/superAdmin/modules/module-api"));
+    app.use("/superAdmin/permissions",require("./api-webapp/superAdmin/permissions/permissions-api"));
+    app.use("/superAdmin/subscription-plan",require("./api-webapp/superAdmin/subscription-plan/subscription-plan-api"));
+    app.use("/superAdmin/subscription-plan-module",require("./api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-api"));
+    app.use("/superAdmin/subscription-plan-permission",require("./api-webapp/superAdmin/subscription-plan-permission/subscription-plan-permission-api"));
+    app.use("/company-module",require("./api-webapp/company/company-module/company-module-api"));
+    app.use("/company-subscription",require("./api-webapp/company/company-subscription/company-subscription-api"));
+    app.use("/company-permission",require("./api-webapp/company/company-permission/company-permission-api"));
+    app.use("/role-permissions",require("./api-webapp/roles/role-permissions/role-permissions-api"));
+    app.use("/user-overrides",require("./api-webapp/roles/user-permission-overrides/user-permission-overrides-api"));
+    app.use("/rbac",require("./api-webapp/roles/rbac-api"));
+    app.use("/superAdmin/zarklyx/auth",require("./api-webapp/superAdmin/zarklyX-auth/zarklyX-auth-api"));
+    app.use("/superAdmin/zarklyx/users", require("./api-webapp/superAdmin/zarklyX-users/zarklyX-uesrs-api"));
+    app.use("/superAdmin/zarklyx/roles", require("./api-webapp/superAdmin/zarklyX-roles/zarklyX-roles-api"));
+    app.use("/superAdmin/zarklyx/permissions", require("./api-webapp/superAdmin/zarklyX-permissions/zarklyX-permissions-api"));
+    app.use("/superAdmin/zarklyx/role-permissions", require("./api-webapp/superAdmin/zarklyX-role-permissions/zarklyX-role-permissions-api"));
+    app.use("/superAdmin/zarklyx/overrides", require("./api-webapp/superAdmin/zarklyX-user-permission-override/zarklyX-user-permission-override-api"));
+    app.use("/superAdmin/zarklyx/2fa", require("./api-webapp/superAdmin/zarklyX-2fa/zarklyX-2fa-api"));
     
 };
 
