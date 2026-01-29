@@ -65,13 +65,15 @@ import companyPermissionRouter from './routes/api-webapp/company/company-permiss
 import RolePermissionsRouter from './routes/api-webapp/role-permissions/role-permissions-api'
 import UserPermissionOverridesRouter from './routes/api-webapp/user-permission-overrides/user-permission-overrides-api'
 import RbacRouter from './routes/api-webapp/rbac/rbac-api';
-import zarklyXAuthRouter from "./routes/api-webapp/superAdmin/zarklyX-auth/zarklyX-auth-api";
-import zarklyXUsersRouter from "./routes/api-webapp/superAdmin/zarklyX-users/zarklyX-users-api";
-import zarklyXRolesRouter from "./routes/api-webapp/superAdmin/zarklyX-roles/zarklyX-roles-api";
-import zarklyXPermissionsRouter from "./routes/api-webapp/superAdmin/zarklyX-permissions/zarklyX-permissions-api";
-import zarklyXOverridesRouter from "./routes/api-webapp/superAdmin/zarklyX-user-permission-overrides/zarklyX-user-permission-overrides-api";
-import zarklyX2FARouter from "./routes/api-webapp/superAdmin/zarklyX-2fa/zarklyX-2fa-api";
-import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/zarklyX-role-permissions/zarklyX-role-permissions-api';
+
+// ROUTES for zarklyX User Role bases system
+import zarklyXAuthRouter from "./routes/api-webapp/superAdmin/authentication/auth-api";
+import zarklyXUsersRouter from "./routes/api-webapp/superAdmin/authentication/user/user-api";
+import zarklyXRolesRouter from "./routes/api-webapp/superAdmin/rbac/roles/roles-api";
+import zarklyXPermissionsRouter from "./routes/api-webapp/superAdmin/rbac/permissions/permissions-api";
+import zarklyXOverridesRouter from "./routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-api";
+import zarklyX2FARouter from "./routes/api-webapp/superAdmin/authentication/2fa/zarklyX-2fa-api";
+import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-api';
 
 
 import path from "path";
