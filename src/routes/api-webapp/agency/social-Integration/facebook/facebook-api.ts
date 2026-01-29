@@ -121,8 +121,7 @@ router.get("/pages", async (req: Request, res: Response): Promise<void> => {
 // POST /facebook/pages/:pageId/post { message, page_access_token? }
 router.post("/pages/:pageId/post", async (req: Request, res: Response): Promise<void> => {
   try {
-    let pageId = req.params.pageId;
-    if (Array.isArray(pageId)) pageId = pageId[0];
+    const pageId = req.params.pageId;
     const text = (req.body?.message as string) || (req.query?.message as string);
     const providedPageToken = (req.body?.page_access_token as string) || (req.query?.page_access_token as string);
 

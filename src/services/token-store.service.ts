@@ -16,7 +16,6 @@ export async function initTokenStore() {
 export async function saveOrUpdateToken(params: {
   accountEmail?: string | null;
   accountId?: string | null;
-  companyId?: string | null;
   provider: string;
   scopes: string[];
   accessToken?: string | null;
@@ -46,11 +45,6 @@ export async function saveOrUpdateToken(params: {
     if (params.accountId) {
       existing.accountId = params.accountId;
     }
-    
-    // Update companyId if provided
-    if (params.companyId) {
-      existing.companyId = params.companyId;
-    }
 
     await existing.save();
     return existing;
@@ -59,7 +53,6 @@ export async function saveOrUpdateToken(params: {
   //INSERT
   const created = await SocialToken.create({
     provider: params.provider,
-    companyId: params.companyId || null,
     scopes: scopesStr,
     accessToken: params.accessToken || null,
     refreshToken: params.refreshToken || null,
@@ -85,18 +78,4 @@ export async function updateAccessToken(provider: string, accountEmail: string |
   token.tokenType = tokenType || token.tokenType || null;
   await token.save();
   return token;
-}
-
-export async function getConnectedDrivesByCompanyId(companyId: string) {
-  const drives = await SocialToken.findAll({
-    where: { companyId: companyId, provider: "google" }
-  });
-  return drives;
-}
-
-export async function deleteTokensByCompanyIdAndProvider(companyId: string, provider: string) {
-  const deletedCount = await SocialToken.destroy({
-    where: { companyId: companyId, provider: provider }
-  });
-  return deletedCount;
 }

@@ -65,8 +65,7 @@ router.post("/register/start",
         contact,
         password,
         confirmPassword,
-        isdCode,
-        isoCode,
+        countryCode,
         defaultCountry,
       } = req.body;
 
@@ -76,7 +75,7 @@ router.post("/register/start",
         lastName,
         email,
         contact,
-        isdCode,
+        countryCode,
         defaultCountry
       });
 
@@ -133,14 +132,14 @@ router.post("/register/start",
 
       const isoCountry = (defaultCountry || "IN").toUpperCase();
 
-      // Auto-detect isdCode 
-      const autoIsdCode = detectCountryCode(rawContact, isoCountry);
-      //    manual isdCode from FE
+      // Auto-detect countryCode 
+      const autoCountryCode = detectCountryCode(rawContact, isoCountry);
+      //    manual countryCode from FE
       //    auto detected
-      let finalIsdCode: string | null =
-        (isdCode && String(isdCode).trim()) || autoIsdCode || null;
+      let finalCountryCode: string | null =
+        (countryCode && String(countryCode).trim()) || autoCountryCode || null;
 
-      if (!finalIsdCode) {
+      if (!finalCountryCode) {
         await safeRollback(t);
         res.status(400).json({
           success: false,
@@ -153,7 +152,7 @@ router.post("/register/start",
 
       console.log("[register/start] Parsed contact:", {
         rawContact,
-        finalIsdCode,
+        finalCountryCode,
         localNumber,
       });
 
@@ -180,8 +179,7 @@ router.post("/register/start",
         lastName,
         email,
         contact: localNumber,
-        isdCode: finalIsdCode,
-        isoCode: isoCode || null,
+        countryCode: finalCountryCode,
         password, // raw – hash in User model
         userType: null,
         secretCode: finalSecretCode,
@@ -247,7 +245,7 @@ router.post("/register/start",
           otpRefId: otpRecord.id,
           email,
           contact: localNumber,
-          isdCode: finalIsdCode,
+          countryCode: finalCountryCode,
         },
       });
       return;
@@ -407,7 +405,6 @@ router.post("/register/verify-otp",
       otpRecord.tempUserData = null;
       await otpRecord.save({ transaction: t });
 
-      await t.commit();
       // Create login history record for registration
       const loginHistoryResult = await createLoginHistory(
         user.id,
@@ -418,6 +415,7 @@ router.post("/register/verify-otp",
         undefined
       );
 
+      await t.commit();
 
       res.status(200).json({
         success: true,
@@ -425,8 +423,7 @@ router.post("/register/verify-otp",
         data: {
           userId: user.id,
           secretCode: user.secretCode,
-          isdCode: user.isdCode,
-          isoCode: user.isoCode,
+          countryCode: user.countryCode,
           email: user.email,
           sessionId: loginHistoryResult.success ? loginHistoryResult.sessionId : null,
         },
@@ -652,20 +649,6 @@ router.post("/register/categories",
       });
 
       await user.save({ transaction: t });
-
-      // If user has a company, update the businessArea field with the category ID
-      if (user.companyId) {
-        const company: any = await Company.findByPk(user.companyId, { transaction: t });
-        if (company) {
-          company.businessArea = categoryId;
-          await company.save({ transaction: t });
-          console.log("Company businessArea updated with categoryId:", {
-            companyId: company.id,
-            businessArea: categoryId,
-          });
-        }
-      }
-
       await t.commit();
 
       console.log("Category saved successfully for user:", user.id);
@@ -764,10 +747,9 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
       description,
       accountType,
       businessArea,
+      industryType,
       email,
       contact,
-      isdCode,
-      isoCode,
       address,
       city,
       state,
@@ -786,12 +768,12 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
       });
     }
 
-    if (!companyName || !country || !timezone) {
+    if (!companyName || !website || !country || !timezone) {
       await t.rollback();
       res.status(400).json({
         success: false,
         message:
-          "companyName, country and timezone are required for company registration.",
+          "companyName, website, country and timezone are required for company registration.",
       });
     }
 
@@ -887,12 +869,11 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
           name: companyName,
           description: description || null,
           accountType: accountType || null,
-          businessArea: businessArea || user.categories || null,
+          businessArea: businessArea || null,
+          industryType: industryType || null,
           website: website || null,
           email: email || user.email || null,
           contact: contact || user.contact || null,
-          isdCode: isdCode || user.isdCode || null,
-          isoCode: isoCode || user.isoCode || null,
           address: address || null,
           city: city || null,
           state: state || null,
@@ -985,11 +966,10 @@ router.post("/register/company", async (req: Request, res: Response): Promise<vo
         description: description || null,
         accountType: accountType || null,
         businessArea: businessArea || null,
+        industryType: industryType || null,
         website: website || null,
         email: email || user.email || null,
         contact: contact || user.contact || null,
-        isdCode: isdCode || null,
-        isoCode: isoCode || null,
         address: address || null,
         city: city || null,
         state: state || null,
@@ -1101,7 +1081,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     }
 
     //  Build  premium modules
-    const moduleIds: string[] = [];
+    const moduleIds: number[] = [];
 
     for (const item of selectedModules) {
       //  numeric ID -> must exist
@@ -1116,23 +1096,9 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
       let name: string | undefined;
       let icon: string | null = null;
 
-      // string could be UUID ID or a name
+      // string "Campaign"
       if (typeof item === "string") {
-        const trimmed = item.trim();
-
-        // Check if it's a UUID pattern (potential ID lookup)
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        if (uuidRegex.test(trimmed)) {
-          // Try to find by ID
-          const existing = await PremiumModule.findByPk(trimmed, { transaction: t });
-          if (existing) {
-            moduleIds.push(existing.id);
-          }
-          continue;
-        }
-
-        // Otherwise treat as name
-        name = trimmed;
+        name = item;
       }
       //  object { name, icon }
       else if (typeof item === "object" && item !== null) {
@@ -1150,7 +1116,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
         transaction: t,
       });
 
-      // if not, create new premium module row only for new names (not IDs)
+      // if not, create new premium module row
       if (!module) {
         module = await PremiumModule.create(
           {
@@ -1179,7 +1145,6 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     //Save on company (only IDs, comma separated)
     company.no_of_clients = upperBound;
     company.selectedModules = distinctModuleIds.join(",");
-    company.accountType = user.userType; // Set accountType from user's userType
     await company.save({ transaction: t });
 
     // Finish user registration
@@ -1291,8 +1256,7 @@ router.get("/getUserID/:id", async (req: Request, res: Response): Promise<void> 
   try {
 
     const { id } = req.params;
-    const userId = Array.isArray(id) ? id[0] : id;
-    const user: any = await getUserByid(userId);
+    const user: any = await getUserByid(id);
 
     if (!user) {
       notFound(res, "User not found");
@@ -1362,8 +1326,7 @@ router.delete("/deleteUser/:id", async (req: Request, res: Response): Promise<vo
   const { id } = req.params;
 
   // Convert 'id' to number
-  const idString = Array.isArray(id) ? id[0] : id;
-  const userId = parseInt(idString, 10);
+  const userId = parseInt(id, 10);
 
   if (isNaN(userId)) {
     res.status(400).send("Invalid user ID");
@@ -2918,7 +2881,6 @@ async function processGoogleUserLogin(userData: {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        companyId: user.companyId || null,
         token: token,
         isNew: false,
         isRegistering: user.isRegistering,
@@ -2995,8 +2957,7 @@ async function processGoogleUserSignup(userData: {
         secretCode: await generateUniqueSecretCode(),
         isThemeDark: false,
         password: null as any,
-        isdCode: null as any,
-        isoCode: null as any,
+        countryCode: null as any,
         categories: null as any,
         isDeleted: false,
         deletedAt: null as any,
@@ -3036,7 +2997,6 @@ async function processGoogleUserSignup(userData: {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        companyId: user.companyId || null,
         token: token,
         isNew: isNew,
         isRegistering: user.isRegistering,

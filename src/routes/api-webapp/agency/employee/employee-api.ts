@@ -28,11 +28,6 @@ import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { authMiddleware } from "../../../../middleware/auth.middleware";
 import { employeeFileUpload } from "../../../../middleware/employeeFileUpload";
 import { errorResponse, unauthorized } from "../../../../utils/responseHandler";
-import { employeeProfilePhotoUpload } from "../../../../services/multer";
-import fs from "fs";
-import path from "path";
-import configs from "../../../../config/config";
-import environment from "../../../../../environment";
 
 
 const router = express.Router();
@@ -46,13 +41,14 @@ const router = express.Router();
  * Step 2: Create employee entry linked to user
  * Required: firstName, lastName, email, contactNumber, companyId, employeeId
  */
-router.post("/register", authMiddleware, employeeFileUpload.fields([
+router.post("/register", employeeFileUpload.fields([
     { name: "profilePhoto", maxCount: 1 },
     { name: "resumeFile", maxCount: 1 },
     { name: "aadharDocument", maxCount: 1 },
     { name: "panDocument", maxCount: 1 },
 ]), async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
+    // console.log("req.body", req.body);
     try {
         const files = req.files as Record<string, Express.Multer.File[]>;
 
@@ -68,75 +64,40 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                 req.body[bodyKey] = files[multerKey][0].path;
             }
         });
-
         const {
             // User basic details (REQUIRED)
             firstName,
             lastName,
             email,
             contactNumber,
-            isdCode,
-            isoCode,
+            countryCode,
             password,
             // Employee details
+            companyId,
             employeeId,
             designation,
             dateOfJoining,
             employmentType,
             departmentId,
             reportingManagerId,
-            // Emergency contact details
-            emergencyContactNumber,
-            emergencyContactIsdCode,
-            emergencyContactIsoCode,
             // Optional fields
             ...restData
         } = req.body;
 
-        // ✅ Helper function to extract numeric part from contact number
-        const extractNumericContactNumber = (contact: string | null | undefined): string | null => {
-            if (!contact) return null;
-            return String(contact).replace(/\D/g, '').slice(-10) || null; // Get last 10 digits
-        };
+        // const companyId = req.user?.companyId;
 
-        // ✅ Helper function to ensure country code has + prefix
-        const ensureCountryCodePrefix = (code: string | null | undefined): string | null => {
-            if (!code) return null;
-            const trimmed = String(code).trim();
-            return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
-        };
 
-        // ✅ Sanitize primary contact number and country codes
-        const sanitizedContactNumber = extractNumericContactNumber(contactNumber);
-        const sanitizedIsdCode = ensureCountryCodePrefix(isdCode);
-        const sanitizedIsoCode = isoCode && String(isoCode).trim() !== '' && String(isoCode) !== 'undefined'
-            ? String(isoCode).trim().toUpperCase()
-            : null;
-
-        // ✅ Sanitize emergency contact number and country codes
-        const sanitizedEmergencyContactNumber = extractNumericContactNumber(emergencyContactNumber);
-        const sanitizedEmergencyIsdCode = ensureCountryCodePrefix(emergencyContactIsdCode);
-        const sanitizedEmergencyIsoCode = emergencyContactIsoCode && String(emergencyContactIsoCode).trim() !== '' && String(emergencyContactIsoCode) !== 'undefined'
-            ? String(emergencyContactIsoCode).trim().toUpperCase()
-            : null;
-
-        const companyId = req.user?.companyId;
-
-        if (req.user?.userType != 'agency') {
-            await t.rollback();
-            res.status(403).json({
-                success: false,
-                message: "Only accessible for agency",
-            });
-            return;
-        }
+        // if (req.user?.userType != 'agency') {
+        //     unauthorized(res, "Only Accessiable for agency");
+        //     return;
+        // }
 
         // ✅ Validate required user fields
-        if (!firstName || !lastName || !email || !sanitizedContactNumber || !companyId || !employeeId) {
+        if (!firstName || !lastName || !email || !contactNumber || !companyId || !employeeId) {
             await t.rollback();
             res.status(400).json({
                 success: false,
-                message: "Required fields missing: firstName, lastName, email, contactNumber (numeric), companyId, employeeId",
+                message: "Required fields missing: firstName, lastName, email, contactNumber, companyId, employeeId",
             });
             return;
         }
@@ -152,6 +113,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             return;
         }
 
+
         // ✅ STEP 1: Create or get User entry with basic details
         let user = await User.findOne({
             where: { email },
@@ -161,20 +123,15 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
         if (user) {
             // User already exists - update with new details if needed
             if (user.userType != 'employee') {
-                await t.rollback();
-                res.status(400).json({
-                    success: false,
-                    message: 'User already exists with different type',
-                });
+                errorResponse(res, 'user already exist with other type');
                 return;
             }
             await user.update(
                 {
                     firstName,
                     lastName,
-                    contact: sanitizedContactNumber,
-                    isdCode: sanitizedIsdCode,
-                    isoCode: sanitizedIsoCode,
+                    contact: contactNumber,
+                    countryCode: countryCode || null,
                     isActive: true,
                     companyId: companyId,
                     isEmailVerified: true,
@@ -189,9 +146,8 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                     lastName,
                     email,
                     companyId: companyId,
-                    contact: sanitizedContactNumber,
-                    isdCode: sanitizedIsdCode,
-                    isoCode: sanitizedIsoCode,
+                    contact: contactNumber,
+                    countryCode: countryCode || null,
                     password: password || null,
                     userType: "employee",
                     isActive: true,
@@ -273,14 +229,8 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                 isDeleted: false,
                 profileStatus: "Incomplete",
                 registrationStep: 1,
-                // Primary contact details
-                contactNumber: sanitizedContactNumber,
-                isdCode: sanitizedIsdCode,
-                isoCode: sanitizedIsoCode,
-                // Emergency contact details
-                emergencyContactNumber: sanitizedEmergencyContactNumber,
-                emergencyContactIsdCode: sanitizedEmergencyIsdCode,
-                emergencyContactIsoCode: sanitizedEmergencyIsoCode,
+                isoCode: restData.isoCode || null,
+                isdCode: restData.isdCode || null,
                 ...Object.fromEntries(
                     Object.entries(restData).map(([key, value]) => [
                         key,
@@ -295,7 +245,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
 
         res.status(201).json({
             success: true,
-            message: "Employee registered successfully.",
+            message: "Employee registered successfully. User entry created first, then employee record linked.",
             data: {
                 user: {
                     id: user.id,
@@ -303,8 +253,6 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                     lastName: user.lastName,
                     email: user.email,
                     contact: user.contact,
-                    isdCode: user.isdCode,
-                    isoCode: user.isoCode,
                 },
                 employee,
             },
@@ -377,8 +325,7 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
  */
 router.get("/id/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        let id = req.params.id;
-        if (Array.isArray(id)) id = id[0];
+        const { id } = req.params;
 
         const employee = await getEmployeeById(id);
 
@@ -410,8 +357,7 @@ router.get("/id/:id", tokenMiddleWare, async (req: Request, res: Response): Prom
  */
 router.get("/employeeId/:employeeId", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        let { employeeId } = req.params;
-        if (Array.isArray(employeeId)) employeeId = employeeId[0];
+        const { employeeId } = req.params;
         const { companyId } = req.query;
 
         if (!companyId) {
@@ -452,8 +398,7 @@ router.get("/employeeId/:employeeId", tokenMiddleWare, async (req: Request, res:
  */
 router.get("/email/:email", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        let { email } = req.params;
-        if (Array.isArray(email)) email = email[0];
+        const { email } = req.params;
         const { companyId } = req.query;
 
         if (!companyId) {
@@ -494,8 +439,7 @@ router.get("/email/:email", tokenMiddleWare, async (req: Request, res: Response)
  */
 router.get("/by-department/:departmentId", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        let { departmentId } = req.params;
-        if (Array.isArray(departmentId)) departmentId = departmentId[0];
+        const { departmentId } = req.params;
         const { companyId } = req.query;
 
         if (!companyId) {
@@ -532,8 +476,7 @@ router.get(
     tokenMiddleWare,
     async (req: Request, res: Response): Promise<void> => {
         try {
-            let { managerId } = req.params;
-            if (Array.isArray(managerId)) managerId = managerId[0];
+            const { managerId } = req.params;
             const { companyId } = req.query;
 
             if (!companyId) {
@@ -568,8 +511,7 @@ router.get(
  */
 router.get("/by-status/:status", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
-        let { status } = req.params;
-        if (Array.isArray(status)) status = status[0];
+        const { status } = req.params;
         const { companyId, limit, offset } = req.query;
 
         if (!companyId) {
@@ -639,43 +581,18 @@ router.get("/active-list", tokenMiddleWare, async (req: Request, res: Response):
 
 /**
  * PUT /employee/update/:id
- * Update employee details
- * Supports file uploads and contact number sanitization like register endpoint
+ * Update employee details (excluding basic details like firstName, lastName, email which are in User table)
  */
-router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
-    { name: "profilePhoto", maxCount: 1 },
-    { name: "resumeFile", maxCount: 1 },
-    { name: "aadharDocument", maxCount: 1 },
-    { name: "panDocument", maxCount: 1 },
-]), async (req: Request, res: Response): Promise<void> => {
+router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
 
     try {
-        let id = req.params.id;
-        if (Array.isArray(id)) id = id[0];
-
-        // ✅ Handle file uploads
-        const files = req.files as Record<string, Express.Multer.File[]>;
-
-        Object.entries({
-            profilePhoto: "profilePhoto",
-            resumeFile: "resumeFilePath",
-            aadharDocument: "aadharDocumentPath",
-            panDocument: "panDocumentPath",
-        }).forEach(([multerKey, bodyKey]) => {
-            delete req.body[multerKey];
-
-            if (files?.[multerKey]?.[0]?.path) {
-                req.body[bodyKey] = files[multerKey][0].path;
-            }
-        });
-
+        const { id } = req.params;
         const updateData = req.body;
 
         const copmany = (req as any).user;
 
         if (!copmany || !copmany.companyId) {
-            await t.rollback();
             res.status(401).json({
                 success: false,
                 message: "Unauthorized: companyId missing",
@@ -706,117 +623,30 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
             return;
         }
 
-        // ✅ Delete old profile photo if new one is being uploaded
-        if (updateData.profilePhoto && employee.profilePhoto) {
-            try {
-                const oldPhotoPath = path.join(process.cwd(), 'src', 'public', employee.profilePhoto.replace(/^\//, ''));
-                if (fs.existsSync(oldPhotoPath)) {
-                    fs.unlinkSync(oldPhotoPath);
-                }
-            } catch (err) {
-                console.error("[employee/update] Error deleting old profile photo:", err);
-            }
-        }
-
-        // ✅ Helper function to extract numeric part from contact number
-        const extractNumericContactNumber = (contact: string | null | undefined): string | null => {
-            if (!contact) return null;
-            return String(contact).replace(/\D/g, '').slice(-10) || null; // Get last 10 digits
-        };
-
-        // ✅ Helper function to ensure country code has + prefix
-        const ensureCountryCodePrefix = (code: string | null | undefined): string | null => {
-            if (!code) return null;
-            const trimmed = String(code).trim();
-            return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
-        };
-
-        // ✅ Sanitize primary contact number and country codes if provided
-        if (updateData.contactNumber) {
-            updateData.contactNumber = extractNumericContactNumber(updateData.contactNumber);
-        }
-        if (updateData.isdCode) {
-            updateData.isdCode = ensureCountryCodePrefix(updateData.isdCode);
-        }
-        if (updateData.isoCode) {
-            updateData.isoCode = updateData.isoCode && String(updateData.isoCode).trim() !== '' && String(updateData.isoCode) !== 'undefined'
-                ? String(updateData.isoCode).trim().toUpperCase()
-                : null;
-        }
-
-        // ✅ Sanitize emergency contact number and country codes if provided
-        if (updateData.emergencyContactNumber) {
-            updateData.emergencyContactNumber = extractNumericContactNumber(updateData.emergencyContactNumber);
-        }
-        if (updateData.emergencyContactIsdCode) {
-            updateData.emergencyContactIsdCode = ensureCountryCodePrefix(updateData.emergencyContactIsdCode);
-        }
-        if (updateData.emergencyContactIsoCode) {
-            updateData.emergencyContactIsoCode = updateData.emergencyContactIsoCode && String(updateData.emergencyContactIsoCode).trim() !== '' && String(updateData.emergencyContactIsoCode) !== 'undefined'
-                ? String(updateData.emergencyContactIsoCode).trim().toUpperCase()
-                : null;
-        }
-
         const { aadharNumber, panNumber } = updateData || {};
 
-        // ✅ Check for duplicate Aadhar if being updated
         if (aadharNumber && aadharNumber !== employee.aadharNumber) {
-            let finalId = id;
-            if (Array.isArray(finalId)) finalId = finalId[0];
-            const existingAadhar = await checkAadharExists(aadharNumber, finalId);
+            const existingAadhar = await checkAadharExists(aadharNumber, id);
             if (existingAadhar) {
                 await t.rollback();
-                res.status(409).json({
-                    success: false,
-                    message: "Aadhar number already registered in another employee record",
-                });
+                res.status(409).json({ success: false, message: "Aadhar number already registered" });
                 return;
             }
         }
 
-        // ✅ Check for duplicate PAN if being updated
         if (panNumber && panNumber !== employee.panNumber) {
-            let finalId2 = id;
-            if (Array.isArray(finalId2)) finalId2 = finalId2[0];
-            const existingPan = await checkPanExists(panNumber, finalId2);
+            const existingPan = await checkPanExists(panNumber, id);
             if (existingPan) {
                 await t.rollback();
-                res.status(409).json({
-                    success: false,
-                    message: "PAN already registered in another employee record",
-                });
+                res.status(409).json({ success: false, message: "PAN already registered" });
                 return;
             }
         }
 
-        // ✅ Verify Reporting Manager if being updated
-        if (updateData.reportingManagerId && updateData.reportingManagerId !== employee.reportingManagerId) {
-            const reportingManager = await getEmployeeById(updateData.reportingManagerId);
-            if (!reportingManager || reportingManager.companyId !== companyId) {
-                await t.rollback();
-                res.status(404).json({
-                    success: false,
-                    message: "Reporting Manager not found or not in same company",
-                });
-                return;
-            }
-        }
+        // ✅ Update employee
+        await updateEmployee(id, updateData as EmployeePayload, t);
 
-        // ✅ Update employee with sanitized data
-        let updateId = id;
-        if (Array.isArray(updateId)) updateId = updateId[0];
-
-        // Convert empty strings to null
-        const sanitizedUpdateData = Object.fromEntries(
-            Object.entries(updateData).map(([key, value]) => [
-                key,
-                value === "" ? null : value,
-            ])
-        ) as EmployeePayload;
-
-        await updateEmployee(updateId, sanitizedUpdateData, t);
-
-        const updatedEmployee = await getEmployeeById(updateId);
+        const updatedEmployee = await getEmployeeById(id);
 
         await t.commit();
 
@@ -846,8 +676,7 @@ router.patch("/update-status/:id",
         const t = await dbInstance.transaction();
 
         try {
-            let id = req.params.id;
-            if (Array.isArray(id)) id = id[0];
+            const { id } = req.params;
             const { status, companyId } = req.body;
 
             if (!status) {
@@ -921,8 +750,7 @@ router.delete("/delete/:id", tokenMiddleWare, async (req: Request, res: Response
     const t = await dbInstance.transaction();
 
     try {
-        let id = req.params.id;
-        if (Array.isArray(id)) id = id[0];
+        const { id } = req.params;
         const user = (req as any).user;
 
         if (!user || !user.companyId) {
@@ -1046,8 +874,7 @@ router.get("/by-employment-type/:type",
     tokenMiddleWare,
     async (req: Request, res: Response): Promise<void> => {
         try {
-            let { type } = req.params;
-            if (Array.isArray(type)) type = type[0];
+            const { type } = req.params;
             const { companyId } = req.query;
 
             if (!companyId) {
@@ -1133,193 +960,6 @@ router.patch("/bulk-status-update", tokenMiddleWare, async (req: Request, res: R
         });
     }
 });
-
-// ===== PROFILE PHOTO MANAGEMENT =====
-
-/**
- * POST /employee/uploadProfilePhoto/:employeeId
- * Upload employee profile photo
- * Body: Form data with file field containing the image
- */
-router.post(
-    "/uploadProfilePhoto/:employeeId",
-    tokenMiddleWare,
-    employeeProfilePhotoUpload.single("file"),
-    async (req: Request, res: Response): Promise<void> => {
-        const t = await dbInstance.transaction();
-        try {
-            let { employeeId } = req.params;
-            if (Array.isArray(employeeId)) employeeId = employeeId[0];
-
-            const user = (req as any).user;
-
-            if (!user || !user.companyId) {
-                await t.rollback();
-                res.status(401).json({
-                    success: false,
-                    message: "Unauthorized: companyId missing",
-                });
-                return;
-            }
-            const { companyId } = user;
-
-            if (!req.file) {
-                await t.rollback();
-                res.status(400).json({
-                    success: false,
-                    message: "No file uploaded",
-                });
-                return;
-            }
-
-            // ✅ Verify employee exists and belongs to company
-            const employee = await getEmployeeById(employeeId);
-
-            if (!employee || employee.isDeleted) {
-                await t.rollback();
-                res.status(404).json({
-                    success: false,
-                    message: "Employee not found",
-                });
-                return;
-            }
-
-            if (employee.companyId !== companyId) {
-                await t.rollback();
-                res.status(403).json({
-                    success: false,
-                    message: "Employee does not belong to this company",
-                });
-                return;
-            }
-
-            // ✅ Delete old profile photo if exists
-            if (employee.profilePhoto) {
-                try {
-                    const oldPhotoPath = path.join(process.cwd(), `public${employee.profilePhoto}`);
-                    if (fs.existsSync(oldPhotoPath)) {
-                        fs.unlinkSync(oldPhotoPath);
-                    }
-                } catch (err) {
-                    console.error("[employee/uploadProfilePhoto] Error deleting old photo:", err);
-                }
-            }
-
-            // ✅ Update employee with new profile photo path
-            const photoPath = `/employee/profile/${req.file.filename}`;
-
-            await updateEmployee(employeeId, { profilePhoto: photoPath } as EmployeePayload, t);
-
-            const updatedEmployee = await getEmployeeById(employeeId);
-
-            await t.commit();
-
-            res.status(200).json({
-                success: true,
-                message: "Profile photo uploaded successfully",
-                data: {
-                    employeeId: updatedEmployee?.id,
-                    profilePhoto: updatedEmployee?.profilePhoto,
-                },
-            });
-        } catch (err) {
-            await t.rollback();
-            console.error("[employee/uploadProfilePhoto] ERROR:", err);
-            res.status(500).json({
-                success: false,
-                message: "Server error",
-                error: process.env.NODE_ENV === "development" ? err : undefined,
-            });
-        }
-    }
-);
-
-/**
- * PATCH /employee/removeProfilePhoto/:employeeId
- * Remove employee profile photo
- */
-router.patch(
-    "/removeProfilePhoto/:employeeId",
-    tokenMiddleWare,
-    async (req: Request, res: Response): Promise<void> => {
-        const t = await dbInstance.transaction();
-        try {
-            let { employeeId } = req.params;
-            if (Array.isArray(employeeId)) employeeId = employeeId[0];
-
-            const user = (req as any).user;
-
-            if (!user || !user.companyId) {
-                await t.rollback();
-                res.status(401).json({
-                    success: false,
-                    message: "Unauthorized: companyId missing",
-                });
-                return;
-            }
-            const { companyId } = user;
-
-            // ✅ Verify employee exists and belongs to company
-            const employee = await getEmployeeById(employeeId);
-
-            if (!employee || employee.isDeleted) {
-                await t.rollback();
-                res.status(404).json({
-                    success: false,
-                    message: "Employee not found",
-                });
-                return;
-            }
-
-            if (employee.companyId !== companyId) {
-                await t.rollback();
-                res.status(403).json({
-                    success: false,
-                    message: "Employee does not belong to this company",
-                });
-                return;
-            }
-
-            // ✅ Check if profile photo exists
-            if (!employee.profilePhoto) {
-                await t.rollback();
-                res.status(400).json({
-                    success: false,
-                    message: "Employee has no profile photo to remove",
-                });
-                return;
-            }
-
-            // ✅ Delete profile photo from file system
-            try {
-                const photoPath = path.join(process.cwd(), 'src', 'public', employee.profilePhoto.replace(/^\//, ''));
-                if (fs.existsSync(photoPath)) {
-                    fs.unlinkSync(photoPath);
-                }
-            } catch (err) {
-                console.error("[employee/removeProfilePhoto] Error deleting photo file:", err);
-            }
-
-            // ✅ Update employee to remove profile photo reference
-            await updateEmployee(employeeId, { profilePhoto: null } as EmployeePayload, t);
-
-            await t.commit();
-
-            res.status(200).json({
-                success: true,
-                message: "Profile photo removed successfully",
-            });
-        } catch (err) {
-            await t.rollback();
-            console.error("[employee/removeProfilePhoto] ERROR:", err);
-            res.status(500).json({
-                success: false,
-                message: "Server error",
-                error: process.env.NODE_ENV === "development" ? err : undefined,
-            });
-        }
-    }
-);
 
 
 export default router;

@@ -11,7 +11,7 @@ export class PremiumModule extends Model<
   InferAttributes<PremiumModule>,
   InferCreationAttributes<PremiumModule>
 > {
-  declare id: CreationOptional<string>;
+  declare id: CreationOptional<number>;
   declare icon: string | null;
   declare name: string;
   declare isActive: boolean;
@@ -23,11 +23,11 @@ export class PremiumModule extends Model<
     PremiumModule.init(
       {
         id: {
-          type: DataTypes.UUID,
+          type: DataTypes.INTEGER,
           primaryKey: true,
+          autoIncrement: true,
           allowNull: false,
           unique: true,
-          defaultValue: DataTypes.UUIDV4,
         },
         icon: {
           type: DataTypes.STRING(255),

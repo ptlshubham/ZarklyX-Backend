@@ -13,7 +13,7 @@ export class SocialToken extends Model<
 > {
   declare id: CreationOptional<string>;
   // declare userId: number;
-  declare companyId: string;
+  // declare companyId: number;
   declare accountEmail: string | null;
   // 'provider' is the canonical field used by token-store.service to identify
   // which social platform this token belongs to (e.g. 'google', 'facebook').
@@ -42,10 +42,10 @@ export class SocialToken extends Model<
         //   type: DataTypes.INTEGER.UNSIGNED,
         //   allowNull: false,
         // },
-        companyId: {
-          type: DataTypes.STRING(255),
-          allowNull: false,
-        },
+        // companyId: {
+        //   type: DataTypes.INTEGER.UNSIGNED,
+        //   allowNull: false,
+        // },
         accountEmail: {
           type: DataTypes.STRING(255),
           allowNull: true,

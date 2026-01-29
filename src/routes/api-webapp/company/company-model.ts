@@ -16,16 +16,11 @@ export class Company extends Model<
   declare description: string | null;
   declare accountType: string | null;
   declare businessArea: string | null;
+  declare industryType: string | null;
   declare website: string | null;
   declare email: string | null;
   declare contact: string | null;
-  declare isdCode: string | null;
-  declare isoCode: string | null;
   declare logo: string | null;
-  declare companyLogoLight: string | null;
-  declare companyLogoDark: string | null;
-  declare faviconLight: string | null;
-  declare faviconDark: string | null;
   declare timezone: string | null;
   declare country: string | null;
   declare state: string | null;
@@ -35,26 +30,6 @@ export class Company extends Model<
   declare registrationNumber: string | null;
   declare no_of_clients: number | null;
   declare selectedModules: string | null;
-  declare bankName: string | null;
-  declare branchName: string | null;
-  declare adCode: string | null;
-  declare upiId: string | null;
-  declare accountNumber: string | null;
-  declare ifscCode: string | null;
-  declare swiftCode: string | null;
-  declare accountHolderName: string | null;
-  declare tin: string | null;
-  declare lst: string | null;
-  declare pan: string | null;
-  declare fssaiNo: string | null;
-  declare dlNo: string | null;
-  declare cst: string | null;
-  declare tan: string | null;
-  declare currency: string | null;
-  declare gstin: string | null;
-  declare serviceTaxNumber: string | null;
-  declare taxationType: string | null;
-  declare taxInclusiveRate: boolean;
   declare isActive: boolean;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
@@ -89,20 +64,16 @@ export class Company extends Model<
           type: DataTypes.STRING(255),
           allowNull: true,
         },
+        industryType: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+        },
         email: {
           type: DataTypes.STRING(255),
           allowNull: true,
         },
         contact: {
           type: DataTypes.STRING(20),
-          allowNull: true,
-        },
-        isdCode: {
-          type: DataTypes.STRING(10),
-          allowNull: true,
-        },
-        isoCode: {
-          type: DataTypes.STRING(10),
           allowNull: true,
         },
         address: {
@@ -133,22 +104,6 @@ export class Company extends Model<
           type: DataTypes.STRING(500),
           allowNull: true,
         },
-        companyLogoLight: {
-          type: DataTypes.STRING(500),
-          allowNull: true,
-        },
-        companyLogoDark: {
-          type: DataTypes.STRING(500),
-          allowNull: true,
-        },
-        faviconLight: {
-          type: DataTypes.STRING(500),
-          allowNull: true,
-        },
-        faviconDark: {
-          type: DataTypes.STRING(500),
-          allowNull: true,
-        },
         timezone: {
           type: DataTypes.STRING(500),
           allowNull: true,
@@ -164,87 +119,6 @@ export class Company extends Model<
         no_of_clients: {
           type: DataTypes.INTEGER,
           allowNull: true,
-        },
-        bankName: {
-          type: DataTypes.STRING(255),
-          allowNull: true,
-        },
-        branchName: {
-          type: DataTypes.STRING(255),
-          allowNull: true,
-        },
-        adCode: {
-          type: DataTypes.STRING(100),
-          allowNull: true,
-        },
-        upiId: {
-          type: DataTypes.STRING(100),
-          allowNull: true,
-        },
-        accountNumber: {
-          type: DataTypes.STRING(100),
-          allowNull: true,
-        },
-        ifscCode: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        swiftCode: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        accountHolderName: {
-          type: DataTypes.STRING(255),
-          allowNull: true,
-        },
-        tin: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        lst: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        pan: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        fssaiNo: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        dlNo: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        cst: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        tan: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        currency: {
-          type: DataTypes.STRING(10),
-          allowNull: true,
-        },
-        gstin: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        serviceTaxNumber: {
-          type: DataTypes.STRING(50),
-          allowNull: true,
-        },
-        taxationType: {
-          type: DataTypes.ENUM("GST", "VAT", "SALES TAX", "EXCISE", "CUSTOMS"),
-          allowNull: true,
-        },
-        taxInclusiveRate: {
-          type: DataTypes.BOOLEAN,
-          defaultValue: false,
-          allowNull: false,
         },
         isActive: {
           type: DataTypes.BOOLEAN,

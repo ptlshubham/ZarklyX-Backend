@@ -67,7 +67,6 @@ interface ClientsPayload {
   registrationStep?: number;
   isActive?: boolean;
   isDeleted?: boolean;
-  profile?: string | null;
   [key: string]: any;
 
 }
