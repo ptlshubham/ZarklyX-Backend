@@ -65,11 +65,11 @@ import { CompanyPermission, initCompanyPermissionModel } from "../../routes/api-
 import { SubscriptionPlanPermission, initSubscriptionPlanPermissionModel } from "../../routes/api-webapp/superAdmin/subscription-plan-permission/subscription-plan-permission-model";
 import { RolePermissions, initRolePermissionsModel } from "../../routes/api-webapp/role-permissions/role-permissions-model";
 import { UserPermissionOverrides, initUserPermissionOverridesModel } from "../../routes/api-webapp/user-permission-overrides/user-permission-overrides-model";
-import { ZarklyXUser } from "../../routes/api-webapp/superAdmin/zarklyX-users/zarklyX-users-model";
-import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/zarklyX-roles/zarklyX-roles-model";
-import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/zarklyX-permissions/zarklyX-permissions-model";
-import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/zarklyX-role-permissions/zarklyX-role-permissions-model";
-import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/zarklyX-user-permission-overrides/zarklyX-user-permission-overrides-model";
+import { ZarklyXUser } from "../../routes/api-webapp/superAdmin/authentication/user/user-model";
+import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/rbac/roles/roles-model";
+import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permissions/permissions-model";
+import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
+import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
 
 export {
   User,
@@ -131,8 +131,7 @@ export {
   ItAssetsManagement,
   ItTicketsAttachments,
   ItAssetsAttachments,
-  ItTicketsTimeline,
-  PaymentsDocuments
+  ItTicketsTimeline
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
