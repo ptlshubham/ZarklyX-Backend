@@ -131,8 +131,7 @@ export {
   ItAssetsManagement,
   ItTicketsAttachments,
   ItAssetsAttachments,
-  ItTicketsTimeline,
-  PaymentsDocuments
+  ItTicketsTimeline
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
