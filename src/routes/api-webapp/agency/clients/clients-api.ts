@@ -251,6 +251,7 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         registrationStep: 1,
         isMobileVerified: false,
         isFirstLogin: true,
+        isassigned: false,
         twofactorEnabled: false,
         twofactorSecret: null,
         twofactorVerified: false,
@@ -989,6 +990,7 @@ router.post("/clientSignup/verify-otp",
           isCredential: false,
           profileStatus: false,
           isFirstLogin: true,
+          isassigned: false,
           // twofactorEnabled: false,
           // twofactorSecret: null,
           // twofactorVerified: false,
@@ -1872,12 +1874,17 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
     const queryForHandler = {
       ...restQuery,
       companyId,
+      isApprove: 1, // Filter only approved clients
     };
 
     const result: any = await getAllAgencyClient(queryForHandler);
 
     let rows = result.rows || result;
     let count = result.count ?? rows.length;
+
+    // ---------- APPROVED FILTER (Only isApprove = 1) ----------
+    rows = rows.filter((r: any) => r.isApprove === 1 || r.isApprove === true);
+    count = rows.length;
 
     // ---------- SEARCH FILTER ----------
     if (search) {
@@ -1928,6 +1935,173 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
     });
   }
 });
+
+// get unassigned clients by companyId (isassigned = 0)
+router.get("/clients/unassigned/:companyId", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { companyId } = req.params;
+    const { search, ...restQuery } = req.query as {
+      [key: string]: any;
+      search?: string;
+    };
+
+    if (!companyId) {
+      res.status(400).json({
+        success: false,
+        message: "Company ID is required.",
+      });
+      return;
+    }
+
+    const limit = Number(req.query.limit) || 10;
+    const offset = Number(req.query.offset) || 0;
+
+    const queryForHandler = {
+      ...restQuery,
+      companyId,
+      isassigned: 0, // Filter for unassigned clients only
+    };
+
+    const result: any = await getAllAgencyClient(queryForHandler);
+
+    let rows = result.rows || result;
+    let count = result.count ?? rows.length;
+
+    // ---------- SEARCH FILTER ----------
+    if (search) {
+      const s = search.toString().toLowerCase();
+
+      rows = rows.filter((r: any) => {
+        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
+          .trim()
+          .toLowerCase();
+        const email = (r.email || "").toLowerCase();
+        const businessName = (r.businessName || "").toLowerCase();
+
+        return (
+          fullName.includes(s) ||
+          email.includes(s) ||
+          businessName.includes(s)
+        );
+      });
+
+      count = rows.length;
+    }
+
+    // ---------- PAGINATION ----------
+    const paginatedRows = rows.slice(offset, offset + limit);
+
+    // ---------- RESPONSE ----------
+    res.status(200).json({
+      success: true,
+      message: "Unassigned clients fetched successfully for the company.",
+      data: paginatedRows,
+      pagination: {
+        total: count,
+        limit,
+        offset,
+      },
+    });
+  } catch (error: any) {
+    console.error("[GET /clients/by-company/:companyId/unassigned] ERROR:", error);
+
+    ErrorLogger.write({
+      type: "get unassigned clients by company error",
+      error,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch unassigned clients.",
+    });
+  }
+});
+
+// get unapproved clients by companyId (isApprove = 0)
+router.get("/clients/pending/:companyId", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { companyId } = req.params;
+    const { search, ...restQuery } = req.query as {
+      [key: string]: any;
+      search?: string;
+    };
+
+    if (!companyId) {
+      res.status(400).json({
+        success: false,
+        message: "Company ID is required.",
+      });
+      return;
+    }
+
+    const limit = Number(req.query.limit) || 10;
+    const offset = Number(req.query.offset) || 0;
+
+    const queryForHandler = {
+      ...restQuery,
+      companyId,
+      isApprove: 0, // Filter for unapproved clients only
+    };
+
+    const result: any = await getAllAgencyClient(queryForHandler);
+
+    let rows = result.rows || result;
+    let count = result.count ?? rows.length;
+
+    // ---------- UNAPPROVED FILTER (Only isApprove = 0) ----------
+    rows = rows.filter((r: any) => r.isApprove === 0 || r.isApprove === false);
+    count = rows.length;
+
+    // ---------- SEARCH FILTER ----------
+    if (search) {
+      const s = search.toString().toLowerCase();
+
+      rows = rows.filter((r: any) => {
+        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
+          .trim()
+          .toLowerCase();
+        const email = (r.email || "").toLowerCase();
+        const businessName = (r.businessName || "").toLowerCase();
+
+        return (
+          fullName.includes(s) ||
+          email.includes(s) ||
+          businessName.includes(s)
+        );
+      });
+
+      count = rows.length;
+    }
+
+    // ---------- PAGINATION ----------
+    const paginatedRows = rows.slice(offset, offset + limit);
+
+    // ---------- RESPONSE ----------
+    res.status(200).json({
+      success: true,
+      message: "Pending (unapproved) clients fetched successfully for the company.",
+      data: paginatedRows,
+      pagination: {
+        total: count,
+        limit,
+        offset,
+      },
+    });
+  } catch (error: any) {
+    console.error("[GET /clients/pending/:companyId] ERROR:", error);
+
+    ErrorLogger.write({
+      type: "get pending clients by company error",
+      error,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch pending clients.",
+    });
+  }
+});
+
 
 // check the user exists for the company
 router.post("/clients/validate-company-user", async (req: Request, res: Response): Promise<void> => {

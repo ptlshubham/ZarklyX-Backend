@@ -72,6 +72,7 @@ export class Clients extends Model<
     declare registrationStep: number;
     declare isMobileVerified: boolean;
     declare isFirstLogin: boolean;
+    declare isassigned: boolean;
 
     // Timestamps
     declare createdAt: CreationOptional<Date>;
@@ -356,6 +357,11 @@ export class Clients extends Model<
                     type: DataTypes.BOOLEAN,
                     allowNull: false,
                     defaultValue: true,
+                },
+                isassigned: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
                 },
 
                 // timestamps
