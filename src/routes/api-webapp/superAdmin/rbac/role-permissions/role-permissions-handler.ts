@@ -1,4 +1,4 @@
-import { Op } from "sequelize";
+import { Op, Transaction } from "sequelize";
 import { ZarklyXRole } from "../../../../api-webapp/superAdmin/rbac/roles/roles-model";
 import { ZarklyXPermission } from "../../../../api-webapp/superAdmin/rbac/permissions/permissions-model";
 import { ZarklyXRolePermission } from "../../../../api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
@@ -341,5 +341,42 @@ export async function checkRoleHasPermission(
       success: false,
       message: error.message || "Failed to check permission",
     };
+  }
+}
+
+/**
+ * Clone permissions from one ZarklyX role to another
+ * Used when creating custom roles based on existing roles
+ */
+export async function cloneZarklyXRolePermissions(
+  sourceRoleId: string,
+  targetRoleId: string,
+  transaction?: Transaction
+) {
+  try {
+    // Get all permissions from source role
+    const sourcePermissions = await ZarklyXRolePermission.findAll({
+      where: { roleId: sourceRoleId },
+      attributes: ["permissionId"],
+    });
+
+    if (sourcePermissions.length === 0) {
+      return [];
+    }
+
+    // Create new role-permission associations for target role
+    const permissionIds = sourcePermissions.map((rp: any) => rp.permissionId);
+    const newRolePermissions = permissionIds.map((permissionId) => ({
+      roleId: targetRoleId,
+      permissionId,
+    }));
+
+    const created = await ZarklyXRolePermission.bulkCreate(newRolePermissions, {
+      transaction,
+    });
+
+    return created;
+  } catch (error: any) {
+    throw new Error(`Failed to clone role permissions: ${error.message}`);
   }
 }

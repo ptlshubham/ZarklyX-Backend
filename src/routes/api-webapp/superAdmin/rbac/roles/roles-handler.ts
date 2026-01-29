@@ -1,6 +1,7 @@
-import { Op } from "sequelize";
+import { Op, Transaction } from "sequelize";
 import { ZarklyXRole } from "../../../../api-webapp/superAdmin/rbac/roles/roles-model";
 import { ZarklyXUser } from "../../../../api-webapp/superAdmin/authentication/user/user-model";
+import { assignBulkPermissionsToRole, cloneZarklyXRolePermissions } from "../role-permissions/role-permissions-handler";
 
 /**
  * Get all ZarklyX roles
@@ -283,4 +284,82 @@ export async function deleteZarklyXRole(roleId: string, deletedBy: string) {
       message: error.message || "Failed to delete role",
     };
   }
+}
+
+/**
+ * Clone a ZarklyX role to create a custom role
+ * Similar to cloneRoleToCompany but for ZarklyX internal users
+ */
+export async function cloneZarklyXRole(
+  baseRoleId: string,
+  newName?: string,
+  newDescription?: string,
+  permissionIds?: string[],
+  transaction?: Transaction
+) {
+  const baseRole = await ZarklyXRole.findOne({
+    where: { id: baseRoleId, isDeleted: false },
+  });
+
+  if (!baseRole) {
+    throw new Error("Base role not found");
+  }
+
+  const roleName = newName || `${baseRole.name}_custom`;
+  const roleDescription = newDescription || `${baseRole.description}_custom`;
+
+  // Check if name already exists
+  const exists = await ZarklyXRole.findOne({
+    where: { name: roleName },
+  });
+  
+  if (exists) {
+    throw new Error(`Role name '${roleName}' already exists`);
+  }
+
+  // If specific permissions are provided, validate they exist
+  if (permissionIds && permissionIds.length > 0) {
+    const { ZarklyXPermission } = require("../permissions/permissions-model");
+    const permissions = await ZarklyXPermission.findAll({
+      where: {
+        id: { [Op.in]: permissionIds },
+        isActive: true,
+        isDeleted: false,
+      },
+    });
+
+    if (permissions.length !== permissionIds.length) {
+      throw new Error("One or more permissions not found or inactive");
+    }
+  }
+
+  // Create the custom role
+  const customRole = await ZarklyXRole.create(
+    {
+      name: roleName,
+      description: roleDescription,
+      baseRoleId,
+      priority: baseRole.priority >= 30 ? baseRole.priority : 30, // Custom roles start at priority 30
+      isSystemRole: false,
+      isActive: true,
+      isDeleted: false,
+    },
+    { transaction }
+  );
+
+  // Assign permissions
+  if (permissionIds && permissionIds.length > 0) {
+    // UI provided specific permissions
+    const { ZarklyXRolePermission } = require("../role-permissions/role-permissions-model");
+    const rolePermissions = permissionIds.map((permissionId) => ({
+      roleId: customRole.id,
+      permissionId,
+    }));
+    await ZarklyXRolePermission.bulkCreate(rolePermissions, { transaction });
+  } else {
+    // Default: Clone all permissions from base role
+    await cloneZarklyXRolePermissions(baseRoleId, customRole.id, transaction!);
+  }
+
+  return customRole;
 }

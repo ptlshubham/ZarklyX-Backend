@@ -20,13 +20,36 @@ router.post(
   requireZarklyXRolePriority(20),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { email, password, firstName, lastName, roleId, phoneNumber, isdCode, isoCode, department } = req.body;
+      const { 
+        email, 
+        password, 
+        firstName, 
+        lastName, 
+        roleId, 
+        baseRoleId, 
+        roleName, 
+        roleDescription, 
+        permissionIds, 
+        phoneNumber, 
+        isdCode, 
+        isoCode, 
+        department 
+      } = req.body;
 
     // Validation
-    if (!email || !password || !firstName || !lastName || !roleId) {
+    if (!email || !password || !firstName || !lastName) {
       res.status(400).json({
         success: false,
-        message: "Email, password, firstName, lastName, and roleId are required",
+        message: "Email, password, firstName, and lastName are required",
+      });
+      return;
+    }
+
+    // Must provide either roleId or baseRoleId
+    if (!roleId && !baseRoleId) {
+      res.status(400).json({
+        success: false,
+        message: "Either roleId or baseRoleId must be provided",
       });
       return;
     }
@@ -46,6 +69,10 @@ router.post(
       firstName,
       lastName,
       roleId,
+      baseRoleId,
+      roleName,
+      roleDescription,
+      permissionIds,
       phoneNumber,
       isdCode,
       isoCode,

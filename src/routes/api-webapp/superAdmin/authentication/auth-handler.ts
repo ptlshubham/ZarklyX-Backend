@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import { ZarklyXUser } from "../../../api-webapp/superAdmin/authentication/user/user-model";
 import { ZarklyXRole } from "../../../api-webapp/superAdmin/rbac/roles/roles-model";
 import { generateZarklyXToken } from "../../../../services/zarklyX-jwt-service";
+import { cloneZarklyXRole } from "../rbac/roles/roles-handler";
 
 /**
  * Register a new ZarklyX internal user
@@ -13,7 +14,11 @@ export async function registerZarklyXUser(data: {
   password: string;
   firstName: string;
   lastName: string;
-  roleId: string;
+  roleId?: string; // Optional if cloning from baseRoleId
+  baseRoleId?: string; // Optional: clone from this role
+  roleName?: string; // Optional: custom name for cloned role
+  roleDescription?: string; // Optional: custom description for cloned role
+  permissionIds?: string[]; // Optional: specific permissions for custom role
   phoneNumber?: string;
   isdCode?: string;
   isoCode?: string;
@@ -91,8 +96,45 @@ export async function registerZarklyXUser(data: {
       };
     }
 
+    // Determine final roleId: either provided directly or cloned from baseRoleId
+    let finalRoleId: string;
+    let customRole: any = null;
+
+    if (data.baseRoleId) {
+      // Clone role from base role
+      if (data.permissionIds !== undefined && !Array.isArray(data.permissionIds)) {
+        return {
+          success: false,
+          message: "permissionIds must be an array",
+        };
+      }
+
+      try {
+        customRole = await cloneZarklyXRole(
+          data.baseRoleId,
+          data.roleName,
+          data.roleDescription,
+          data.permissionIds
+        );
+        finalRoleId = customRole.id;
+      } catch (roleError: any) {
+        return {
+          success: false,
+          message: roleError.message || "Failed to create custom role",
+        };
+      }
+    } else if (data.roleId) {
+      // Use provided roleId directly
+      finalRoleId = data.roleId;
+    } else {
+      return {
+        success: false,
+        message: "Either roleId or baseRoleId must be provided",
+      };
+    }
+
     // Verify target role exists
-    const targetRole = await ZarklyXRole.findByPk(data.roleId);
+    const targetRole = await ZarklyXRole.findByPk(finalRoleId);
     if (!targetRole) {
       return {
         success: false,
@@ -117,7 +159,7 @@ export async function registerZarklyXUser(data: {
       password: hashedPassword,
       firstName: data.firstName,
       lastName: data.lastName,
-      roleId: data.roleId,
+      roleId: finalRoleId,
       phoneNumber: data.phoneNumber || "",
       isdCode: data.isdCode || "",
       isoCode: data.isoCode || "",
@@ -149,6 +191,11 @@ export async function registerZarklyXUser(data: {
         lastName: newUser.lastName,
         roleId: newUser.roleId,
         department: newUser.department,
+        customRole: customRole ? {
+          id: customRole.id,
+          name: customRole.name,
+          description: customRole.description,
+        } : null,
       },
       token,
     };
