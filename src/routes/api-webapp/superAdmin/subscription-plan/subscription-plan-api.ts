@@ -20,22 +20,50 @@ router.post("/createSubscriptionPlan", async (req, res) => {
       name,
       description,
       price,
-      durationValue,
-      durationUnit,
-      isActive,
-      modules, // Array of module IDs
+      currency,
+      timing,
+      timing_unit,
+      billing_cycle,
+      trial_available,
+      trial_days,
+      price_per_user,
+      min_users,
+      max_users,
+      proration_enabled,
+      display_order,
+      status,
+      is_popular,
+      modules, // Array of module IDs (full module access)
+      permissions, // Array of permission IDs (feature-level access)
     } = req.body;
 
     if (
       !name?.trim() ||
       typeof price !== "number" || price <= 0 ||
-      typeof durationValue !== "number" || durationValue <= 0 ||
-      !["month", "year"].includes(durationUnit)
+      typeof timing !== "number" || timing <= 0 ||
+      !["day", "month", "year"].includes(timing_unit) ||
+      !["monthly", "yearly"].includes(billing_cycle)
     ) {
       await t.rollback();
       return res.status(400).json({
         error:
-          "Valid name, price (>0), durationValue (>0), and durationUnit (month/year) are required",
+          "Valid name, price (>0), timing (>0), timing_unit (day/month/year), and billing_cycle (monthly/yearly) are required",
+      });
+    }
+
+    // Validate trial_days if trial_available is true
+    if (trial_available && (!trial_days || typeof trial_days !== "number" || trial_days <= 0)) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "trial_days must be a positive number when trial_available is true",
+      });
+    }
+
+    // Validate min_users and max_users relationship
+    if (min_users !== undefined && max_users !== undefined && min_users > max_users) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "min_users cannot be greater than max_users",
       });
     }
 
@@ -47,26 +75,55 @@ router.post("/createSubscriptionPlan", async (req, res) => {
       });
     }
 
+    // Validate permissions array if provided
+    if (permissions !== undefined && (!Array.isArray(permissions) || permissions.some((id: any) => typeof id !== 'string'))) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "permissions must be an array of valid permission IDs",
+      });
+    }
+
     const plan = await createSubscriptionPlan(
       {
         name,
         description,
         price,
-        durationValue,
-        durationUnit,
-        isActive,
+        currency,
+        timing,
+        timing_unit,
+        billing_cycle,
+        trial_available,
+        trial_days,
+        price_per_user,
+        min_users,
+        max_users,
+        proration_enabled,
+        display_order,
+        status,
+        is_popular,
         modules,
+        permissions,
       },
       t
     );
 
     await t.commit();
+    
+    const modulesCount = modules?.length || 0;
+    const permissionsCount = permissions?.length || 0;
+    let message = "Subscription plan created successfully";
+    if (modulesCount > 0 && permissionsCount > 0) {
+      message = `Subscription plan created with ${modulesCount} module(s) and ${permissionsCount} permission(s)`;
+    } else if (modulesCount > 0) {
+      message = `Subscription plan created with ${modulesCount} module(s)`;
+    } else if (permissionsCount > 0) {
+      message = `Subscription plan created with ${permissionsCount} permission(s)`;
+    }
+
     return res.status(201).json({ 
       success: true, 
       data: plan,
-      message: modules && modules.length > 0 
-        ? `Subscription plan created with ${modules.length} module(s)` 
-        : "Subscription plan created successfully"
+      message: message
     });
   } catch (error: any) {
     await t.rollback();
@@ -78,6 +135,7 @@ router.post("/createSubscriptionPlan", async (req, res) => {
     }
 
     if (error.name === "SequelizeForeignKeyConstraintError") {
+      console.log(error);
       return res.status(400).json({
         error: "One or more module IDs are invalid",
       });
@@ -144,19 +202,48 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
       name,
       description,
       price,
-      durationValue,
-      durationUnit,
-      isActive,
+      currency,
+      timing,
+      timing_unit,
+      billing_cycle,
+      trial_available,
+      trial_days,
+      price_per_user,
+      min_users,
+      max_users,
+      proration_enabled,
+      display_order,
+      status,
+      is_popular,
     } = req.body;
 
     if (typeof name === "string" && name.trim()) updateFields.name = name;
     if (typeof description === "string") updateFields.description = description;
     if (typeof price === "number" && price > 0) updateFields.price = price;
-    if (typeof durationValue === "number" && durationValue > 0)
-      updateFields.durationValue = durationValue;
-    if (["month", "year"].includes(durationUnit))
-      updateFields.durationUnit = durationUnit;
-    if (typeof isActive === "boolean") updateFields.isActive = isActive;
+    if (typeof currency === "string" && currency.trim()) updateFields.currency = currency;
+    if (typeof timing === "number" && timing > 0) updateFields.timing = timing;
+    if (["day", "month", "year"].includes(timing_unit)) updateFields.timing_unit = timing_unit;
+    if (["monthly", "yearly"].includes(billing_cycle)) updateFields.billing_cycle = billing_cycle;
+    if (typeof trial_available === "boolean") updateFields.trial_available = trial_available;
+    if (typeof trial_days === "number" && trial_days > 0) updateFields.trial_days = trial_days;
+    if (typeof price_per_user === "boolean") updateFields.price_per_user = price_per_user;
+    if (typeof min_users === "number" && min_users > 0) updateFields.min_users = min_users;
+    if (typeof max_users === "number" && max_users > 0) updateFields.max_users = max_users;
+    if (typeof proration_enabled === "boolean") updateFields.proration_enabled = proration_enabled;
+    if (typeof display_order === "number") updateFields.display_order = display_order;
+    if (["active", "inactive"].includes(status)) updateFields.status = status;
+    if (typeof is_popular === "boolean") updateFields.is_popular = is_popular;
+
+    // Validate min_users and max_users relationship
+    const finalMinUsers = updateFields.min_users !== undefined ? updateFields.min_users : null;
+    const finalMaxUsers = updateFields.max_users !== undefined ? updateFields.max_users : null;
+    
+    if (finalMinUsers !== null && finalMaxUsers !== null && finalMinUsers > finalMaxUsers) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "min_users cannot be greater than max_users",
+      });
+    }
 
     if (Object.keys(updateFields).length === 0) {
       await t.rollback();
@@ -222,15 +309,22 @@ router.delete("/deleteSubscriptionPlan/:id", async (req, res) => {
   }
 });
 
-// Calculate subscription price with addon modules
+// Calculate subscription price with addon modules and per-seat pricing
 router.post("/calculatePrice", async (req, res) => {
   try {
-    const { subscriptionPlanId, addonModuleIds, discount } = req.body;
+    const { subscriptionPlanId, numberOfUsers, addonModuleIds, discount } = req.body;
 
     if (!subscriptionPlanId) {
       return res.status(400).json({
         success: false,
         error: "subscriptionPlanId is required",
+      });
+    }
+
+    if (!numberOfUsers || typeof numberOfUsers !== 'number' || numberOfUsers < 1) {
+      return res.status(400).json({
+        success: false,
+        error: "numberOfUsers is required and must be at least 1",
       });
     }
 
@@ -260,6 +354,7 @@ router.post("/calculatePrice", async (req, res) => {
 
     const priceCalculation = await calculateSubscriptionPrice(
       subscriptionPlanId,
+      numberOfUsers,
       addonModuleIds || [],
       discount
     );

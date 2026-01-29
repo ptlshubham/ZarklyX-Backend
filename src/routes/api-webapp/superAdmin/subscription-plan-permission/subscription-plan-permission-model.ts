@@ -6,24 +6,24 @@ import {
   Model,
   Sequelize,
 } from "sequelize";
-import { SubscriptionPlan } from "../../../api-webapp/superAdmin/subscription-plan/subscription-plan-model";
-import { Modules } from "../../../api-webapp/superAdmin/modules/modules-model";
+import { SubscriptionPlan } from "../subscription-plan/subscription-plan-model";
+import { Permissions } from "../permissions/permissions-model";
 
-export class SubscriptionPlanModule extends Model<
-  InferAttributes<SubscriptionPlanModule>,
-  InferCreationAttributes<SubscriptionPlanModule>
+export class SubscriptionPlanPermission extends Model<
+  InferAttributes<SubscriptionPlanPermission>,
+  InferCreationAttributes<SubscriptionPlanPermission>
 > {
   declare id: CreationOptional<string>;
   declare subscriptionPlanId: string;
-  declare moduleId: string;
+  declare permissionId: string;
   declare source: "plan" | "addon";
   declare isActive: boolean;
   declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
-  static initModel(sequelize: Sequelize): typeof SubscriptionPlanModule {
-    SubscriptionPlanModule.init(
+  static initModel(sequelize: Sequelize): typeof SubscriptionPlanPermission {
+    SubscriptionPlanPermission.init(
       {
         id: {
           type: DataTypes.UUID,
@@ -39,11 +39,11 @@ export class SubscriptionPlanModule extends Model<
             key: "id",
           },
         },
-        moduleId: {
+        permissionId: {
           type: DataTypes.UUID,
           allowNull: false,
           references: {
-            model: Modules,
+            model: Permissions,
             key: "id",
           },
         },
@@ -51,7 +51,7 @@ export class SubscriptionPlanModule extends Model<
           type: DataTypes.ENUM("plan", "addon"),
           allowNull: false,
           defaultValue: "plan",
-          comment: "Tracks if module is from base plan or addon",
+          comment: "Tracks if permission is from base plan or addon",
         },
         isActive: {
           type: DataTypes.BOOLEAN,
@@ -64,34 +64,34 @@ export class SubscriptionPlanModule extends Model<
           defaultValue: false,
         },
         createdAt: {
-            type: DataTypes.DATE,
-            allowNull: false,
-            defaultValue: DataTypes.NOW,
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
         },
         updatedAt: {
-            type: DataTypes.DATE,
-            allowNull: false,
-            defaultValue: DataTypes.NOW,
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
         },
       },
       {
         sequelize,
-        modelName: "SubscriptionPlanModule",
-        tableName: "subscription_plan_module",
+        modelName: "subscriptionPlanPermission",
+        tableName: "subscription_plan_permissions",
         timestamps: true,
         indexes: [
           {
             unique: true,
-            fields: ["subscriptionPlanId", "moduleId"],
-            name: "plan_module_unique",
+            fields: ["subscriptionPlanId", "permissionId"],
+            name: "subscription_plan_permission_unique",
           },
         ],
       }
     );
 
-    return SubscriptionPlanModule;
+    return SubscriptionPlanPermission;
   }
 }
 
-export const initSubscriptionPlanModuleModel = (sequelize: Sequelize) =>
-  SubscriptionPlanModule.initModel(sequelize);
+export const initSubscriptionPlanPermissionModel = (sequelize: Sequelize) =>
+  SubscriptionPlanPermission.initModel(sequelize);

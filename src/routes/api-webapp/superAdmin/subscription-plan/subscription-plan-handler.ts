@@ -2,18 +2,21 @@ import { Transaction } from "sequelize";
 import { SubscriptionPlan } from "../../../api-webapp/superAdmin/subscription-plan/subscription-plan-model";
 import { SubscriptionPlanModule } from "../../../api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-model";
 import { Modules } from "../../../api-webapp/superAdmin/modules/modules-model";
+import { bulkCreateSubscriptionPlanPermissions } from "../subscription-plan-permission/subscription-plan-permission-handler";
 
 export const calculateExpiryDate = (
   startDate: Date,
-  durationValue: number,
-  durationUnit: "month" | "year"
+  timing: number,
+  timing_unit: "day" | "month" | "year"
 ): Date => {
   const expiry = new Date(startDate);
 
-  if (durationUnit === "month") {
-    expiry.setMonth(expiry.getMonth() + durationValue);
+  if (timing_unit === "day") {
+    expiry.setDate(expiry.getDate() + timing);
+  } else if (timing_unit === "month") {
+    expiry.setMonth(expiry.getMonth() + timing);
   } else {
-    expiry.setFullYear(expiry.getFullYear() + durationValue);
+    expiry.setFullYear(expiry.getFullYear() + timing);
   }
 
   return expiry;
@@ -24,10 +27,21 @@ export const createSubscriptionPlan = async (
     name: string;
     description?: string | null;
     price: number;
-    durationValue: number;
-    durationUnit: "month" | "year";
-    isActive?: boolean;
-    modules?: string[]; // Array of module IDs
+    currency?: string;
+    timing: number;
+    timing_unit: "day" | "month" | "year";
+    billing_cycle: "monthly" | "yearly";
+    trial_available?: boolean;
+    trial_days?: number | null;
+    price_per_user?: boolean;
+    min_users?: number | null;
+    max_users?: number | null;
+    proration_enabled?: boolean;
+    display_order?: number;
+    status?: "active" | "inactive";
+    is_popular?: boolean;
+    modules?: string[]; // Array of module IDs (full module access)
+    permissions?: string[]; // Array of permission IDs (feature-level access)
   },
   t: Transaction
 ) => {
@@ -37,24 +51,45 @@ export const createSubscriptionPlan = async (
       name: fields.name,
       description: fields.description ?? null,
       price: fields.price,
-      durationValue: fields.durationValue,
-      durationUnit: fields.durationUnit,
-      isActive: fields.isActive ?? true,
+      currency: fields.currency ?? "INR",
+      timing: fields.timing,
+      timing_unit: fields.timing_unit,
+      billing_cycle: fields.billing_cycle,
+      trial_available: fields.trial_available ?? false,
+      trial_days: fields.trial_days ?? null,
+      price_per_user: fields.price_per_user ?? true,
+      min_users: fields.min_users ?? null,
+      max_users: fields.max_users ?? null,
+      proration_enabled: fields.proration_enabled ?? true,
+      display_order: fields.display_order ?? 0,
+      status: fields.status ?? "active",
+      is_popular: fields.is_popular ?? false,
       isDeleted: false,
     },
     { transaction: t }
   );
 
-  // If modules are provided, create subscription-plan-module associations
+  // If modules are provided, create subscription-plan-module associations (full module access)
   if (fields.modules && Array.isArray(fields.modules) && fields.modules.length > 0) {
     const moduleAssociations = fields.modules.map((moduleId) => ({
       subscriptionPlanId: plan.id,
       moduleId: moduleId,
+      source: "plan" as const,
       isActive: true,
       isDeleted: false,
     }));
 
     await SubscriptionPlanModule.bulkCreate(moduleAssociations, { transaction: t });
+  }
+
+  // If permissions are provided, create subscription-plan-permission associations (feature-level access)
+  if (fields.permissions && Array.isArray(fields.permissions) && fields.permissions.length > 0) {
+    await bulkCreateSubscriptionPlanPermissions(
+      plan.id,
+      fields.permissions,
+      "plan",
+      t
+    );
   }
 
   return plan;
@@ -65,17 +100,26 @@ export const createSubscriptionPlan = async (
  */
 export const getActiveSubscriptionPlans = async () => {
   return await SubscriptionPlan.findAll({
-    where: { isActive: true, isDeleted: false },
-    order: [["createdAt", "DESC"]],
+    where: { status: "active", isDeleted: false },
+    order: [
+      ["display_order", "ASC"],
+      ["createdAt", "DESC"]
+    ],
   });
 };
 
 /**
  * Get all subscription plans
+ * @param includeDeleted - Include soft-deleted plans (default: false)
  */
-export const getAllSubscriptionPlans = async () => {
+export const getAllSubscriptionPlans = async (includeDeleted: boolean = false) => {
+  const whereClause = includeDeleted ? {} : { is_deleted: false };
   return await SubscriptionPlan.findAll({
-    order: [["createdAt", "DESC"]],
+    where: whereClause,
+    order: [
+      ["display_order", "ASC"],
+      ["createdAt", "DESC"]
+    ],
   });
 };
 
@@ -84,7 +128,7 @@ export const getAllSubscriptionPlans = async () => {
  */
 export const getSubscriptionPlanById = async (id: string) => {
   return await SubscriptionPlan.findOne({
-    where: { id, isActive: true, isDeleted: false },
+    where: { id, status: "active", isDeleted: false },
   });
 };
 
@@ -97,7 +141,7 @@ export const updateSubscriptionPlan = async (
   t: Transaction
 ) => {
   const plan = await SubscriptionPlan.findOne({
-    where: { id, isActive: true, isDeleted: false },
+    where: { id, isDeleted: false },
     transaction: t,
     lock: t.LOCK.UPDATE,
   });
@@ -109,14 +153,15 @@ export const updateSubscriptionPlan = async (
 };
 
 /**
- * Soft delete subscription plan
+ * Soft delete subscription plan (set is_deleted to true)
+ * Never hard delete subscription plans - preserve historical data for analytics
  */
 export const deleteSubscriptionPlan = async (
   id: string,
   t: Transaction
 ) => {
   const plan = await SubscriptionPlan.findOne({
-    where: { id, isActive: true, isDeleted: false },
+    where: { id, isDeleted: false },
     transaction: t,
     lock: t.LOCK.UPDATE,
   });
@@ -124,7 +169,7 @@ export const deleteSubscriptionPlan = async (
   if (!plan) return false;
 
   await plan.update(
-    { isActive: false, isDeleted: true },
+    { isDeleted: true, status: "inactive" },
     { transaction: t }
   );
 
@@ -134,23 +179,33 @@ export const deleteSubscriptionPlan = async (
 /**
  * Calculate total price for subscription + addon modules with optional discount
  * @param subscriptionPlanId - Base subscription plan ID
+ * @param numberOfUsers - Number of user seats (required for per-seat pricing)
  * @param addonModuleIds - Array of addon module IDs
  * @param discount - Optional discount object { type: 'percentage' | 'fixed', value: number }
  * @returns Total price breakdown
  */
 export const calculateSubscriptionPrice = async (
   subscriptionPlanId: string,
+  numberOfUsers: number,
   addonModuleIds: string[] = [],
   discount?: { type: 'percentage' | 'fixed'; value: number }
 ): Promise<{
   basePlanPrice: number;
+  pricePerUser: boolean;
+  numberOfUsers: number;
+  calculatedPlanPrice: number;
   addonModulesPrice: number;
   subtotal: number;
   discountAmount: number;
   totalPrice: number;
   breakdown: {
     planName: string;
-    planPrice: number;
+    basePlanPrice: number;
+    pricePerUser: boolean;
+    numberOfUsers: number;
+    calculatedPlanPrice: number;
+    minUsers: number | null;
+    maxUsers: number | null;
     addons: Array<{ moduleName: string; price: number }>;
     discount?: { type: string; value: number; amount: number };
   };
@@ -161,7 +216,32 @@ export const calculateSubscriptionPrice = async (
     throw new Error("Subscription plan not found");
   }
 
+  // Validate numberOfUsers
+  if (!numberOfUsers || numberOfUsers < 1) {
+    throw new Error("numberOfUsers must be at least 1");
+  }
+
+  // Validate min_users constraint
+  if (plan.min_users !== null && numberOfUsers < plan.min_users) {
+    throw new Error(`This plan requires a minimum of ${plan.min_users} users`);
+  }
+
+  // Validate max_users constraint
+  if (plan.max_users !== null && numberOfUsers > plan.max_users) {
+    throw new Error(`This plan allows a maximum of ${plan.max_users} users`);
+  }
+
   const basePlanPrice = Number(plan.price);
+  
+  // Calculate plan price based on pricing model
+  let calculatedPlanPrice: number;
+  if (plan.price_per_user) {
+    // Per-seat pricing: base_price × number_of_users
+    calculatedPlanPrice = basePlanPrice * numberOfUsers;
+  } else {
+    // Fixed pricing: base_price regardless of users
+    calculatedPlanPrice = basePlanPrice;
+  }
   let addonModulesPrice = 0;
   const addons: Array<{ moduleName: string; price: number }> = [];
 
@@ -189,7 +269,7 @@ export const calculateSubscriptionPrice = async (
     }
   }
 
-  const subtotal = basePlanPrice + addonModulesPrice;
+  const subtotal = calculatedPlanPrice + addonModulesPrice;
   let discountAmount = 0;
   let discountDetails = undefined;
 
@@ -229,13 +309,21 @@ export const calculateSubscriptionPrice = async (
 
   return {
     basePlanPrice,
+    pricePerUser: plan.price_per_user,
+    numberOfUsers,
+    calculatedPlanPrice,
     addonModulesPrice,
     subtotal,
     discountAmount,
     totalPrice: Math.max(0, totalPrice), // Ensure non-negative
     breakdown: {
       planName: plan.name,
-      planPrice: basePlanPrice,
+      basePlanPrice,
+      pricePerUser: plan.price_per_user,
+      numberOfUsers,
+      calculatedPlanPrice,
+      minUsers: plan.min_users,
+      maxUsers: plan.max_users,
       addons,
       discount: discountDetails,
     },

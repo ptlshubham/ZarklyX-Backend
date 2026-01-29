@@ -7,10 +7,12 @@ export const createSubscriptionPlanModule = async (fields: {
   moduleId: string;
   isActive?: boolean;
   isDeleted?: boolean;
+  source?: "plan" | "addon";
 }, t: Transaction) => {
   return await SubscriptionPlanModule.create(
     {
       ...fields,
+      source: fields.source ?? "plan",
       isActive: fields.isActive ?? true,
       isDeleted: fields.isDeleted ?? false,
     },
