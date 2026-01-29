@@ -17,7 +17,6 @@ import {
   getSystemRoleByName,
   DEFAULT_SYSTEM_ROLES,
   validateRoleAssignment,
-  getZarklyXRoles,
   assignRoleToUser,
 } from "../../api-webapp/roles/role-handler";
 
@@ -478,37 +477,19 @@ router.get("/checkRoleName", async (req: Request, res: Response) => {
   }
 });
 
-// Get roles for ZarklyX staff only (internal admin use)
-router.get("/getZarklyXRoles", async (req: Request, res: Response) => {
-  try {
-    const roles = await getZarklyXRoles();
-    
-    return res.status(200).json({
-      success: true,
-      data: roles,
-      message: "ZarklyX roles fetched successfully"
-    });
-  } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Error fetching ZarklyX roles"
-    });
-  }
-});
-
 // Validate if a role can be assigned to a user
 router.post("/validateRoleAssignment", async (req: Request, res: Response) => {
-  const { userCompanyId, roleId } = req.body;
+  const { userId, roleId } = req.body;
 
-  if (!roleId) {
+  if (!userId || !roleId) {
     return res.status(400).json({
       success: false,
-      message: "roleId is required"
+      message: "userId and roleId are required"
     });
   }
 
   try {
-    const validation = await validateRoleAssignment(userCompanyId || null, roleId);
+    const validation = await validateRoleAssignment(userId, roleId);
     
     return res.status(200).json({
       success: validation.valid,
