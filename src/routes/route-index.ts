@@ -64,6 +64,8 @@ export default (app: Application) => {
     app.use("/role-permissions",require("./api-webapp/roles/role-permissions/role-permissions-api"));
     app.use("/user-overrides",require("./api-webapp/roles/user-permission-overrides/user-permission-overrides-api"));
     app.use("/rbac",require("./api-webapp/roles/rbac-api"));
+
+    // ROUTES for ZarklyX Users Role Base System
     app.use("/superAdmin/zarklyx/auth",require("./api-webapp/superAdmin/zarklyX-auth/zarklyX-auth-api"));
     app.use("/superAdmin/zarklyx/users", require("./api-webapp/superAdmin/zarklyX-users/zarklyX-uesrs-api"));
     app.use("/superAdmin/zarklyx/roles", require("./api-webapp/superAdmin/zarklyX-roles/zarklyX-roles-api"));
