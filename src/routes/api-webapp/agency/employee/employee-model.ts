@@ -27,13 +27,17 @@ export class Employee extends Model<
     declare nationality: string | null;
     declare maritalStatus: string | null; // "Single", "Married", "Divorced", "Widowed"
     declare bloodGroup: string | null; // "O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"
+    declare contactNumber: string | null;
     declare emergencyContactName: string | null;
     declare emergencyContactNumber: string | null;
+    declare emergencyContactIsdCode: string | null;
+    declare emergencyContactIsoCode: string | null;
     declare emergencyContactRelationship: string | null;
     declare permanentAddress: string | null;
     declare currentAddress: string | null;
     declare isoCode: string | null; // ISO country code
     declare isdCode: string | null; // ISD country code
+    // NOTE: contactNumber removed - use User.contact instead
 
     // ✅ 2. EMPLOYMENT DETAILS
     declare designation: string | null; // Job Title
@@ -141,7 +145,6 @@ export class Employee extends Model<
                 employeeId: {
                     type: DataTypes.STRING(50),
                     allowNull: false,
-                    unique: true,
                 },
                 departmentId: {
                     type: DataTypes.STRING,
@@ -174,12 +177,24 @@ export class Employee extends Model<
                     ),
                     allowNull: true,
                 },
+                contactNumber: {
+                    type: DataTypes.STRING(15),
+                    allowNull: true,
+                },
                 emergencyContactName: {
                     type: DataTypes.STRING(255),
                     allowNull: true,
                 },
                 emergencyContactNumber: {
                     type: DataTypes.STRING(15),
+                    allowNull: true,
+                },
+                emergencyContactIsdCode: {
+                    type: DataTypes.STRING(10),
+                    allowNull: true,
+                },
+                emergencyContactIsoCode: {
+                    type: DataTypes.STRING(10),
                     allowNull: true,
                 },
                 emergencyContactRelationship: {
