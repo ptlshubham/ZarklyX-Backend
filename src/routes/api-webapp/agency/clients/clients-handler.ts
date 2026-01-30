@@ -1,7 +1,7 @@
 
 // import { User } from "../../../../routes/api-webapp/authentication/user/user-model"; // Ensure correct import
 import { Clients } from "../../../../routes/api-webapp/agency/clients/clients-model";
-import { Op, Transaction } from "sequelize";
+import { Op, Transaction, where, fn, col } from "sequelize";
 const { MakeQuery } = require("../../../../services/model-service");
 import axios from "axios";
 
@@ -75,6 +75,94 @@ interface ClientsPayload {
 // add AgencyClient 
 export const addAgencyClient = async (body: ClientsPayload, t: Transaction) => {
   return Clients.create(body as any, { transaction: t });
+};
+
+/**
+ * OPTIMIZED: Get client data with all counts in ONE efficient database operation
+ * Fetches paginated data for the specified filter type + all three category counts
+ * Uses database-level filtering and SQL COUNT() for performance
+ */
+export const getClientDataWithCounts = async (
+  companyId: string,
+  filterType: "approved" | "unassigned" | "pending",
+  query: any,
+  limit: number = 10,
+  offset: number = 0
+) => {
+  // Build base WHERE clause
+  const baseWhere: any = {
+    companyId,
+    isDeleted: false,
+  };
+
+  // Build filter-specific WHERE clause
+  let dataWhere = { ...baseWhere };
+
+  if (filterType === "approved") {
+    dataWhere.isApprove = true;
+    dataWhere.isassigned = true;
+  } else if (filterType === "unassigned") {
+    dataWhere.isApprove = true;
+    dataWhere.isassigned = false;
+  } else if (filterType === "pending") {
+    dataWhere.isApprove = false;
+  }
+
+  // Apply search filter if provided
+  if (query.search) {
+    const s = query.search.toLowerCase();
+    dataWhere[Op.or] = [
+      { clientfirstName: { [Op.like]: `${s}%` } },
+      { clientLastName: { [Op.like]: `${s}%` } },
+      { email: { [Op.like]: `${s}%` } },
+      { businessName: { [Op.like]: `${s}%` } },
+    ];
+  }
+
+  // Fetch paginated data and counts in parallel
+  const [dataResult, approvedCountResult, pendingCountResult, unassignedCountResult] = await Promise.all([
+    // Get paginated data with applied filters
+    Clients.findAndCountAll({
+      where: dataWhere,
+      limit,
+      offset,
+      raw: true,
+      order: [["createdAt", "DESC"]],
+    }),
+    // Count approved & assigned
+    Clients.count({
+      where: {
+        ...baseWhere,
+        isApprove: true,
+        isassigned: true,
+      },
+    }),
+    // Count pending (unapproved)
+    Clients.count({
+      where: {
+        ...baseWhere,
+        isApprove: false,
+      },
+    }),
+    // Count unassigned (approved but unassigned)
+    Clients.count({
+      where: {
+        ...baseWhere,
+        isApprove: true,
+        isassigned: false,
+      },
+    }),
+  ]);
+
+  return {
+    data: dataResult.rows,
+    count: dataResult.count,
+    counts: {
+      approved: approvedCountResult,
+      pending: pendingCountResult,
+      unassigned: unassignedCountResult,
+    },
+  };
 };
 
 //for get AgencyClient filter

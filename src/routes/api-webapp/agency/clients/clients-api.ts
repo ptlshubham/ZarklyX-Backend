@@ -25,6 +25,7 @@ import {
   getagencyClientByid,
   getAllAgencyClient,
   getAgencyClientByUserId,
+  getClientDataWithCounts,
 } from "../../../../routes/api-webapp/agency/clients/clients-handler";
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { generateUniqueSecretCode } from "../../../../routes/api-webapp/authentication/user/user-handler";
@@ -142,6 +143,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
 
     // Validate company if companyId is provided
     let validatedCompanyId = null;
+    let companyIsdCode = null;
+    let companyIsoCode = null;
     if (companyId) {
       const company = await Company.findByPk(companyId, { transaction: t });
       if (!company) {
@@ -153,6 +156,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         return;
       }
       validatedCompanyId = companyId;
+      companyIsdCode = company.isdCode;
+      companyIsoCode = company.isoCode;
     }
 
     // Check if client already exists
@@ -182,8 +187,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         lastName,
         email: googleEmail,
         contact: null,
-        isdCode: null,
-        isoCode: null,
+        isdCode: companyIsdCode,
+        isoCode: companyIsoCode,
         password: generateRandomPassword(),
         userType: "client",
         isEmailVerified: emailVerified,
@@ -220,8 +225,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         isdBusinessCode: null,
         businessDescription: null,
         countryCode: null,
-        isoCode: null,
-        isdCode: null,
+        isoCode: companyIsoCode,
+        isdCode: companyIsdCode,
         country: null,
         state: null,
         city: null,
@@ -1221,11 +1226,12 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       profile: req.body.profile || null,
       isActive: true,
       isDeleted: false,
-      isApprove: false,
+      isApprove: true,
       isCredential: false,
       profileStatus: false,
       isEmailVerified: true,
       isFirstLogin: true,
+      isassigned: true,
     };
 
     const client = await addAgencyClient(payload, t);
@@ -1855,10 +1861,7 @@ router.patch("/clients/restore/:id",
 router.get("/clients/by-company/:companyId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { companyId } = req.params;
-    const { search, ...restQuery } = req.query as {
-      [key: string]: any;
-      search?: string;
-    };
+    const { search } = req.query as { search?: string };
 
     if (!companyId) {
       res.status(400).json({
@@ -1871,52 +1874,17 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
     const limit = Number(req.query.limit) || 10;
     const offset = Number(req.query.offset) || 0;
 
-    const queryForHandler = {
-      ...restQuery,
-      companyId,
-      isApprove: 1, // Filter only approved clients
-    };
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "approved", { search }, limit, offset);
 
-    const result: any = await getAllAgencyClient(queryForHandler);
-
-    let rows = result.rows || result;
-    let count = result.count ?? rows.length;
-
-    // ---------- APPROVED FILTER (Only isApprove = 1) ----------
-    rows = rows.filter((r: any) => r.isApprove === 1 || r.isApprove === true);
-    count = rows.length;
-
-    // ---------- SEARCH FILTER ----------
-    if (search) {
-      const s = search.toString().toLowerCase();
-
-      rows = rows.filter((r: any) => {
-        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
-          .trim()
-          .toLowerCase();
-        const email = (r.email || "").toLowerCase();
-        const businessName = (r.businessName || "").toLowerCase();
-
-        return (
-          fullName.includes(s) ||
-          email.includes(s) ||
-          businessName.includes(s)
-        );
-      });
-
-      count = rows.length;
-    }
-
-    // ---------- PAGINATION ----------
-    const paginatedRows = rows.slice(offset, offset + limit);
-
-    // ---------- RESPONSE ----------
     res.status(200).json({
       success: true,
-      message: "Clients fetched successfully for the company.",
-      data: paginatedRows,
+      message: "Approved and assigned clients fetched successfully for the company.",
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
       pagination: {
-        total: count,
+        total: result.count,
         limit,
         offset,
       },
@@ -1936,14 +1904,11 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
   }
 });
 
-// get unassigned clients by companyId (isassigned = 0)
+// get unassigned clients by companyId (OPTIMIZED: Single efficient query)
 router.get("/clients/unassigned/:companyId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { companyId } = req.params;
-    const { search, ...restQuery } = req.query as {
-      [key: string]: any;
-      search?: string;
-    };
+    const { search } = req.query as { search?: string };
 
     if (!companyId) {
       res.status(400).json({
@@ -1956,54 +1921,23 @@ router.get("/clients/unassigned/:companyId", async (req: Request, res: Response)
     const limit = Number(req.query.limit) || 10;
     const offset = Number(req.query.offset) || 0;
 
-    const queryForHandler = {
-      ...restQuery,
-      companyId,
-      isassigned: 0, // Filter for unassigned clients only
-    };
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "unassigned", { search }, limit, offset);
 
-    const result: any = await getAllAgencyClient(queryForHandler);
-
-    let rows = result.rows || result;
-    let count = result.count ?? rows.length;
-
-    // ---------- SEARCH FILTER ----------
-    if (search) {
-      const s = search.toString().toLowerCase();
-
-      rows = rows.filter((r: any) => {
-        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
-          .trim()
-          .toLowerCase();
-        const email = (r.email || "").toLowerCase();
-        const businessName = (r.businessName || "").toLowerCase();
-
-        return (
-          fullName.includes(s) ||
-          email.includes(s) ||
-          businessName.includes(s)
-        );
-      });
-
-      count = rows.length;
-    }
-
-    // ---------- PAGINATION ----------
-    const paginatedRows = rows.slice(offset, offset + limit);
-
-    // ---------- RESPONSE ----------
     res.status(200).json({
       success: true,
       message: "Unassigned clients fetched successfully for the company.",
-      data: paginatedRows,
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
       pagination: {
-        total: count,
+        total: result.count,
         limit,
         offset,
       },
     });
   } catch (error: any) {
-    console.error("[GET /clients/by-company/:companyId/unassigned] ERROR:", error);
+    console.error("[GET /clients/unassigned/:companyId] ERROR:", error);
 
     ErrorLogger.write({
       type: "get unassigned clients by company error",
@@ -2017,14 +1951,11 @@ router.get("/clients/unassigned/:companyId", async (req: Request, res: Response)
   }
 });
 
-// get unapproved clients by companyId (isApprove = 0)
+// get unapproved clients by companyId (OPTIMIZED: Single efficient query)
 router.get("/clients/pending/:companyId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { companyId } = req.params;
-    const { search, ...restQuery } = req.query as {
-      [key: string]: any;
-      search?: string;
-    };
+    const { search } = req.query as { search?: string };
 
     if (!companyId) {
       res.status(400).json({
@@ -2037,52 +1968,17 @@ router.get("/clients/pending/:companyId", async (req: Request, res: Response): P
     const limit = Number(req.query.limit) || 10;
     const offset = Number(req.query.offset) || 0;
 
-    const queryForHandler = {
-      ...restQuery,
-      companyId,
-      isApprove: 0, // Filter for unapproved clients only
-    };
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "pending", { search }, limit, offset);
 
-    const result: any = await getAllAgencyClient(queryForHandler);
-
-    let rows = result.rows || result;
-    let count = result.count ?? rows.length;
-
-    // ---------- UNAPPROVED FILTER (Only isApprove = 0) ----------
-    rows = rows.filter((r: any) => r.isApprove === 0 || r.isApprove === false);
-    count = rows.length;
-
-    // ---------- SEARCH FILTER ----------
-    if (search) {
-      const s = search.toString().toLowerCase();
-
-      rows = rows.filter((r: any) => {
-        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
-          .trim()
-          .toLowerCase();
-        const email = (r.email || "").toLowerCase();
-        const businessName = (r.businessName || "").toLowerCase();
-
-        return (
-          fullName.includes(s) ||
-          email.includes(s) ||
-          businessName.includes(s)
-        );
-      });
-
-      count = rows.length;
-    }
-
-    // ---------- PAGINATION ----------
-    const paginatedRows = rows.slice(offset, offset + limit);
-
-    // ---------- RESPONSE ----------
     res.status(200).json({
       success: true,
       message: "Pending (unapproved) clients fetched successfully for the company.",
-      data: paginatedRows,
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
       pagination: {
-        total: count,
+        total: result.count,
         limit,
         offset,
       },
@@ -2098,6 +1994,115 @@ router.get("/clients/pending/:companyId", async (req: Request, res: Response): P
     res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch pending clients.",
+    });
+  }
+});
+
+// Approve client (set isApprove = 1)
+router.post("/approve/:clientId", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { clientId } = req.params;
+    if (Array.isArray(clientId)) clientId = clientId[0];
+
+    if (!clientId || clientId.trim() === "") {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+      return;
+    }
+
+    const client = await Clients.findByPk(clientId, { transaction: t });
+
+    if (!client) {
+      await t.rollback();
+      res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+      return;
+    }
+
+    await client.update(
+      { isApprove: true },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "Client approved successfully.",
+      data: {
+        id: client.id,
+        clientfirstName: client.clientfirstName,
+        clientLastName: client.clientLastName,
+        email: client.email,
+        isApprove: true,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[POST /clients/approve/:clientId] ERROR:", error);
+    ErrorLogger.write({ type: "approve client error", error });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to approve client.",
+    });
+  }
+});
+
+// Reject client (soft delete)
+router.post("/reject/:clientId", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { clientId } = req.params;
+    if (Array.isArray(clientId)) clientId = clientId[0];
+
+    if (!clientId || clientId.trim() === "") {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+      return;
+    }
+
+    const client = await Clients.findByPk(clientId, { transaction: t });
+
+    if (!client) {
+      await t.rollback();
+      res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+      return;
+    }
+
+    await client.destroy({ transaction: t });
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "Client rejected and deleted successfully.",
+      data: {
+        id: clientId,
+        clientfirstName: client.clientfirstName,
+        clientLastName: client.clientLastName,
+        email: client.email,
+        isDeleted: true,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[POST /clients/reject/:clientId] ERROR:", error);
+    ErrorLogger.write({ type: "reject client error", error });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to reject client.",
     });
   }
 });
