@@ -1,6 +1,7 @@
 
 // import { User } from "../../../../routes/api-webapp/authentication/user/user-model"; // Ensure correct import
 import { Clients } from "../../../../routes/api-webapp/agency/clients/clients-model";
+import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { Op, Transaction, where, fn, col } from "sequelize";
 const { MakeQuery } = require("../../../../services/model-service");
 import axios from "axios";
@@ -262,5 +263,43 @@ export const getAgencyClientByUserId = async (userId: string) => {
       userId,
     },
   });
+};
+
+// Validate company URL by companyId or userName and get branding assets
+export const validateCompanyUrlAndBranding = async (
+  companyId?: string,
+  userName?: string
+) => {
+  const whereClause: any = { isActive: true };
+
+  if (companyId) {
+    whereClause.id = String(companyId).trim();
+  }
+  if (userName) {
+    whereClause.userName = String(userName).trim();
+  }
+
+  const company: any = await Company.findOne({ where: whereClause });
+
+  if (!company) {
+    return null;
+  }
+
+  // Return company data with branding assets
+  return {
+    companyId: company.id,
+    userName: company.userName,
+    isValid: true,
+    branding: {
+      logo: company.logo || null,
+      companyLogoLight: company.companyLogoLight || null,
+      companyLogoDark: company.companyLogoDark || null,
+      faviconLight: company.faviconLight || null,
+      faviconDark: company.faviconDark || null,
+      employeeLoginBanner: company.employeeLoginBanner || null,
+      clientLoginBanner: company.clientLoginBanner || null,
+      clientSignupBanner: company.clientSignupBanner || null,
+    },
+  };
 };
 

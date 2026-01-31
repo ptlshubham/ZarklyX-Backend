@@ -13,6 +13,10 @@ import {
   isUserInCompany,
   getUserPrimaryCompany,
   deactivateUserCompany,
+  validateAssetType,
+  getValidAssetTypes,
+  removeCompanyAsset,
+  uploadCompanyAsset,
 } from "./company-handler";
 import { tokenMiddleWare } from "../../../services/jwtToken-service";
 import {
@@ -539,7 +543,7 @@ router.delete("/:companyId/remove-user/:targetUserId",
 /**
  * PATCH /company/removeCompanyAsset/:assetType
  * Remove a company asset image (Admin/Owner only)
- * Params: assetType (companyLogoLight | companyLogoDark | faviconLight | faviconDark)
+ * Params: assetType (companyLogoLight | companyLogoDark | faviconLight | faviconDark | employeeLoginBanner | clientLoginBanner | clientSignupBanner)
  * Body: { companyId }
  */
 router.patch("/removeCompanyAsset/:assetType", tokenMiddleWare, async (req: Request, res: Response): Promise<any> => {
@@ -558,11 +562,21 @@ router.patch("/removeCompanyAsset/:assetType", tokenMiddleWare, async (req: Requ
       });
     }
 
-    if (!['companyLogoLight', 'companyLogoDark', 'faviconLight', 'faviconDark'].includes(assetType)) {
+    const validAssetTypes = [
+      'companyLogoLight',
+      'companyLogoDark',
+      'faviconLight',
+      'faviconDark',
+      'employeeLoginBanner',
+      'clientLoginBanner',
+      'clientSignupBanner'
+    ];
+
+    if (!validAssetTypes.includes(assetType)) {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        message: "Invalid assetType. Must be one of: companyLogoLight, companyLogoDark, faviconLight, faviconDark",
+        message: `Invalid assetType. Must be one of: ${validAssetTypes.join(', ')}`,
       });
     }
 
@@ -576,33 +590,14 @@ router.patch("/removeCompanyAsset/:assetType", tokenMiddleWare, async (req: Requ
       });
     }
 
-    // Get current asset path for file deletion
-    const currentAssetPath = (company.dataValues as any)[assetType];
-
-    // Update company to remove the asset
-    await company.update({ [assetType]: null }, { transaction: t });
-
-    // Delete file from disk if it exists
-    if (currentAssetPath) {
-      try {
-        const fs = require('fs').promises;
-        const filePath = path.join(process.cwd(), 'src', 'public', currentAssetPath.replace(/^\//, ''));
-        await fs.unlink(filePath).catch(() => { }); // Silently ignore if file doesn't exist
-      } catch (err) {
-        console.warn(`Failed to delete file at ${currentAssetPath}:`, err);
-      }
-    }
-
+    // Remove asset using handler
+    const result = await removeCompanyAsset(companyId, assetType, t);
     await t.commit();
 
     return res.status(200).json({
       success: true,
       message: `${assetType} removed successfully`,
-      data: {
-        companyId,
-        assetType,
-        removed: true,
-      },
+      data: result,
     });
   } catch (error: any) {
     await t.rollback();
@@ -631,11 +626,11 @@ router.post(
         });
       }
 
-      if (!['companyLogoLight', 'companyLogoDark', 'faviconLight', 'faviconDark'].includes(assetType)) {
+      if (!validateAssetType(assetType)) {
         await t.rollback();
         return res.status(400).json({
           success: false,
-          message: "Invalid assetType. Must be one of: companyLogoLight, companyLogoDark, faviconLight, faviconDark",
+          message: `Invalid assetType. Must be one of: ${getValidAssetTypes().join(', ')}`,
         });
       }
 
@@ -658,28 +653,11 @@ router.post(
         return res.status(404).json({ success: false, message: "Company not found" });
       }
 
-      const oldAssetPath = (company.dataValues as any)[assetType];
-
-      // Build relative URL for returned path (matches frontend expectation: filePath)
-      const filePathRelative = `/${path.relative(path.join(process.cwd(), "src/public"), req.file.path).replace(/\\/g, "/")}`;
-
-      // Update DB immediately
-      await company.update({ [assetType]: filePathRelative } as any, { transaction: t });
-
+      // Upload asset using handler
+      const result = await uploadCompanyAsset(companyId, assetType, req.file, t);
       await t.commit();
 
-      // Remove old file from disk after commit
-      if (oldAssetPath) {
-        try {
-          const fs = require("fs").promises;
-          const oldFilePath = path.join(process.cwd(), "src", "public", oldAssetPath.replace(/^\//, ""));
-          await fs.unlink(oldFilePath).catch(() => { });
-        } catch (err) {
-          console.warn(`Failed to delete old asset ${oldAssetPath}:`, err);
-        }
-      }
-
-      return res.status(200).json({ success: true, data: { filePath: filePathRelative }, message: `${assetType} uploaded successfully` });
+      return res.status(200).json({ success: true, data: result, message: `${assetType} uploaded successfully` });
     } catch (error: any) {
       // cleanup uploaded file on error
       try {

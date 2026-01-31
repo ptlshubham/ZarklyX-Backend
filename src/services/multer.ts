@@ -72,6 +72,9 @@ const COMPANY_ASSET_DIR_MAP: { [key: string]: string } = {
   companyLogoDark: "company/companyLogoDark",
   faviconLight: "company/faviconLight",
   faviconDark: "company/faviconDark",
+  employeeLoginBanner: "company/employeeLoginBanner",
+  clientLoginBanner: "company/clientLoginBanner",
+  clientSignupBanner: "company/clientSignupBanner",
 };
 
 const companyAssetsStorage = multer.diskStorage({
@@ -119,13 +122,13 @@ export const companyAssetsUpload = multer({
 
 //filepath conversion helper function
 export function convertToRelativePath(files?: Express.Multer.File[]): string[] {
-    if (!files || files.length === 0) return [];
+  if (!files || files.length === 0) return [];
 
-    return files.map((file) => {
-        const relativePath = path.relative(path.join(process.cwd(), "src", "public"), file.path).replace(/\\/g, "/");
-            return `/${relativePath}`;
+  return files.map((file) => {
+    const relativePath = path.relative(path.join(process.cwd(), "src", "public"), file.path).replace(/\\/g, "/");
+    return `/${relativePath}`;
 
-    });
+  });
 
 }
 // Export alias for clarity — the storage will choose folder based on the provided :assetType param

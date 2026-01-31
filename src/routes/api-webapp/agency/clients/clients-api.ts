@@ -26,6 +26,7 @@ import {
   getAllAgencyClient,
   getAgencyClientByUserId,
   getClientDataWithCounts,
+  validateCompanyUrlAndBranding,
 } from "../../../../routes/api-webapp/agency/clients/clients-handler";
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { generateUniqueSecretCode } from "../../../../routes/api-webapp/authentication/user/user-handler";
@@ -2583,8 +2584,7 @@ router.post("/check-client-exists", async (req: Request, res: Response): Promise
   }
 });
 
-// Outer client-url validate route
-// Validate URL by companyId or userName
+// Validate URL by companyId or userName and return branding assets
 // Usage: GET /auth/validate-url?companyId=<id>  OR  /auth/validate-url?userName=<name>
 router.get("/client/validate-url",
   async (req: Request, res: Response): Promise<void> => {
@@ -2596,32 +2596,19 @@ router.get("/client/validate-url",
         return;
       }
 
-      // Use isActive instead of isDeleted
-      const whereClause: any = { isActive: true };
+      // Use handler to validate and get branding assets
+      const result = await validateCompanyUrlAndBranding(companyId, userName);
 
-      if (companyId) {
-        whereClause.id = String(companyId).trim(); // primary key
-      }
-      if (userName) {
-        whereClause.userName = String(userName).trim(); // username column
-      }
-
-      const company: any = await Company.findOne({ where: whereClause });
-
-      if (!company) {
+      if (!result) {
         res.status(404).json({ success: false, message: "Not found or invalid URL", data: { isValid: false } });
         return;
       }
 
-      // Return both companyId and userName (may be null)
+      // Return company branding assets along with companyId and userName
       res.status(200).json({
         success: true,
         message: "Valid URL",
-        data: {
-          companyId: company.id || null,
-          userName: company.userName || null,
-          isValid: true,
-        },
+        data: result,
       });
     } catch (error: any) {
       console.error("[/client/auth/validate-url] ERROR:", error);
