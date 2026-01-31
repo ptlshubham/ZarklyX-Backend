@@ -13,44 +13,13 @@ import {
   roleNameExists,
   getAvailableRolesForCompany,
   cloneRoleToCompany,
-  initializeSystemRoles,
   getSystemRoleByName,
-  DEFAULT_SYSTEM_ROLES,
   validateRoleAssignment,
   assignRoleToUser,
 } from "../../api-webapp/roles/role-handler";
+import { assignBulkPermissionsToRole } from "../role-permissions/role-permissions-handler";
 
 const router = Router();
-
-// Initialize default system roles
-router.post("/initializeSystemRoles", async (req: Request, res: Response) => {
-  const t = await dbInstance.transaction();
-  try {
-    const result = await initializeSystemRoles(t);
-    await t.commit();
-    
-    return res.status(201).json({
-      success: true,
-      data: result,
-      message: `System roles initialized: ${result.created.length} created, ${result.skipped.length} already existed`
-    });
-  } catch (error: any) {
-    await t.rollback();
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Error initializing system roles"
-    });
-  }
-});
-
-// Get default system roles definition
-router.get("/getDefaultSystemRoles", async (req: Request, res: Response) => {
-  return res.status(200).json({
-    success: true,
-    data: DEFAULT_SYSTEM_ROLES,
-    message: "Default system roles definition fetched successfully"
-  });
-});
 
 // Get a specific system role by name
 router.get("/getSystemRole/:name", async (req: Request, res: Response) => {
@@ -82,7 +51,7 @@ router.get("/getSystemRole/:name", async (req: Request, res: Response) => {
 
 // Create a new role
 router.post("/createRole", async (req: Request, res: Response) => {
-  const { name, description, scope, companyId, isSystemRole, priority, level, isActive } = req.body;
+  const { name, description, scope, companyId, isSystemRole, priority, level, permissionIds, isActive } = req.body;
 
   if (!name || !scope) {
     return res.status(400).json({ 
@@ -113,6 +82,13 @@ router.post("/createRole", async (req: Request, res: Response) => {
     });
   }
 
+  if (permissionIds !== undefined && !Array.isArray(permissionIds)) {
+    return res.status(400).json({
+      success: false,
+      message: "permissionIds must be an array"
+    });
+  }
+
   const t = await dbInstance.transaction();
   try {
     // Check if role name already exists
@@ -129,11 +105,15 @@ router.post("/createRole", async (req: Request, res: Response) => {
       { name, description, scope, companyId, isSystemRole, priority, level, isActive },
       t
     );
+
+    // Add permissions to the created role
+    const permissions = await assignBulkPermissionsToRole(role.id, permissionIds, t);
+
     await t.commit();
     return res.status(201).json({ 
       success: true, 
-      data: role, 
-      message: "Role created successfully" 
+      data: role, permissions, 
+      message: "Role with permissions created successfully" 
     });
   } catch (error: any) {
     await t.rollback();
