@@ -1585,7 +1585,7 @@ router.patch(
  * 2. email/contact + password (2FA required if enabled)
  * Allows all user types to login (not restricted to clients)
  */
-router.post("/login", async (req: Request, res: Response): Promise<void> => {
+router.post("/employee-login", async (req: Request, res: Response): Promise<void> => {
 
     const t = await dbInstance.transaction();
 
@@ -1623,6 +1623,16 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
                 res.status(403).json({
                     success: false,
                     message: "Your account is deactivated. Please contact support.",
+                });
+                return;
+            }
+
+            // Check if user is a client - clients cannot login through this endpoint
+            if (user.userType === 'client') {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Clients cannot login through this endpoint. Please use the client login endpoint.",
                 });
                 return;
             }
@@ -1688,6 +1698,16 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
                 res.status(403).json({
                     success: false,
                     message: "Your account is deactivated. Please contact support.",
+                });
+                return;
+            }
+
+            // Check if user is a client - clients cannot login through this endpoint
+            if (user.userType === 'client') {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Clients cannot login through this endpoint. Please use the client login endpoint.",
                 });
                 return;
             }
