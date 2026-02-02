@@ -55,8 +55,7 @@ export class Employee extends Model<
     declare passportNumber: string | null;
     declare drivingLicenseNumber: string | null;
     declare voterIdNumber: string | null;
-    declare aadharDocumentPath: string | null;
-    declare panDocumentPath: string | null;
+    // Document files are stored in EmployeeDocument model, not here
 
     // ✅ 4. BANKING & PAYROLL DETAILS
     declare bankAccountHolderName: string | null;
@@ -281,14 +280,6 @@ export class Employee extends Model<
                 },
                 voterIdNumber: {
                     type: DataTypes.STRING(20),
-                    allowNull: true,
-                },
-                aadharDocumentPath: {
-                    type: DataTypes.STRING(500),
-                    allowNull: true,
-                },
-                panDocumentPath: {
-                    type: DataTypes.STRING(500),
                     allowNull: true,
                 },
                 // Banking & Payroll

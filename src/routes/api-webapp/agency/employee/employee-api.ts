@@ -22,13 +22,17 @@ import {
     getEmployeesByEmploymentType,
     getAllEmployees,
     EmployeePayload,
+    addEmployeeDocument,
+    getEmployeeDocuments,
+    getEmployeeDocumentById,
+    removeEmployeeDocument,
 } from "../../../../routes/api-webapp/agency/employee/employee-handler";
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { authMiddleware } from "../../../../middleware/auth.middleware";
 import { employeeFileUpload } from "../../../../middleware/employeeFileUpload";
 import { errorResponse, unauthorized, serverError } from "../../../../utils/responseHandler";
-import { employeeProfilePhotoUpload, employeeResumeUpload } from "../../../../services/multer";
+import { employeeProfilePhotoUpload, employeeResumeUpload, employeeDocumentUpload } from "../../../../services/multer";
 import fs from "fs";
 import path from "path";
 import configs from "../../../../config/config";
@@ -405,6 +409,7 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
 /**
  * GET /employee/id/:id
  * Get employee by ID (from employee table only, no user data)
+ * Also includes all employee documents
  */
 router.get("/id/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
@@ -421,10 +426,16 @@ router.get("/id/:id", tokenMiddleWare, async (req: Request, res: Response): Prom
             return;
         }
 
+        // Get employee documents
+        const documents = await getEmployeeDocuments(id, employee.companyId);
+
         res.status(200).json({
             success: true,
             message: "Employee retrieved successfully",
-            data: employee,
+            data: {
+                ...employee.toJSON(),
+                documents: documents || [],
+            },
         });
     } catch (err) {
         console.error("[employee/id] ERROR:", err);
@@ -1763,5 +1774,191 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
         serverError(res, error.message || "Login failed.");
     }
 });
+
+// ===== EMPLOYEE DOCUMENT MANAGEMENT (NEW) =====
+
+/**
+ * POST /employee/uploadDocument/:employeeId
+ * Upload employee document
+ * Body: Form data with file field
+ */
+router.post(
+    "/uploadDocument/:employeeId",
+    tokenMiddleWare,
+    employeeDocumentUpload.single("file"),
+    async (req: Request, res: Response): Promise<void> => {
+        const t = await dbInstance.transaction();
+        try {
+            let { employeeId } = req.params;
+            if (Array.isArray(employeeId)) employeeId = employeeId[0];
+
+            const user = (req as any).user;
+
+            // Validation
+            if (!user || !user.companyId) {
+                await t.rollback();
+                res.status(401).json({
+                    success: false,
+                    message: "Unauthorized: companyId missing",
+                });
+                return;
+            }
+
+            if (!req.file) {
+                await t.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: "No file uploaded",
+                });
+                return;
+            }
+
+            const { companyId } = user;
+
+            // Verify employee exists and belongs to company
+            const employee = await getEmployeeById(employeeId);
+
+            if (!employee || employee.isDeleted) {
+                await t.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Employee not found",
+                });
+                return;
+            }
+
+            if (employee.companyId !== companyId) {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Unauthorized: Employee does not belong to your company",
+                });
+                return;
+            }
+
+            // Construct the relative path for storage
+            const documentPath = `/employee/documents/${req.file.filename}`;
+
+            // Add employee document in database
+            await addEmployeeDocument(
+                employeeId,
+                companyId,
+                documentPath,
+                t
+            );
+
+            await t.commit();
+
+            res.status(200).json({
+                success: true,
+                message: "Document uploaded successfully",
+                data: {
+                    employeeId,
+                    documentPath,
+                    filename: req.file.filename,
+                },
+            });
+        } catch (err) {
+            await t.rollback();
+            console.error("[employee/uploadDocument] ERROR:", err);
+            ErrorLogger.write({ type: "uploadEmployeeDocument error", error: err });
+            res.status(500).json({
+                success: false,
+                message: "Server error",
+                error: process.env.NODE_ENV === "development" ? err : undefined,
+            });
+        }
+    }
+);
+
+/**
+ * DELETE /employee/removeDocument/:documentId
+ * Remove employee document
+ */
+router.delete(
+    "/removeDocument/:documentId",
+    tokenMiddleWare,
+    async (req: Request, res: Response): Promise<void> => {
+        const t = await dbInstance.transaction();
+        try {
+            let { documentId } = req.params;
+            if (Array.isArray(documentId)) documentId = documentId[0];
+
+            const user = (req as any).user;
+
+            if (!user || !user.companyId) {
+                await t.rollback();
+                res.status(401).json({
+                    success: false,
+                    message: "Unauthorized: companyId missing",
+                });
+                return;
+            }
+
+            const { companyId } = user;
+
+            // Get document
+            const document = await getEmployeeDocumentById(documentId);
+
+            if (!document) {
+                await t.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Document not found",
+                });
+                return;
+            }
+
+            // Verify document belongs to a company employee
+            if (document.companyId !== companyId) {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Unauthorized: Document does not belong to your company",
+                });
+                return;
+            }
+
+            // Get file path for deletion
+            const filePath = document.documentPath;
+
+            // Delete document
+            await removeEmployeeDocument(documentId, t);
+
+            // Delete file from disk if it exists
+            if (filePath) {
+                try {
+                    const fullPath = path.join(
+                        process.cwd(),
+                        "src",
+                        "public",
+                        filePath.replace(/^\//, "")
+                    );
+                    if (fs.existsSync(fullPath)) {
+                        fs.unlinkSync(fullPath);
+                    }
+                } catch (err) {
+                    console.error("[employee/removeDocument] Error deleting file:", err);
+                }
+            }
+
+            await t.commit();
+
+            res.status(200).json({
+                success: true,
+                message: "Document removed successfully",
+            });
+        } catch (err) {
+            await t.rollback();
+            console.error("[employee/removeDocument] ERROR:", err);
+            ErrorLogger.write({ type: "removeEmployeeDocument error", error: err });
+            res.status(500).json({
+                success: false,
+                message: "Server error",
+                error: process.env.NODE_ENV === "development" ? err : undefined,
+            });
+        }
+    }
+);
 
 export default router;

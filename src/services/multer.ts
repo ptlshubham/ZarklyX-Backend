@@ -223,6 +223,35 @@ export const employeeResumeUpload = multer({
   },
 });
 
+// Employee Documents Storage (Aadhar, PAN, Passport, etc.)
+// Files are stored in employee/documents folder under the public directory
+const employeeDocumentStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = `/${config.publicPath}/employee/documents`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const employeeDocumentUpload = multer({
+  storage: employeeDocumentStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only PDF, Image (JPEG/PNG), and Word files are allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
 const getFileStorage = (path: string) => {
   return multer.diskStorage({
     destination: function (req: Request, file: any, cb: any) {
