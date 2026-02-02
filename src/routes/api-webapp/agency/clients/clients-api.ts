@@ -1858,6 +1858,74 @@ router.patch("/clients/restore/:id",
   }
 );
 
+// POST /toggle-active
+// Toggle isActive status (true/false) for a client by clientId
+router.post("/client-active-status",
+  async (req: Request, res: Response): Promise<void> => {
+    const t = await dbInstance.transaction();
+    try {
+      const { clientId, isActive } = req.body;
+
+      // Validate clientId
+      if (!clientId || String(clientId).trim() === '') {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "clientId is required.",
+        });
+        return;
+      }
+
+      // Validate isActive parameter (accept both boolean and number: 0 or 1)
+      if (isActive === undefined || isActive === null) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "isActive field is required (true/false or 0/1).",
+        });
+        return;
+      }
+
+      // Convert to boolean if it's a number (0 or 1)
+      const activeStatus = typeof isActive === 'number' ? Boolean(isActive) : Boolean(isActive);
+
+      // Find client by ID (supports both numeric and UUID string IDs)
+      const client = await Clients.findByPk(clientId, { transaction: t });
+
+      if (!client) {
+        await t.rollback();
+        notFound(res, "Client not found.");
+        return;
+      }
+
+      // Update isActive status
+      await client.update(
+        { isActive: activeStatus },
+        { transaction: t }
+      );
+
+      await t.commit();
+
+      res.status(200).json({
+        success: true,
+        message: `Client ${activeStatus ? "activated" : "deactivated"} successfully.`,
+        data: {
+          id: client.id,
+          clientfirstName: client.clientfirstName,
+          clientLastName: client.clientLastName,
+          email: client.email,
+          isActive: activeStatus,
+        },
+      });
+    } catch (error: any) {
+      await t.rollback();
+      console.error("[POST /clients/toggle-active] ERROR:", error);
+      ErrorLogger.write({ type: "toggle client active status error", error });
+      serverError(res, error.message || "Failed to update client status.");
+    }
+  }
+);
+
 // get clients by companyid 
 router.get("/clients/by-company/:companyId", async (req: Request, res: Response): Promise<void> => {
   try {
