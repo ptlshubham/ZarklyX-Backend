@@ -194,6 +194,35 @@ export const clientProfilePhotoUpload = multer({
   },
 });
 
+// Employee Resume Storage
+// Files are stored in employee/resume folder under the public directory
+const employeeResumeStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = `/${config.publicPath}/employee/resume`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const employeeResumeUpload = multer({
+  storage: employeeResumeStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only PDF and Word files (DOC/DOCX) are allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
 const getFileStorage = (path: string) => {
   return multer.diskStorage({
     destination: function (req: Request, file: any, cb: any) {

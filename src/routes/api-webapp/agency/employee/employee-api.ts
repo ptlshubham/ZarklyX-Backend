@@ -28,7 +28,7 @@ import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { authMiddleware } from "../../../../middleware/auth.middleware";
 import { employeeFileUpload } from "../../../../middleware/employeeFileUpload";
 import { errorResponse, unauthorized, serverError } from "../../../../utils/responseHandler";
-import { employeeProfilePhotoUpload } from "../../../../services/multer";
+import { employeeProfilePhotoUpload, employeeResumeUpload } from "../../../../services/multer";
 import fs from "fs";
 import path from "path";
 import configs from "../../../../config/config";
@@ -1362,6 +1362,200 @@ router.patch(
         } catch (err) {
             await t.rollback();
             console.error("[employee/removeProfilePhoto] ERROR:", err);
+            res.status(500).json({
+                success: false,
+                message: "Server error",
+                error: process.env.NODE_ENV === "development" ? err : undefined,
+            });
+        }
+    }
+);
+
+// ===== RESUME MANAGEMENT =====
+
+/**
+ * POST /employee/uploadResume/:employeeId
+ * Upload employee resume
+ * Body: Form data with file field containing the resume (PDF, DOC, DOCX)
+ */
+router.post(
+    "/uploadResume/:employeeId",
+    tokenMiddleWare,
+    employeeResumeUpload.single("file"),
+    async (req: Request, res: Response): Promise<void> => {
+        const t = await dbInstance.transaction();
+        try {
+            let { employeeId } = req.params;
+            if (Array.isArray(employeeId)) employeeId = employeeId[0];
+
+            const user = (req as any).user;
+
+            if (!user || !user.companyId) {
+                await t.rollback();
+                res.status(401).json({
+                    success: false,
+                    message: "Unauthorized: companyId missing",
+                });
+                return;
+            }
+            const { companyId } = user;
+
+            if (!req.file) {
+                await t.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: "No file uploaded",
+                });
+                return;
+            }
+
+            // Verify employee exists and belongs to company
+            const employee = await getEmployeeById(employeeId);
+
+            if (!employee || employee.isDeleted) {
+                await t.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Employee not found",
+                });
+                return;
+            }
+
+            if (employee.companyId !== companyId) {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Unauthorized: Employee does not belong to your company",
+                });
+                return;
+            }
+
+            // Delete old resume if exists
+            if (employee.resumeFilePath) {
+                try {
+                    const oldFilePath = path.join(
+                        process.cwd(),
+                        "src",
+                        "public",
+                        employee.resumeFilePath.replace(/^\//, "")
+                    );
+                    if (fs.existsSync(oldFilePath)) {
+                        fs.unlinkSync(oldFilePath);
+                    }
+                } catch (err) {
+                    console.error("[employee/uploadResume] Error deleting old resume:", err);
+                }
+            }
+
+            // Construct the relative path for storage
+            const resumePath = `/employee/resume/${req.file.filename}`;
+
+            // Update employee with resume path
+            await updateEmployee(employeeId, { resumeFilePath: resumePath } as EmployeePayload, t);
+
+            await t.commit();
+
+            res.status(200).json({
+                success: true,
+                message: "Resume uploaded successfully",
+                data: {
+                    employeeId,
+                    resumeFilePath: resumePath,
+                    filename: req.file.filename,
+                },
+            });
+        } catch (err) {
+            await t.rollback();
+            console.error("[employee/uploadResume] ERROR:", err);
+            ErrorLogger.write({ type: "uploadEmployeeResume error", error: err });
+            res.status(500).json({
+                success: false,
+                message: "Server error",
+                error: process.env.NODE_ENV === "development" ? err : undefined,
+            });
+        }
+    }
+);
+
+/**
+ * PATCH /employee/removeResume/:employeeId
+ * Remove employee resume
+ */
+router.patch(
+    "/removeResume/:employeeId",
+    tokenMiddleWare,
+    async (req: Request, res: Response): Promise<void> => {
+        const t = await dbInstance.transaction();
+        try {
+            let { employeeId } = req.params;
+            if (Array.isArray(employeeId)) employeeId = employeeId[0];
+
+            const user = (req as any).user;
+
+            if (!user || !user.companyId) {
+                await t.rollback();
+                res.status(401).json({
+                    success: false,
+                    message: "Unauthorized: companyId missing",
+                });
+                return;
+            }
+            const { companyId } = user;
+
+            // Verify employee exists and belongs to company
+            const employee = await getEmployeeById(employeeId);
+
+            if (!employee || employee.isDeleted) {
+                await t.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Employee not found",
+                });
+                return;
+            }
+
+            if (employee.companyId !== companyId) {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Unauthorized: Employee does not belong to your company",
+                });
+                return;
+            }
+
+            // Get current resume path for file deletion
+            const currentResumePath = employee.resumeFilePath;
+
+            // Update employee to remove resume reference
+            await updateEmployee(employeeId, { resumeFilePath: null } as EmployeePayload, t);
+
+            // Delete file from disk if it exists
+            if (currentResumePath) {
+                try {
+                    const filePath = path.join(
+                        process.cwd(),
+                        "src",
+                        "public",
+                        currentResumePath.replace(/^\//, "")
+                    );
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                } catch (err) {
+                    console.error("[employee/removeResume] Error deleting resume file:", err);
+                }
+            }
+
+            await t.commit();
+
+            res.status(200).json({
+                success: true,
+                message: "Resume removed successfully",
+            });
+        } catch (err) {
+            await t.rollback();
+            console.error("[employee/removeResume] ERROR:", err);
+            ErrorLogger.write({ type: "removeEmployeeResume error", error: err });
             res.status(500).json({
                 success: false,
                 message: "Server error",
