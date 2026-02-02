@@ -1,7 +1,7 @@
 import express from "express";
 import { Request, Response } from "express";
 import dbInstance from "../../../../db/core/control-db";
-import { tokenMiddleWare } from "../../../../services/jwtToken-service";
+import { tokenMiddleWare, generateToken } from "../../../../services/jwtToken-service";
 import {
     addEmployee,
     getEmployeeById,
@@ -27,12 +27,16 @@ import { User } from "../../../../routes/api-webapp/authentication/user/user-mod
 import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { authMiddleware } from "../../../../middleware/auth.middleware";
 import { employeeFileUpload } from "../../../../middleware/employeeFileUpload";
-import { errorResponse, unauthorized } from "../../../../utils/responseHandler";
+import { errorResponse, unauthorized, serverError } from "../../../../utils/responseHandler";
 import { employeeProfilePhotoUpload } from "../../../../services/multer";
 import fs from "fs";
 import path from "path";
 import configs from "../../../../config/config";
 import environment from "../../../../../environment";
+import { Otp } from "../../../../routes/api-webapp/otp/otp-model";
+import { Op } from "sequelize";
+import * as speakeasy from "speakeasy";
+import ErrorLogger from "../../../../db/core/logger/error-logger";
 
 
 const router = express.Router();
@@ -89,31 +93,33 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             emergencyContactNumber,
             emergencyContactIsdCode,
             emergencyContactIsoCode,
+            // Skills
+            skills,
             // Optional fields
             ...restData
         } = req.body;
 
-        // ✅ Helper function to extract numeric part from contact number
+        //  Helper function to extract numeric part from contact number
         const extractNumericContactNumber = (contact: string | null | undefined): string | null => {
             if (!contact) return null;
             return String(contact).replace(/\D/g, '').slice(-10) || null; // Get last 10 digits
         };
 
-        // ✅ Helper function to ensure country code has + prefix
+        //  Helper function to ensure country code has + prefix
         const ensureCountryCodePrefix = (code: string | null | undefined): string | null => {
             if (!code) return null;
             const trimmed = String(code).trim();
             return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
         };
 
-        // ✅ Sanitize primary contact number and country codes
+        //  Sanitize primary contact number and country codes
         const sanitizedContactNumber = extractNumericContactNumber(contactNumber);
         const sanitizedIsdCode = ensureCountryCodePrefix(isdCode);
         const sanitizedIsoCode = isoCode && String(isoCode).trim() !== '' && String(isoCode) !== 'undefined'
             ? String(isoCode).trim().toUpperCase()
             : null;
 
-        // ✅ Sanitize emergency contact number and country codes
+        //  Sanitize emergency contact number and country codes
         const sanitizedEmergencyContactNumber = extractNumericContactNumber(emergencyContactNumber);
         const sanitizedEmergencyIsdCode = ensureCountryCodePrefix(emergencyContactIsdCode);
         const sanitizedEmergencyIsoCode = emergencyContactIsoCode && String(emergencyContactIsoCode).trim() !== '' && String(emergencyContactIsoCode) !== 'undefined'
@@ -131,7 +137,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             return;
         }
 
-        // ✅ Validate required user fields
+        //  Validate required user fields
         if (!firstName || !lastName || !email || !sanitizedContactNumber || !companyId || !employeeId) {
             await t.rollback();
             res.status(400).json({
@@ -141,7 +147,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             return;
         }
 
-        // ✅ Verify Company exists
+        //  Verify Company exists
         const parentCompany = await Company.findByPk(companyId, { transaction: t });
         if (!parentCompany) {
             await t.rollback();
@@ -152,7 +158,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             return;
         }
 
-        // ✅ STEP 1: Create or get User entry with basic details
+        //  STEP 1: Create or get User entry with basic details
         let user = await User.findOne({
             where: { email },
             transaction: t,
@@ -207,7 +213,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             );
         }
 
-        // ✅ Check for duplicate employee ID in this company
+        //  Check for duplicate employee ID in this company
         const existingEmployeeId = await checkEmployeeIdExists(employeeId, companyId);
         if (existingEmployeeId) {
             await t.rollback();
@@ -218,7 +224,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             return;
         }
 
-        // ✅ Verify Reporting Manager if provided
+        //  Verify Reporting Manager if provided
         if (reportingManagerId) {
             const reportingManager = await getEmployeeById(reportingManagerId);
             if (!reportingManager || reportingManager.companyId !== companyId) {
@@ -231,7 +237,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             }
         }
 
-        // ✅ Check for duplicate Aadhar if provided (GLOBAL - not per company)
+        //  Check for duplicate Aadhar if provided (GLOBAL - not per company)
         if (restData.aadharNumber) {
             const existingAadhar = await checkAadharExists(restData.aadharNumber);
             if (existingAadhar) {
@@ -244,7 +250,7 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             }
         }
 
-        // ✅ Check for duplicate PAN if provided (GLOBAL - not per company)
+        //  Check for duplicate PAN if provided (GLOBAL - not per company)
         if (restData.panNumber) {
             const existingPan = await checkPanExists(restData.panNumber);
             if (existingPan) {
@@ -257,12 +263,15 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
             }
         }
 
-        // ✅ STEP 2: Create employee entry linked to user
+        //  STEP 2: Create employee entry linked to user
         const employee = await addEmployee(
             {
                 userId: user.id,
                 companyId,
                 employeeId,
+                firstName,
+                lastName,
+                email,
                 designation: designation || null,
                 dateOfJoining: dateOfJoining || null,
                 employmentType: employmentType || null,
@@ -281,6 +290,20 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                 emergencyContactNumber: sanitizedEmergencyContactNumber,
                 emergencyContactIsdCode: sanitizedEmergencyIsdCode,
                 emergencyContactIsoCode: sanitizedEmergencyIsoCode,
+                // Skills array - handle stringified JSON and various input formats
+                skills: (() => {
+                    if (!skills) return [];
+                    if (Array.isArray(skills)) return skills;
+                    if (typeof skills === 'string') {
+                        try {
+                            const parsed = JSON.parse(skills);
+                            return Array.isArray(parsed) ? parsed : [parsed];
+                        } catch {
+                            return [skills];
+                        }
+                    }
+                    return [skills];
+                })(),
                 ...Object.fromEntries(
                     Object.entries(restData).map(([key, value]) => [
                         key,
@@ -306,7 +329,15 @@ router.post("/register", authMiddleware, employeeFileUpload.fields([
                     isdCode: user.isdCode,
                     isoCode: user.isoCode,
                 },
-                employee,
+                employee: {
+                    id: employee.id,
+                    firstName: employee.firstName,
+                    lastName: employee.lastName,
+                    email: employee.email,
+                    employeeId: employee.employeeId,
+                    designation: employee.designation,
+                    employeeStatus: employee.employeeStatus,
+                },
             },
         });
     } catch (err) {
@@ -373,7 +404,7 @@ router.get("/list", tokenMiddleWare, async (req: Request, res: Response): Promis
 
 /**
  * GET /employee/id/:id
- * Get employee by ID
+ * Get employee by ID (from employee table only, no user data)
  */
 router.get("/id/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     try {
@@ -654,7 +685,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
         let id = req.params.id;
         if (Array.isArray(id)) id = id[0];
 
-        // ✅ Handle file uploads
+        //  Handle file uploads
         const files = req.files as Record<string, Express.Multer.File[]>;
 
         Object.entries({
@@ -672,6 +703,25 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
 
         const updateData = req.body;
 
+        // Extract and process skills array
+        const { skills } = updateData;
+        if (skills !== undefined) {
+            // Handle stringified JSON and various input formats
+            updateData.skills = (() => {
+                if (!skills) return [];
+                if (Array.isArray(skills)) return skills;
+                if (typeof skills === 'string') {
+                    try {
+                        const parsed = JSON.parse(skills);
+                        return Array.isArray(parsed) ? parsed : [parsed];
+                    } catch {
+                        return [skills];
+                    }
+                }
+                return [skills];
+            })();
+        }
+
         const copmany = (req as any).user;
 
         if (!copmany || !copmany.companyId) {
@@ -684,7 +734,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
         }
         const { companyId } = copmany;
 
-        // ✅ Verify employee exists
+        //  Verify employee exists
         const employee = await getEmployeeById(id);
 
         if (!employee || employee.isDeleted) {
@@ -696,7 +746,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
             return;
         }
 
-        // ✅ Verify company ownership
+        //  Verify company ownership
         if (employee.companyId !== companyId) {
             await t.rollback();
             res.status(403).json({
@@ -706,7 +756,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
             return;
         }
 
-        // ✅ Delete old profile photo if new one is being uploaded
+        //  Delete old profile photo if new one is being uploaded
         if (updateData.profilePhoto && employee.profilePhoto) {
             try {
                 const oldPhotoPath = path.join(process.cwd(), 'src', 'public', employee.profilePhoto.replace(/^\//, ''));
@@ -718,20 +768,20 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
             }
         }
 
-        // ✅ Helper function to extract numeric part from contact number
+        //  Helper function to extract numeric part from contact number
         const extractNumericContactNumber = (contact: string | null | undefined): string | null => {
             if (!contact) return null;
             return String(contact).replace(/\D/g, '').slice(-10) || null; // Get last 10 digits
         };
 
-        // ✅ Helper function to ensure country code has + prefix
+        //  Helper function to ensure country code has + prefix
         const ensureCountryCodePrefix = (code: string | null | undefined): string | null => {
             if (!code) return null;
             const trimmed = String(code).trim();
             return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
         };
 
-        // ✅ Sanitize primary contact number and country codes if provided
+        //  Sanitize primary contact number and country codes if provided
         if (updateData.contactNumber) {
             updateData.contactNumber = extractNumericContactNumber(updateData.contactNumber);
         }
@@ -744,7 +794,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
                 : null;
         }
 
-        // ✅ Sanitize emergency contact number and country codes if provided
+        //  Sanitize emergency contact number and country codes if provided
         if (updateData.emergencyContactNumber) {
             updateData.emergencyContactNumber = extractNumericContactNumber(updateData.emergencyContactNumber);
         }
@@ -759,7 +809,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
 
         const { aadharNumber, panNumber } = updateData || {};
 
-        // ✅ Check for duplicate Aadhar if being updated
+        //  Check for duplicate Aadhar if being updated
         if (aadharNumber && aadharNumber !== employee.aadharNumber) {
             let finalId = id;
             if (Array.isArray(finalId)) finalId = finalId[0];
@@ -774,7 +824,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
             }
         }
 
-        // ✅ Check for duplicate PAN if being updated
+        //  Check for duplicate PAN if being updated
         if (panNumber && panNumber !== employee.panNumber) {
             let finalId2 = id;
             if (Array.isArray(finalId2)) finalId2 = finalId2[0];
@@ -789,7 +839,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
             }
         }
 
-        // ✅ Verify Reporting Manager if being updated
+        //  Verify Reporting Manager if being updated
         if (updateData.reportingManagerId && updateData.reportingManagerId !== employee.reportingManagerId) {
             const reportingManager = await getEmployeeById(updateData.reportingManagerId);
             if (!reportingManager || reportingManager.companyId !== companyId) {
@@ -802,7 +852,7 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
             }
         }
 
-        // ✅ Update employee with sanitized data
+        //  Update employee with sanitized data
         let updateId = id;
         if (Array.isArray(updateId)) updateId = updateId[0];
 
@@ -1172,7 +1222,7 @@ router.post(
                 return;
             }
 
-            // ✅ Verify employee exists and belongs to company
+            //  Verify employee exists and belongs to company
             const employee = await getEmployeeById(employeeId);
 
             if (!employee || employee.isDeleted) {
@@ -1193,7 +1243,7 @@ router.post(
                 return;
             }
 
-            // ✅ Delete old profile photo if exists
+            //  Delete old profile photo if exists
             if (employee.profilePhoto) {
                 try {
                     const oldPhotoPath = path.join(process.cwd(), `public${employee.profilePhoto}`);
@@ -1205,7 +1255,7 @@ router.post(
                 }
             }
 
-            // ✅ Update employee with new profile photo path
+            //  Update employee with new profile photo path
             const photoPath = `/employee/profile/${req.file.filename}`;
 
             await updateEmployee(employeeId, { profilePhoto: photoPath } as EmployeePayload, t);
@@ -1259,7 +1309,7 @@ router.patch(
             }
             const { companyId } = user;
 
-            // ✅ Verify employee exists and belongs to company
+            //  Verify employee exists and belongs to company
             const employee = await getEmployeeById(employeeId);
 
             if (!employee || employee.isDeleted) {
@@ -1280,7 +1330,7 @@ router.patch(
                 return;
             }
 
-            // ✅ Check if profile photo exists
+            //  Check if profile photo exists
             if (!employee.profilePhoto) {
                 await t.rollback();
                 res.status(400).json({
@@ -1290,7 +1340,7 @@ router.patch(
                 return;
             }
 
-            // ✅ Delete profile photo from file system
+            //  Delete profile photo from file system
             try {
                 const photoPath = path.join(process.cwd(), 'src', 'public', employee.profilePhoto.replace(/^\//, ''));
                 if (fs.existsSync(photoPath)) {
@@ -1300,7 +1350,7 @@ router.patch(
                 console.error("[employee/removeProfilePhoto] Error deleting photo file:", err);
             }
 
-            // ✅ Update employee to remove profile photo reference
+            //  Update employee to remove profile photo reference
             await updateEmployee(employeeId, { profilePhoto: null } as EmployeePayload, t);
 
             await t.commit();
@@ -1321,5 +1371,203 @@ router.patch(
     }
 );
 
+// ===== EMPLOYEE LOGIN =====
+
+/**
+ * POST /employee/login
+ * Employee login with:
+ * 1. email + OTP (no 2FA required)
+ * 2. email/contact + password (2FA required if enabled)
+ * Allows all user types to login (not restricted to clients)
+ */
+router.post("/login", async (req: Request, res: Response): Promise<void> => {
+
+    const t = await dbInstance.transaction();
+
+    try {
+        const { email, contact, password, otp, twofactorToken, backupCode } = req.body;
+
+        // ===============================
+        // EMAIL + OTP LOGIN (user table)
+        // ===============================
+        if (email && otp) {
+            const user: any = await User.findOne({
+                where: { email, isDeleted: false },
+                transaction: t,
+            });
+
+            // Ensure OTP record exists and is valid (not used and not expired)
+            const otpRecord: any = await Otp.findOne({
+                where: {
+                    email,
+                    otp: String(otp),
+                    otpVerify: false,
+                    otpExpiresAt: { [Op.gt]: new Date() },
+                },
+                transaction: t,
+            });
+
+            if (!user || !otpRecord) {
+                await t.rollback();
+                res.status(401).json({ success: false, message: "Invalid email or OTP." });
+                return;
+            }
+
+            if (!user.isActive) {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Your account is deactivated. Please contact support.",
+                });
+                return;
+            }
+
+            // Mark OTP as used
+            otpRecord.set({ otpVerify: true, otp: null, otpExpiresAt: null });
+            await otpRecord.save({ transaction: t });
+
+            // Ensure user's email verified flag is set
+            if (!user.isEmailVerified) {
+                await user.update({ isEmailVerified: true }, { transaction: t });
+            }
+
+            const isFirstLogin = user.isFirstLogin || false;
+            if (isFirstLogin) {
+                await user.update({ isFirstLogin: false }, { transaction: t });
+            }
+
+            const token = await generateToken(
+                { userId: user.id, email: user.email, role: user.userType, companyId: user.companyId },
+                "7d"
+            );
+
+            await t.commit();
+
+            res.status(200).json({
+                success: true,
+                message: "Login successful!",
+                data: {
+                    userId: user.id,
+                    email: user.email || email,
+                    contact: user.contact || null,
+                    companyId: user.companyId,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    userType: user.userType,
+                    isFirstLogin,
+                    token,
+                    twofactorEnabled: user.twofactorEnabled || false,
+                },
+            });
+            return;
+        }
+
+        // =====================================
+        // EMAIL / CONTACT + PASSWORD LOGIN
+        // =====================================
+        if ((email || contact) && password) {
+            const whereClause: any = { isDeleted: false };
+            if (email) whereClause.email = email;
+            if (contact) whereClause.contact = contact;
+
+            const user: any = await User.findOne({ where: whereClause, transaction: t });
+
+            if (!user || !user.validatePassword(password)) {
+                await t.rollback();
+                res.status(401).json({ success: false, message: "Invalid credentials." });
+                return;
+            }
+
+            if (!user.isActive) {
+                await t.rollback();
+                res.status(403).json({
+                    success: false,
+                    message: "Your account is deactivated. Please contact support.",
+                });
+                return;
+            }
+
+            // ==============
+            // 2FA HANDLING
+            // ==============
+            if (user.twofactorEnabled && user.twofactorVerified) {
+                if (!twofactorToken && !backupCode) {
+                    await t.rollback();
+                    res.status(200).json({
+                        success: true,
+                        requires2FA: true,
+                        message: "Password verified. Please provide 2FA code.",
+                        data: { userId: user.id, email: user.email, twofactorEnabled: true },
+                    });
+                    return;
+                }
+
+                if (twofactorToken) {
+                    const verified = speakeasy.totp.verify({
+                        secret: user.twofactorSecret,
+                        encoding: "base32",
+                        token: String(twofactorToken),
+                        window: 2,
+                    });
+
+                    if (!verified) {
+                        await t.rollback();
+                        res.status(401).json({ success: false, requires2FA: true, message: "Invalid 2FA token." });
+                        return;
+                    }
+                }
+
+                if (backupCode) {
+                    const backupCodes = user.twofactorBackupCodes || [];
+                    const index = backupCodes.findIndex((code: string) => code === String(backupCode).toUpperCase());
+                    if (index === -1) {
+                        await t.rollback();
+                        res.status(401).json({ success: false, requires2FA: true, message: "Invalid backup code." });
+                        return;
+                    }
+                    backupCodes.splice(index, 1);
+                    await user.update({ twofactorBackupCodes: backupCodes }, { transaction: t });
+                }
+            }
+
+            const isFirstLogin = user.isFirstLogin || false;
+            if (isFirstLogin) await user.update({ isFirstLogin: false }, { transaction: t });
+
+            const token = await generateToken(
+                { userId: user.id, email: user.email || email, role: user.userType, companyId: user.companyId },
+                "7d"
+            );
+
+            await t.commit();
+
+            res.status(200).json({
+                success: true,
+                message: "Login successful!",
+                data: {
+                    userId: user.id,
+                    email: user.email || email || null,
+                    contact: user.contact || contact || null,
+                    companyId: user.companyId,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    userType: user.userType,
+                    isFirstLogin,
+                    token,
+                    twofactorEnabled: user.twofactorEnabled || false,
+                },
+            });
+            return;
+        }
+
+        await t.rollback();
+        res.status(400).json({ success: false, message: "Invalid login request." });
+
+    } catch (error: any) {
+        await t.rollback();
+        console.error("[POST /employee/login] ERROR:", error);
+        ErrorLogger.write({ type: "employee login error", error });
+        serverError(res, error.message || "Login failed.");
+    }
+});
 
 export default router;

@@ -22,6 +22,9 @@ export class Employee extends Model<
     // ✅ 1. PERSONAL INFORMATION (STORED IN USER TABLE)
     // firstName, lastName, email, contact, countryCode are in USER table
     // Only employee-specific personal info stored here:
+    declare firstName: string | null;
+    declare lastName: string | null;
+    declare email: string | null;
     declare dateOfBirth: Date | null;
     declare gender: string | null; // "Male", "Female", "Other"
     declare nationality: string | null;
@@ -154,7 +157,19 @@ export class Employee extends Model<
                     type: DataTypes.UUID,
                     allowNull: true,
                 },
-                // Personal Information (firstName, lastName from User table)
+                // Personal Information fields
+                firstName: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                },
+                lastName: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                },
+                email: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                },
                 dateOfBirth: {
                     type: DataTypes.DATE,
                     allowNull: true,

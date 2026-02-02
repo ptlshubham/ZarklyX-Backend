@@ -11,6 +11,9 @@ export interface EmployeePayload {
     departmentId?: number | null;
     reportingManagerId?: string | null;
     // Personal Information (stored in User table - do NOT duplicate here)
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
     dateOfBirth?: Date | null;
     gender?: string | null;
     nationality?: string | null;
@@ -191,23 +194,6 @@ export const getAllEmployees = (query: any) => {
 export const getEmployeeById = async (id: string) => {
     return await Employee.findOne({
         where: { id },
-        include: [
-            {
-                model: User,
-                as: 'user',
-                attributes: {
-                    exclude: [
-                        'password',
-                        'secretCode',
-                        'googleId',
-                        'appleId',
-                        'authProvider',
-                        'deletedAt',
-                    ],
-                },
-                required: false,
-            },
-        ],
     });
 };
 

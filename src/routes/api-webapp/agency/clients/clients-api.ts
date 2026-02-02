@@ -2277,6 +2277,13 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
         return;
       }
 
+      // Check if user is a client
+      if (user.userType !== "client") {
+        await t.rollback();
+        res.status(403).json({ success: false, message: "Access denied. Only clients can login through this endpoint." });
+        return;
+      }
+
       if (!user.isActive) {
         await t.rollback();
         res.status(403).json({
@@ -2338,6 +2345,13 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
       if (!user || !user.validatePassword(password)) {
         await t.rollback();
         res.status(401).json({ success: false, message: "Invalid credentials." });
+        return;
+      }
+
+      // Check if user is a client
+      if (user.userType !== "client") {
+        await t.rollback();
+        res.status(403).json({ success: false, message: "Access denied. Only clients can login through this endpoint." });
         return;
       }
 
@@ -2431,8 +2445,6 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
     serverError(res, error.message || "Login failed.");
   }
 });
-
-
 
 /**
  * POST /clients/verify-2fa
