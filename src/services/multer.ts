@@ -134,50 +134,19 @@ export function convertToRelativePath(files?: Express.Multer.File[]): string[] {
 // Export alias for clarity — the storage will choose folder based on the provided :assetType param
 export const companyAssetsUploadByType = companyAssetsUpload;
 
-// Employee Profile Photo Storage
-// Files are stored in employee/profile folder under the public directory
-const employeeProfilePhotoStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    const uploadPath = `/${config.publicPath}/employee/profile`;
-    if (!fs.existsSync(`.${uploadPath}`)) {
-      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
-    }
-    cb(null, process.cwd() + uploadPath);
-  },
-  filename(req, file, cb) {
-    const fileName = setFileName(file);
-    const fileExtension = setFileExtension(file);
-    cb(null, `${Date.now()}-${fileName}.${fileExtension}`);
-  },
-});
-
-export const employeeProfilePhotoUpload = multer({
-  storage: employeeProfilePhotoStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter(req, file, cb) {
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.mimetype)) {
-      cb(new Error("Only jpeg/png/webp files allowed"));
-    } else {
-      cb(null, true);
-    }
-  },
-});
-
 // Client Profile Photo Storage
 // Files are stored in client/profile folder under the public directory
 const clientProfilePhotoStorage = multer.diskStorage({
   destination(req, file, cb) {
-    const uploadPath = `/${config.publicPath}/client/profile`;
-    if (!fs.existsSync(`.${uploadPath}`)) {
-      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    const uploadPath = path.join(process.cwd(), "src", "public", "client", "profile");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
     }
-    cb(null, process.cwd() + uploadPath);
+    cb(null, uploadPath);
   },
   filename(req, file, cb) {
-    const fileName = setFileName(file);
-    const fileExtension = setFileExtension(file);
-    cb(null, `${Date.now()}-${fileName}.${fileExtension}`);
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
   },
 });
 
@@ -196,61 +165,6 @@ export const clientProfilePhotoUpload = multer({
 
 // Employee Resume Storage
 // Files are stored in employee/resume folder under the public directory
-const employeeResumeStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    const uploadPath = `/${config.publicPath}/employee/resume`;
-    if (!fs.existsSync(`.${uploadPath}`)) {
-      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
-    }
-    cb(null, process.cwd() + uploadPath);
-  },
-  filename(req, file, cb) {
-    const unique = file.originalname.replace(/ /g, "_");
-    cb(null, `${Date.now()}-${unique}`);
-  },
-});
-
-export const employeeResumeUpload = multer({
-  storage: employeeResumeStorage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter(req, file, cb) {
-    const allowed = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-    if (!allowed.includes(file.mimetype)) {
-      cb(new Error("Only PDF and Word files (DOC/DOCX) are allowed"));
-    } else {
-      cb(null, true);
-    }
-  },
-});
-
-// Employee Documents Storage (Aadhar, PAN, Passport, etc.)
-// Files are stored in employee/documents folder under the public directory
-const employeeDocumentStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    const uploadPath = `/${config.publicPath}/employee/documents`;
-    if (!fs.existsSync(`.${uploadPath}`)) {
-      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
-    }
-    cb(null, process.cwd() + uploadPath);
-  },
-  filename(req, file, cb) {
-    const unique = file.originalname.replace(/ /g, "_");
-    cb(null, `${Date.now()}-${unique}`);
-  },
-});
-
-export const employeeDocumentUpload = multer({
-  storage: employeeDocumentStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter(req, file, cb) {
-    const allowed = ["application/pdf", "image/jpeg", "image/png", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-    if (!allowed.includes(file.mimetype)) {
-      cb(new Error("Only PDF, Image (JPEG/PNG), and Word files are allowed"));
-    } else {
-      cb(null, true);
-    }
-  },
-});
 
 const getFileStorage = (path: string) => {
   return multer.diskStorage({
@@ -276,11 +190,8 @@ const getProfileFileStorage = (path: string) => {
       cb(null, process.cwd() + uploadPath);
     },
     filename: function (req: any, file: any, cb: any) {
-
-      const fileName = setFileName(file);
-      const fileExtension = setFileExtension(file);
-
-      cb(null, `${Date.now()}-${fileName}.${fileExtension}`);
+      const unique = file.originalname.replace(/ /g, "_");
+      cb(null, `${Date.now()}-${unique}`);
     },
   });
 };
@@ -362,49 +273,6 @@ export const DocumentUpload = multer({
 
 //---------------------------------------------Other----------------------------------------------//
 
-const setFileName = (file: any) => {
-
-  let fileName = '';
-
-  switch (file.fieldname) {
-    case 'profile_image':  // Rinkal - Registration with profile img
-      fileName = 'ProfilePic';
-      break;
-    case 'profilePhoto':  // Employee profile photo
-      fileName = 'ProfilePhoto';
-      break;
-    case 'panCardImg':
-      fileName = 'PanCard';
-      break;
-    case 'aadharFrontImg':
-      fileName = 'AadhaarFront';
-      break;
-    case 'aadharBackImg':
-      fileName = 'AadhaarBack';
-      break;
-    case 'drivingLicenseFrontImg':
-      fileName = 'DrivingLicenseFront';
-      break;
-    case 'drivingLicenseBackImg':
-      fileName = 'DrivingLicenseBack';
-      break;
-    // case 'addressProofImg':
-    //   fileName = 'AddressProof';
-    //   break;
-    case 'passportPhoto':
-      fileName = 'PassportPhoto';
-      break;
-    case 'aggDoc':
-      fileName = 'Agreement';
-      break;
-    default:
-      fileName = 'file';
-      break;
-  }
-
-  return fileName;
-};
-
 const setFileExtension = (file: any) => {
 
   let extension = '';
@@ -426,3 +294,145 @@ const setFileExtension = (file: any) => {
 
   return extension;
 };
+
+//---------------------------------------------EMPLOYEE FILE UPLOADS----------------------------------------------//
+
+// Employee Profile Photo Storage
+const employeeProfilePhotoStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = path.join(process.cwd(), "src", "public", "employee", "profile");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const employeeProfilePhotoUpload = multer({
+  storage: employeeProfilePhotoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only jpeg/png/webp files allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
+// Employee Resume Storage
+const employeeResumeStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = path.join(process.cwd(), "src", "public", "employee", "resume");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const employeeResumeUpload = multer({
+  storage: employeeResumeStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only PDF and Word files (DOC/DOCX) are allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
+// Employee Aadhar Document Storage
+const employeeAadharDocumentStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = path.join(process.cwd(), "src", "public", "employee", "documents");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const employeeAadharDocumentUpload = multer({
+  storage: employeeAadharDocumentStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["application/pdf", "image/jpeg", "image/png"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only PDF and Image (JPEG/PNG) files are allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
+// Employee PAN Document Storage
+const employeePanDocumentStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = path.join(process.cwd(), "src", "public", "employee", "documents");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const employeePanDocumentUpload = multer({
+  storage: employeePanDocumentStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["application/pdf", "image/jpeg", "image/png"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only PDF and Image (JPEG/PNG) files are allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
+// Employee General Document Storage (for generic document uploads)
+const employeeDocumentStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = path.join(process.cwd(), "src", "public", "employee", "documents");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+export const employeeDocumentUpload = multer({
+  storage: employeeDocumentStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only PDF, Image (JPEG/PNG), and Word files are allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});

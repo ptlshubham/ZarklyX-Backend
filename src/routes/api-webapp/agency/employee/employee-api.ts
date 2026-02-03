@@ -30,7 +30,6 @@ import {
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
 import { authMiddleware } from "../../../../middleware/auth.middleware";
-import { employeeFileUpload } from "../../../../middleware/employeeFileUpload";
 import { errorResponse, unauthorized, serverError } from "../../../../utils/responseHandler";
 import { employeeProfilePhotoUpload, employeeResumeUpload, employeeDocumentUpload } from "../../../../services/multer";
 import fs from "fs";
@@ -54,29 +53,9 @@ const router = express.Router();
  * Step 2: Create employee entry linked to user
  * Required: firstName, lastName, email, contactNumber, companyId, employeeId
  */
-router.post("/register", authMiddleware, employeeFileUpload.fields([
-    { name: "profilePhoto", maxCount: 1 },
-    { name: "resumeFile", maxCount: 1 },
-    { name: "aadharDocument", maxCount: 1 },
-    { name: "panDocument", maxCount: 1 },
-]), async (req: Request, res: Response): Promise<void> => {
+router.post("/register", authMiddleware, async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
     try {
-        const files = req.files as Record<string, Express.Multer.File[]>;
-
-        Object.entries({
-            profilePhoto: "profilePhoto",
-            resumeFile: "resumeFilePath",
-            aadharDocument: "aadharDocumentPath",
-            panDocument: "panDocumentPath",
-        }).forEach(([multerKey, bodyKey]) => {
-            delete req.body[multerKey];
-
-            if (files?.[multerKey]?.[0]?.path) {
-                req.body[bodyKey] = files[multerKey][0].path;
-            }
-        });
-
         const {
             // User basic details (REQUIRED)
             firstName,
@@ -684,36 +663,14 @@ router.get("/active-list", tokenMiddleWare, async (req: Request, res: Response):
  * Update employee details
  * Supports file uploads and contact number sanitization like register endpoint
  */
-router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
-    { name: "profilePhoto", maxCount: 1 },
-    { name: "resumeFile", maxCount: 1 },
-    { name: "aadharDocument", maxCount: 1 },
-    { name: "panDocument", maxCount: 1 },
-]), async (req: Request, res: Response): Promise<void> => {
+router.put("/update/:id", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
     const t = await dbInstance.transaction();
 
     try {
         let id = req.params.id;
         if (Array.isArray(id)) id = id[0];
 
-        //  Handle file uploads
-        const files = req.files as Record<string, Express.Multer.File[]>;
-
-        Object.entries({
-            profilePhoto: "profilePhoto",
-            resumeFile: "resumeFilePath",
-            aadharDocument: "aadharDocumentPath",
-            panDocument: "panDocumentPath",
-        }).forEach(([multerKey, bodyKey]) => {
-            delete req.body[multerKey];
-
-            if (files?.[multerKey]?.[0]?.path) {
-                req.body[bodyKey] = files[multerKey][0].path;
-            }
-        });
-
         const updateData = req.body;
-
         // Extract and process skills array
         const { skills } = updateData;
         if (skills !== undefined) {
@@ -732,7 +689,6 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
                 return [skills];
             })();
         }
-
         const copmany = (req as any).user;
 
         if (!copmany || !copmany.companyId) {
@@ -765,18 +721,6 @@ router.put("/update/:id", tokenMiddleWare, employeeFileUpload.fields([
                 message: "Employee does not belong to this company",
             });
             return;
-        }
-
-        //  Delete old profile photo if new one is being uploaded
-        if (updateData.profilePhoto && employee.profilePhoto) {
-            try {
-                const oldPhotoPath = path.join(process.cwd(), 'src', 'public', employee.profilePhoto.replace(/^\//, ''));
-                if (fs.existsSync(oldPhotoPath)) {
-                    fs.unlinkSync(oldPhotoPath);
-                }
-            } catch (err) {
-                console.error("[employee/update] Error deleting old profile photo:", err);
-            }
         }
 
         //  Helper function to extract numeric part from contact number

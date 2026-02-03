@@ -1463,8 +1463,9 @@ router.get("/clients/by-user/:userId",
 router.put("/clients/updateById/:id", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
   try {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
+    if (!id || id.trim() === '') {
       await t.rollback();
       res.status(400).json({
         success: false,
