@@ -523,3 +523,14 @@ export const getCompanyDocuments = async (companyId: string) => {
         order: [["createdAt", "DESC"]],
     });
 };
+
+// Verify employee by email with isDeleted status
+export const verifyEmployeeByEmailDeleted = async (email: string, isDeleted: boolean = true) => {
+    return await Employee.findOne({
+        where: {
+            email,
+            isDeleted,
+        },
+        raw: true,
+    });
+};

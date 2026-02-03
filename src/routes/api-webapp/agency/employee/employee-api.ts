@@ -26,9 +26,11 @@ import {
     getEmployeeDocuments,
     getEmployeeDocumentById,
     removeEmployeeDocument,
+    verifyEmployeeByEmailDeleted,
 } from "../../../../routes/api-webapp/agency/employee/employee-handler";
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
+import { Employee } from "../../../../routes/api-webapp/agency/employee/employee-model";
 import { authMiddleware } from "../../../../middleware/auth.middleware";
 import { errorResponse, unauthorized, serverError } from "../../../../utils/responseHandler";
 import { employeeProfilePhotoUpload, employeeResumeUpload, employeeDocumentUpload } from "../../../../services/multer";
@@ -40,9 +42,15 @@ import { Otp } from "../../../../routes/api-webapp/otp/otp-model";
 import { Op } from "sequelize";
 import * as speakeasy from "speakeasy";
 import ErrorLogger from "../../../../db/core/logger/error-logger";
+import { sendOTP } from "../../../../services/otp-service";
 
 
 const router = express.Router();
+
+// Helper function to generate OTP
+const generateOTP = (): number => {
+    return Math.floor(100000 + Math.random() * 900000);
+};
 
 // ===== EMPLOYEE CREATION & REGISTRATION =====
 
@@ -142,21 +150,38 @@ router.post("/register", authMiddleware, async (req: Request, res: Response): Pr
         }
 
         //  STEP 1: Create or get User entry with basic details
+        
+        // Check if OTP was verified for this email (from verify flow)
+        const verifiedOtp = await Otp.findOne({
+            where: {
+                email,
+                otpVerify: true,
+                isEmailVerified: true,
+            },
+            transaction: t,
+        });
+
+        // If email NOT verified, reject the registration
+        if (!verifiedOtp) {
+            await t.rollback();
+            res.status(400).json({
+                success: false,
+                message: 'Email verification required. Please use /verify endpoint to verify your email first.',
+            });
+            return;
+        }
+
         let user = await User.findOne({
-            where: { email },
+            where: { 
+                email,
+                userType: 'employee'
+            },
             transaction: t,
         });
 
         if (user) {
-            // User already exists - update with new details if needed
-            if (user.userType != 'employee') {
-                await t.rollback();
-                res.status(400).json({
-                    success: false,
-                    message: 'User already exists with different type',
-                });
-                return;
-            }
+            // User already exists - update with new details
+            // Update existing user entry with new information
             await user.update(
                 {
                     firstName,
@@ -171,7 +196,7 @@ router.post("/register", authMiddleware, async (req: Request, res: Response): Pr
                 { transaction: t }
             );
         } else {
-            // Create new user
+            // Create new user (only reached if OTP was verified above)
             user = await User.create(
                 {
                     firstName,
@@ -185,7 +210,7 @@ router.post("/register", authMiddleware, async (req: Request, res: Response): Pr
                     userType: "employee",
                     isActive: true,
                     isDeleted: false,
-                    isEmailVerified: false,
+                    isEmailVerified: true,
                     isMobileVerified: false,
                     isRegistering: false,
                     registrationStep: 0,
@@ -1924,5 +1949,231 @@ router.delete(
         }
     }
 );
+
+// ===== EMPLOYEE VERIFICATION =====
+
+/**
+ * GET /employee/verify/:email
+ * Verify employee by email and isDeleted status
+ * Returns employee data if found with isDeleted = true
+ * Creates OTP entry and sends email
+ */
+router.get("/verify/:email", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
+    const t = await dbInstance.transaction();
+    try {
+        let { email } = req.params;
+        if (Array.isArray(email)) email = email[0];
+
+        if (!email) {
+            res.status(400).json({
+                success: false,
+                message: "Email is required",
+            });
+            return;
+        }
+
+        // Verify employee exists with email and isDeleted = true
+        let employee = await verifyEmployeeByEmailDeleted(email, true);
+
+        if (!employee) {
+            // Check if user is already registered in another company (not deleted)
+            const existingEmployee = await Employee.findOne({
+                where: {
+                    email,
+                    isDeleted: false,
+                },
+            });
+
+            if (existingEmployee) {
+                res.status(409).json({
+                    success: false,
+                    message: "User is already registered in another company. Please contact your administrator.",
+                });
+                return;
+            }
+
+            // Employee not found in deleted records, but can still send OTP
+            // (Will be created as new employee on registration)
+        }
+
+        // Generate OTP
+        const otp = generateOTP();
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes
+
+        // Delete any existing OTP records for this email
+        await Otp.destroy({
+            where: { email },
+            transaction: t,
+        });
+
+        // Create new OTP record
+        const otpRecord = await Otp.create(
+            {
+                userId: employee?.userId || null,
+                email: email,
+                contact: null,
+                otp: String(otp),
+                mbOTP: null,
+                loginOTP: null,
+                otpVerify: false,
+                otpExpiresAt: expiresAt,
+                mbOTPExpiresAt: null,
+                isDeleted: false,
+                isEmailVerified: false,
+                isMobileVerified: false,
+                isActive: false,
+            } as any,
+            { transaction: t }
+        );
+
+        // Send OTP email
+        const sendResult = await sendOTP({ email, otp }, "login");
+
+        if (!sendResult || !sendResult.success) {
+            await t.rollback();
+            res.status(500).json({
+                success: false,
+                message: sendResult?.message || "Failed to send OTP email",
+            });
+            return;
+        }
+
+        await t.commit();
+
+        res.status(200).json({
+            success: true,
+            message: `OTP sent to ${email}`,
+            data: employee ? {
+                id: employee.id,
+                userId: employee.userId,
+                employeeId: employee.employeeId,
+                firstName: employee.firstName,
+                lastName: employee.lastName,
+                email: employee.email,
+                designation: employee.designation,
+                employeeStatus: employee.employeeStatus,
+                isDeleted: employee.isDeleted,
+            } : {
+                email: email,
+                message: "New employee - will be created on registration",
+            },
+        });
+    } catch (err) {
+        await t.rollback();
+        console.error("[employee/verify] ERROR:", err);
+        ErrorLogger.write({ type: "employee/verify error", error: err });
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: process.env.NODE_ENV === "development" ? err : undefined,
+        });
+    }
+});
+
+/**
+ * POST /employee/verify-otp
+ * Verify OTP sent during employee verification
+ * Body:
+ * {
+ *   "email": "employee@example.com",
+ *   "otp": "123456"
+ * }
+ */
+router.post("/verify-employee-otp", tokenMiddleWare, async (req: Request, res: Response): Promise<void> => {
+    const t = await dbInstance.transaction();
+    try {
+        const { email, otp } = req.body;
+
+        // Validate required fields
+        if (!email || !otp) {
+            res.status(400).json({
+                success: false,
+                message: "Email and OTP are required",
+            });
+            return;
+        }
+
+        // Find OTP record
+        const otpRecord = await Otp.findOne({
+            where: {
+                email,
+                otp: String(otp),
+                otpVerify: false,
+            },
+            transaction: t,
+        });
+
+        if (!otpRecord) {
+            await t.rollback();
+            res.status(401).json({
+                success: false,
+                message: "Invalid OTP",
+            });
+            return;
+        }
+
+        // Check if OTP is expired
+        const now = new Date();
+        if (otpRecord.otpExpiresAt && otpRecord.otpExpiresAt < now) {
+            await t.rollback();
+            res.status(401).json({
+                success: false,
+                message: "OTP has expired",
+            });
+            return;
+        }
+
+        // Get employee details (optional - may not exist for new employees)
+        const employee = await Employee.findOne({
+            where: {
+                email,
+                isDeleted: true,
+            },
+            transaction: t,
+        });
+
+        // Mark OTP as verified
+        await otpRecord.update(
+            {
+                otpVerify: true,
+                otp: null,
+                otpExpiresAt: null,
+                isEmailVerified: true,
+            },
+            { transaction: t }
+        );
+
+        await t.commit();
+
+        res.status(200).json({
+            success: true,
+            message: "OTP verified successfully",
+            data: employee ? {
+                id: employee.id,
+                userId: employee.userId,
+                employeeId: employee.employeeId,
+                firstName: employee.firstName,
+                lastName: employee.lastName,
+                email: employee.email,
+                designation: employee.designation,
+                employeeStatus: employee.employeeStatus,
+                isDeleted: employee.isDeleted,
+            } : {
+                email: email,
+                message: "New employee - proceed to registration",
+            },
+        });
+    } catch (err) {
+        await t.rollback();
+        console.error("[employee/verify-otp] ERROR:", err);
+        ErrorLogger.write({ type: "employee/verify-otp error", error: err });
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: process.env.NODE_ENV === "development" ? err : undefined,
+        });
+    }
+});
 
 export default router;
