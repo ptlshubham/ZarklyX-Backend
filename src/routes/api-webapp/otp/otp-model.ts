@@ -93,10 +93,6 @@ export class Otp extends Model<
                 email: {
                     type: DataTypes.STRING(255),
                     allowNull: false,
-                    unique: {
-                        name: "email",
-                        msg: "Email must be unique",
-                    },
                 },
 
                 // role: {

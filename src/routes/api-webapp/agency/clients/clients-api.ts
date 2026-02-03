@@ -25,6 +25,8 @@ import {
   getagencyClientByid,
   getAllAgencyClient,
   getAgencyClientByUserId,
+  getClientDataWithCounts,
+  validateCompanyUrlAndBranding,
 } from "../../../../routes/api-webapp/agency/clients/clients-handler";
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { generateUniqueSecretCode } from "../../../../routes/api-webapp/authentication/user/user-handler";
@@ -142,6 +144,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
 
     // Validate company if companyId is provided
     let validatedCompanyId = null;
+    let companyIsdCode = null;
+    let companyIsoCode = null;
     if (companyId) {
       const company = await Company.findByPk(companyId, { transaction: t });
       if (!company) {
@@ -153,6 +157,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         return;
       }
       validatedCompanyId = companyId;
+      companyIsdCode = company.isdCode;
+      companyIsoCode = company.isoCode;
     }
 
     // Check if client already exists
@@ -182,8 +188,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         lastName,
         email: googleEmail,
         contact: null,
-        isdCode: null,
-        isoCode: null,
+        isdCode: companyIsdCode,
+        isoCode: companyIsoCode,
         password: generateRandomPassword(),
         userType: "client",
         isEmailVerified: emailVerified,
@@ -220,8 +226,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         isdBusinessCode: null,
         businessDescription: null,
         countryCode: null,
-        isoCode: null,
-        isdCode: null,
+        isoCode: companyIsoCode,
+        isdCode: companyIsdCode,
         country: null,
         state: null,
         city: null,
@@ -1221,11 +1227,12 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       profile: req.body.profile || null,
       isActive: true,
       isDeleted: false,
-      isApprove: false,
+      isApprove: true,
       isCredential: false,
       profileStatus: false,
       isEmailVerified: true,
       isFirstLogin: true,
+      isassigned: true,
     };
 
     const client = await addAgencyClient(payload, t);
@@ -1456,8 +1463,9 @@ router.get("/clients/by-user/:userId",
 router.put("/clients/updateById/:id", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
   try {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
+    if (!id || id.trim() === '') {
       await t.rollback();
       res.status(400).json({
         success: false,
@@ -1851,14 +1859,79 @@ router.patch("/clients/restore/:id",
   }
 );
 
+// POST /toggle-active
+// Toggle isActive status (true/false) for a client by clientId
+router.post("/client-active-status",
+  async (req: Request, res: Response): Promise<void> => {
+    const t = await dbInstance.transaction();
+    try {
+      const { clientId, isActive } = req.body;
+
+      // Validate clientId
+      if (!clientId || String(clientId).trim() === '') {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "clientId is required.",
+        });
+        return;
+      }
+
+      // Validate isActive parameter (accept both boolean and number: 0 or 1)
+      if (isActive === undefined || isActive === null) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "isActive field is required (true/false or 0/1).",
+        });
+        return;
+      }
+
+      // Convert to boolean if it's a number (0 or 1)
+      const activeStatus = typeof isActive === 'number' ? Boolean(isActive) : Boolean(isActive);
+
+      // Find client by ID (supports both numeric and UUID string IDs)
+      const client = await Clients.findByPk(clientId, { transaction: t });
+
+      if (!client) {
+        await t.rollback();
+        notFound(res, "Client not found.");
+        return;
+      }
+
+      // Update isActive status
+      await client.update(
+        { isActive: activeStatus },
+        { transaction: t }
+      );
+
+      await t.commit();
+
+      res.status(200).json({
+        success: true,
+        message: `Client ${activeStatus ? "activated" : "deactivated"} successfully.`,
+        data: {
+          id: client.id,
+          clientfirstName: client.clientfirstName,
+          clientLastName: client.clientLastName,
+          email: client.email,
+          isActive: activeStatus,
+        },
+      });
+    } catch (error: any) {
+      await t.rollback();
+      console.error("[POST /clients/toggle-active] ERROR:", error);
+      ErrorLogger.write({ type: "toggle client active status error", error });
+      serverError(res, error.message || "Failed to update client status.");
+    }
+  }
+);
+
 // get clients by companyid 
 router.get("/clients/by-company/:companyId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { companyId } = req.params;
-    const { search, ...restQuery } = req.query as {
-      [key: string]: any;
-      search?: string;
-    };
+    const { search } = req.query as { search?: string };
 
     if (!companyId) {
       res.status(400).json({
@@ -1871,52 +1944,17 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
     const limit = Number(req.query.limit) || 10;
     const offset = Number(req.query.offset) || 0;
 
-    const queryForHandler = {
-      ...restQuery,
-      companyId,
-      isApprove: 1, // Filter only approved clients
-    };
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "approved", { search }, limit, offset);
 
-    const result: any = await getAllAgencyClient(queryForHandler);
-
-    let rows = result.rows || result;
-    let count = result.count ?? rows.length;
-
-    // ---------- APPROVED FILTER (Only isApprove = 1) ----------
-    rows = rows.filter((r: any) => r.isApprove === 1 || r.isApprove === true);
-    count = rows.length;
-
-    // ---------- SEARCH FILTER ----------
-    if (search) {
-      const s = search.toString().toLowerCase();
-
-      rows = rows.filter((r: any) => {
-        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
-          .trim()
-          .toLowerCase();
-        const email = (r.email || "").toLowerCase();
-        const businessName = (r.businessName || "").toLowerCase();
-
-        return (
-          fullName.includes(s) ||
-          email.includes(s) ||
-          businessName.includes(s)
-        );
-      });
-
-      count = rows.length;
-    }
-
-    // ---------- PAGINATION ----------
-    const paginatedRows = rows.slice(offset, offset + limit);
-
-    // ---------- RESPONSE ----------
     res.status(200).json({
       success: true,
-      message: "Clients fetched successfully for the company.",
-      data: paginatedRows,
+      message: "Approved and assigned clients fetched successfully for the company.",
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
       pagination: {
-        total: count,
+        total: result.count,
         limit,
         offset,
       },
@@ -1936,14 +1974,11 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
   }
 });
 
-// get unassigned clients by companyId (isassigned = 0)
+// get unassigned clients by companyId (OPTIMIZED: Single efficient query)
 router.get("/clients/unassigned/:companyId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { companyId } = req.params;
-    const { search, ...restQuery } = req.query as {
-      [key: string]: any;
-      search?: string;
-    };
+    const { search } = req.query as { search?: string };
 
     if (!companyId) {
       res.status(400).json({
@@ -1956,54 +1991,23 @@ router.get("/clients/unassigned/:companyId", async (req: Request, res: Response)
     const limit = Number(req.query.limit) || 10;
     const offset = Number(req.query.offset) || 0;
 
-    const queryForHandler = {
-      ...restQuery,
-      companyId,
-      isassigned: 0, // Filter for unassigned clients only
-    };
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "unassigned", { search }, limit, offset);
 
-    const result: any = await getAllAgencyClient(queryForHandler);
-
-    let rows = result.rows || result;
-    let count = result.count ?? rows.length;
-
-    // ---------- SEARCH FILTER ----------
-    if (search) {
-      const s = search.toString().toLowerCase();
-
-      rows = rows.filter((r: any) => {
-        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
-          .trim()
-          .toLowerCase();
-        const email = (r.email || "").toLowerCase();
-        const businessName = (r.businessName || "").toLowerCase();
-
-        return (
-          fullName.includes(s) ||
-          email.includes(s) ||
-          businessName.includes(s)
-        );
-      });
-
-      count = rows.length;
-    }
-
-    // ---------- PAGINATION ----------
-    const paginatedRows = rows.slice(offset, offset + limit);
-
-    // ---------- RESPONSE ----------
     res.status(200).json({
       success: true,
       message: "Unassigned clients fetched successfully for the company.",
-      data: paginatedRows,
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
       pagination: {
-        total: count,
+        total: result.count,
         limit,
         offset,
       },
     });
   } catch (error: any) {
-    console.error("[GET /clients/by-company/:companyId/unassigned] ERROR:", error);
+    console.error("[GET /clients/unassigned/:companyId] ERROR:", error);
 
     ErrorLogger.write({
       type: "get unassigned clients by company error",
@@ -2017,14 +2021,11 @@ router.get("/clients/unassigned/:companyId", async (req: Request, res: Response)
   }
 });
 
-// get unapproved clients by companyId (isApprove = 0)
+// get unapproved clients by companyId (OPTIMIZED: Single efficient query)
 router.get("/clients/pending/:companyId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { companyId } = req.params;
-    const { search, ...restQuery } = req.query as {
-      [key: string]: any;
-      search?: string;
-    };
+    const { search } = req.query as { search?: string };
 
     if (!companyId) {
       res.status(400).json({
@@ -2037,52 +2038,17 @@ router.get("/clients/pending/:companyId", async (req: Request, res: Response): P
     const limit = Number(req.query.limit) || 10;
     const offset = Number(req.query.offset) || 0;
 
-    const queryForHandler = {
-      ...restQuery,
-      companyId,
-      isApprove: 0, // Filter for unapproved clients only
-    };
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "pending", { search }, limit, offset);
 
-    const result: any = await getAllAgencyClient(queryForHandler);
-
-    let rows = result.rows || result;
-    let count = result.count ?? rows.length;
-
-    // ---------- UNAPPROVED FILTER (Only isApprove = 0) ----------
-    rows = rows.filter((r: any) => r.isApprove === 0 || r.isApprove === false);
-    count = rows.length;
-
-    // ---------- SEARCH FILTER ----------
-    if (search) {
-      const s = search.toString().toLowerCase();
-
-      rows = rows.filter((r: any) => {
-        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
-          .trim()
-          .toLowerCase();
-        const email = (r.email || "").toLowerCase();
-        const businessName = (r.businessName || "").toLowerCase();
-
-        return (
-          fullName.includes(s) ||
-          email.includes(s) ||
-          businessName.includes(s)
-        );
-      });
-
-      count = rows.length;
-    }
-
-    // ---------- PAGINATION ----------
-    const paginatedRows = rows.slice(offset, offset + limit);
-
-    // ---------- RESPONSE ----------
     res.status(200).json({
       success: true,
       message: "Pending (unapproved) clients fetched successfully for the company.",
-      data: paginatedRows,
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
       pagination: {
-        total: count,
+        total: result.count,
         limit,
         offset,
       },
@@ -2098,6 +2064,115 @@ router.get("/clients/pending/:companyId", async (req: Request, res: Response): P
     res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch pending clients.",
+    });
+  }
+});
+
+// Approve client (set isApprove = 1)
+router.post("/approve/:clientId", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { clientId } = req.params;
+    if (Array.isArray(clientId)) clientId = clientId[0];
+
+    if (!clientId || clientId.trim() === "") {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+      return;
+    }
+
+    const client = await Clients.findByPk(clientId, { transaction: t });
+
+    if (!client) {
+      await t.rollback();
+      res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+      return;
+    }
+
+    await client.update(
+      { isApprove: true },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "Client approved successfully.",
+      data: {
+        id: client.id,
+        clientfirstName: client.clientfirstName,
+        clientLastName: client.clientLastName,
+        email: client.email,
+        isApprove: true,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[POST /clients/approve/:clientId] ERROR:", error);
+    ErrorLogger.write({ type: "approve client error", error });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to approve client.",
+    });
+  }
+});
+
+// Reject client (soft delete)
+router.post("/reject/:clientId", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { clientId } = req.params;
+    if (Array.isArray(clientId)) clientId = clientId[0];
+
+    if (!clientId || clientId.trim() === "") {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+      return;
+    }
+
+    const client = await Clients.findByPk(clientId, { transaction: t });
+
+    if (!client) {
+      await t.rollback();
+      res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+      return;
+    }
+
+    await client.destroy({ transaction: t });
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "Client rejected and deleted successfully.",
+      data: {
+        id: clientId,
+        clientfirstName: client.clientfirstName,
+        clientLastName: client.clientLastName,
+        email: client.email,
+        isDeleted: true,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[POST /clients/reject/:clientId] ERROR:", error);
+    ErrorLogger.write({ type: "reject client error", error });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to reject client.",
     });
   }
 });
@@ -2203,6 +2278,13 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
         return;
       }
 
+      // Check if user is a client
+      if (user.userType !== "client") {
+        await t.rollback();
+        res.status(403).json({ success: false, message: "Access denied. Only clients can login through this endpoint." });
+        return;
+      }
+
       if (!user.isActive) {
         await t.rollback();
         res.status(403).json({
@@ -2264,6 +2346,13 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
       if (!user || !user.validatePassword(password)) {
         await t.rollback();
         res.status(401).json({ success: false, message: "Invalid credentials." });
+        return;
+      }
+
+      // Check if user is a client
+      if (user.userType !== "client") {
+        await t.rollback();
+        res.status(403).json({ success: false, message: "Access denied. Only clients can login through this endpoint." });
         return;
       }
 
@@ -2357,8 +2446,6 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
     serverError(res, error.message || "Login failed.");
   }
 });
-
-
 
 /**
  * POST /clients/verify-2fa
@@ -2578,8 +2665,7 @@ router.post("/check-client-exists", async (req: Request, res: Response): Promise
   }
 });
 
-// Outer client-url validate route
-// Validate URL by companyId or userName
+// Validate URL by companyId or userName and return branding assets
 // Usage: GET /auth/validate-url?companyId=<id>  OR  /auth/validate-url?userName=<name>
 router.get("/client/validate-url",
   async (req: Request, res: Response): Promise<void> => {
@@ -2591,32 +2677,19 @@ router.get("/client/validate-url",
         return;
       }
 
-      // Use isActive instead of isDeleted
-      const whereClause: any = { isActive: true };
+      // Use handler to validate and get branding assets
+      const result = await validateCompanyUrlAndBranding(companyId, userName);
 
-      if (companyId) {
-        whereClause.id = String(companyId).trim(); // primary key
-      }
-      if (userName) {
-        whereClause.userName = String(userName).trim(); // username column
-      }
-
-      const company: any = await Company.findOne({ where: whereClause });
-
-      if (!company) {
+      if (!result) {
         res.status(404).json({ success: false, message: "Not found or invalid URL", data: { isValid: false } });
         return;
       }
 
-      // Return both companyId and userName (may be null)
+      // Return company branding assets along with companyId and userName
       res.status(200).json({
         success: true,
         message: "Valid URL",
-        data: {
-          companyId: company.id || null,
-          userName: company.userName || null,
-          isValid: true,
-        },
+        data: result,
       });
     } catch (error: any) {
       console.error("[/client/auth/validate-url] ERROR:", error);

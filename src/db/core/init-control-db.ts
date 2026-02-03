@@ -22,6 +22,7 @@ import { ItTicketsTimeline } from "../../routes/api-webapp/it-Management/it-Tick
 // Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
+import { EmployeeDocument } from "../../routes/api-webapp/agency/employee/employee-documents.model";
 
 // import { Role } from "../../routes/api-webapp/roles/role-model";
 // import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
@@ -82,6 +83,7 @@ export {
   BusinessSubcategory,
   SocialToken,
   Employee,
+  EmployeeDocument,
   ItTickets,
   // GoogleToken
   InfluencerCategory,
@@ -149,6 +151,8 @@ export function initControlDB(sequelize: Sequelize) {
   ItTicketsAttachments.initModel(sequelize);
   ItTicketsTimeline.initModel(sequelize);
   ItAssetsAttachments.initModel(sequelize);
+  Employee.initModel(sequelize);
+  EmployeeDocument.initModel(sequelize);
   // Roles
   // Role.initModel(sequelize);
   // SubRole.initModel(sequelize);
@@ -282,6 +286,26 @@ export function initControlDB(sequelize: Sequelize) {
   Employee.hasMany(Employee, {
     foreignKey: "reportingManagerId",
     as: "subordinates",     // manager.getSubordinates()
+  });
+
+  /*** Employee <-> EmployeeDocument */
+  Employee.hasMany(EmployeeDocument, {
+    foreignKey: "employeeId",
+    as: "documents",
+  });
+  EmployeeDocument.belongsTo(Employee, {
+    foreignKey: "employeeId",
+    as: "employee",
+  });
+
+  /*** Company <-> EmployeeDocument */
+  Company.hasMany(EmployeeDocument, {
+    foreignKey: "companyId",
+    as: "employeeDocuments",
+  });
+  EmployeeDocument.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
   });
 
   /*** BusinessType <-> BusinessSubcategory */
@@ -825,99 +849,99 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
-    /*** DebitNote <-> Company */
-    Company.hasMany(DebitNote, {
-      foreignKey: "companyId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Company, {
-      foreignKey: "companyId",
-      as: "company",
-      constraints: false,
-    });
+  /*** DebitNote <-> Company */
+  Company.hasMany(DebitNote, {
+    foreignKey: "companyId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Clients */
-    Clients.hasMany(DebitNote, {
-      foreignKey: "clientId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Clients, {
-      foreignKey: "clientId",
-      as: "client",
-      constraints: false,
-    });
+  /*** DebitNote <-> Clients */
+  Clients.hasMany(DebitNote, {
+    foreignKey: "clientId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Vendor */
-    Vendor.hasMany(DebitNote, {
-      foreignKey: "vendorId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Vendor, {
-      foreignKey: "vendorId",
-      as: "vendor",
-      constraints: false,
-    });
+  /*** DebitNote <-> Vendor */
+  Vendor.hasMany(DebitNote, {
+    foreignKey: "vendorId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Invoice */
-    Invoice.hasMany(DebitNote, {
-      foreignKey: "invoiceId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Invoice, {
-      foreignKey: "invoiceId",
-      as: "invoice",
-      constraints: false,
-    });
+  /*** DebitNote <-> Invoice */
+  Invoice.hasMany(DebitNote, {
+    foreignKey: "invoiceId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> PurchaseBill */
-    PurchaseBill.hasMany(DebitNote, {
-      foreignKey: "purchaseBillId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(PurchaseBill, {
-      foreignKey: "purchaseBillId",
-      as: "purchaseBill",
-      constraints: false,
-    });
+  /*** DebitNote <-> PurchaseBill */
+  PurchaseBill.hasMany(DebitNote, {
+    foreignKey: "purchaseBillId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(PurchaseBill, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBill",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
-    DebitNote.belongsToMany(Item, {
-      through: DebitNoteItem,
-      foreignKey: "debitNoteId",
-      otherKey: "itemId",
-      as: "items",
-    });
-    Item.belongsToMany(DebitNote, {
-      through: DebitNoteItem,
-      foreignKey: "itemId",
-      otherKey: "debitNoteId",
-      as: "debitNotes",
-    });
+  /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
+  DebitNote.belongsToMany(Item, {
+    through: DebitNoteItem,
+    foreignKey: "debitNoteId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(DebitNote, {
+    through: DebitNoteItem,
+    foreignKey: "itemId",
+    otherKey: "debitNoteId",
+    as: "debitNotes",
+  });
 
-    /*** DebitNote <-> DebitNoteItem */
-    DebitNote.hasMany(DebitNoteItem, {
-      foreignKey: "debitNoteId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(DebitNote, {
-      foreignKey: "debitNoteId",
-      as: "debitNote",
-    });
+  /*** DebitNote <-> DebitNoteItem */
+  DebitNote.hasMany(DebitNoteItem, {
+    foreignKey: "debitNoteId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(DebitNote, {
+    foreignKey: "debitNoteId",
+    as: "debitNote",
+  });
 
-    /*** Item <-> DebitNoteItem */
-    Item.hasMany(DebitNoteItem, {
-      foreignKey: "itemId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(Item, {
-      foreignKey: "itemId",
-      as: "item",
-    });
+  /*** Item <-> DebitNoteItem */
+  Item.hasMany(DebitNoteItem, {
+    foreignKey: "itemId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
 
   /*** InfluencerCategory <-> Influencer (Many-to-Many) */
   InfluencerCategory.belongsToMany(Influencer, {
@@ -960,7 +984,7 @@ export function initControlDB(sequelize: Sequelize) {
     otherKey: "platformId",
     as: "platforms",
   });
-      /*** ItemCategory <-> ItAssetsManagement */
+  /*** ItemCategory <-> ItAssetsManagement */
   ItemCategory.hasMany(ItAssetsManagement, {
     foreignKey: "categoryId",
     as: "assets",
@@ -971,8 +995,8 @@ export function initControlDB(sequelize: Sequelize) {
     as: "category",
   });
 
-    /*** Company <-> ItAssetsManagement */
-   Company.hasMany(ItAssetsManagement, {
+  /*** Company <-> ItAssetsManagement */
+  Company.hasMany(ItAssetsManagement, {
     foreignKey: "companyId",
     as: "assets",
   });
@@ -992,7 +1016,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "clientId",
     as: "client",
   });
-   /***ItTicketsAttachments<->ItTickets */
+  /***ItTicketsAttachments<->ItTickets */
   ItTickets.hasMany(ItTicketsAttachments, {
     foreignKey: "itTicketId",
     as: "attachments",
@@ -1002,7 +1026,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "itTicketId",
     as: "itTickets",
   });
-  
+
   //***ItAssetsAttachments<->ItAssetsManagement */
   ItAssetsManagement.hasMany(ItAssetsAttachments, {
     foreignKey: "itAssetId",
@@ -1013,7 +1037,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "itAssetId",
     as: "asset",
   });
-    /***ItTickets<->ItTicketsTimeline */
+  /***ItTickets<->ItTicketsTimeline */
   ItTickets.hasMany(ItTicketsTimeline, {
     foreignKey: "itTicketId",
     as: "timeline",
@@ -1236,7 +1260,7 @@ export function initControlDB(sequelize: Sequelize) {
   // ============================================================
   // ZarklyX RBAC Associations (Platform Admin System)
   // ============================================================
-  
+
   // ZarklyXUser <-> ZarklyXRole
   ZarklyXUser.belongsTo(ZarklyXRole, {
     foreignKey: "roleId",
