@@ -428,9 +428,9 @@ export const employeeDocumentUpload = multer({
   storage: employeeDocumentStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter(req, file, cb) {
-    const allowed = ["application/pdf", "image/jpeg", "image/png", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"];
     if (!allowed.includes(file.mimetype)) {
-      cb(new Error("Only PDF, Image (JPEG/PNG), and Word files are allowed"));
+      cb(new Error("Only PDF, Image (JPEG/PNG), Word files, and Text files are allowed"));
     } else {
       cb(null, true);
     }
