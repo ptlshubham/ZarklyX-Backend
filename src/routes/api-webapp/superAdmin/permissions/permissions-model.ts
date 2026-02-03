@@ -19,6 +19,7 @@ export class Permissions extends Model<
   declare price: number; // Price for individual permission addon
   declare isSystemPermission: boolean; // Protects critical permissions from overrides
   declare isSubscriptionExempt: boolean; // Allows access even without subscription (account survival)
+  declare isFreeForAll: boolean;
   declare isActive: boolean;
   declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
@@ -70,6 +71,11 @@ export class Permissions extends Model<
           allowNull: false,
           defaultValue: false,
         },
+        isFreeForAll: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
         isActive: {
           type: DataTypes.BOOLEAN,
           allowNull: false,
@@ -96,6 +102,24 @@ export class Permissions extends Model<
         modelName: "permissions",
         tableName: "permissions",
         timestamps: true,
+        indexes: [
+          {
+            fields: ["moduleId"],
+            name: "idx_permissions_moduleId",
+          },
+          {
+            fields: ["isFreeForAll"],
+            name: "idx_permissions_isFreeForAll",
+          },
+          {
+            fields: ["isSubscriptionExempt"],
+            name: "idx_permissions_isSubscriptionExempt",
+          },
+          {
+            fields: ["isActive", "isDeleted"],
+            name: "idx_permissions_active_deleted",
+          },
+        ],
       }
     );
 

@@ -361,10 +361,10 @@ export async function checkUserPermission(
   // Exception: Subscription-exempt permissions (e.g., billing, subscription management)
   // These allow access even without subscription (account survival)
   const isSubscriptionExempt = (permission as any).isSubscriptionExempt;
-  
+
   if (!isSubscriptionExempt) {
-    // Check if module is free for all
-    const module = await Modules.findByPk(permission.moduleId);
+    // Use the already included module from the permission object
+    const module = (permission as any).module;
     const isFreeModule = module?.isFreeForAll;
 
     if (!isFreeModule) {
@@ -551,57 +551,12 @@ export async function getUserEffectivePermissions(userId: string): Promise<{
  */
 export async function getUserAccessibleModules(userId: string): Promise<string[]> {
   const user = await User.findByPk(userId);
+  if (!user || !user.companyId) return [];
 
-  if (!user || !user.companyId) {
-    return [];
-  }
-
-  // Get company modules from subscription
-  const subscription = await CompanySubscription.findOne({
-    where: {
-      companyId: user.companyId,
-      isCurrent: true,
-      status: "active",
-      isDeleted: false,
-    },
-  });
-
-  const moduleIds = new Set<string>();
-
-  if (subscription) {
-    const planModules = await SubscriptionPlanModule.findAll({
-      where: {
-        subscriptionPlanId: subscription.subscriptionPlanId,
-        isActive: true,
-        isDeleted: false,
-      },
-    });
-
-    planModules.forEach((pm) => moduleIds.add(pm.moduleId));
-  }
-
-  // Get company-specific modules (add-ons)
-  const companyModules = await CompanyModule.findAll({
-    where: {
-      companyId: user.companyId,
-      isActive: true,
-      isDeleted: false,
-    },
-  });
-
-  companyModules.forEach((cm) => moduleIds.add(cm.moduleId));
-
-  // Get module names
-  const modules = await Modules.findAll({
-    where: {
-      id: { [Op.in]: Array.from(moduleIds) },
-      isActive: true,
-      isDeleted: false,
-    },
-  });
-
-  return modules.map((m) => m.name);
+  const moduleIds = await getCompanyAccessibleModuleIds(user.companyId);
+  return Array.from(moduleIds);
 }
+
 
 /**
  * Batch check if user has access to multiple permissions
@@ -655,6 +610,7 @@ export async function batchCheckUserPermissions(
 
   const overrideMap = new Map(overrides.map((o) => [o.permissionId, o.effect]));
 
+
   // PERFORMANCE: Preload all accessible modules once (prevents N+1 queries)
   const allowedModuleIds = await getCompanyAccessibleModuleIds(user.companyId);
 
@@ -668,6 +624,17 @@ export async function batchCheckUserPermissions(
     },
   });
   const moduleMap = new Map(modules.map(m => [m.id, m]));
+
+  // PERFORMANCE: Preload all company permission entitlements ONCE (prevents N+1 queries)
+  const companyPermissions = await CompanyPermission.findAll({
+    where: {
+      companyId: user.companyId,
+      permissionId: { [Op.in]: permissions.map(p => p.id) },
+      isActive: true,
+      isDeleted: false,
+    },
+  });
+  const companyPermissionSet = new Set(companyPermissions.map(cp => cp.permissionId));
 
   // Process each permission
   for (const permissionKey of permissionKeys) {
@@ -687,16 +654,10 @@ export async function batchCheckUserPermissions(
       const isFreeModule = module?.isFreeForAll;
 
       if (!isFreeModule) {
-        // Check module access (using preloaded set - O(1) lookup)
         const hasModuleAccess = allowedModuleIds.has(permission.moduleId);
 
         if (!hasModuleAccess) {
-          // Check feature-level permission access
-          const hasPermissionAccess = await checkCompanyPermissionAccess(
-            user.companyId,
-            permission.id
-          );
-
+          const hasPermissionAccess = companyPermissionSet.has(permission.id);
           if (!hasPermissionAccess) {
             // No entitlement
             result[permissionKey] = false;
@@ -723,4 +684,136 @@ export async function batchCheckUserPermissions(
   }
 
   return result;
+}
+
+export async function getUserAccessSnapshot(userId: string) {
+  const user = await User.findByPk(userId, {
+    include: [{ model: Role, as: "role" }],
+  });
+
+  if (!user || !user.roleId || !user.companyId) {
+    return { permissions: [], modules: [] };
+  }
+
+  // Load all permissions
+  const allPermissions = await Permissions.findAll({
+    where: { isActive: true, isDeleted: false },
+    attributes: ["id", "name", "moduleId", "isSubscriptionExempt", "isFreeForAll"],
+  });
+
+  // Load all modules
+  const modules = await Modules.findAll({
+    where: { isActive: true, isDeleted: false },
+    attributes: ["id", "name", "description", "isFreeForAll"],
+  });
+
+  const moduleMap = new Map(modules.map(m => [m.id, m]));
+
+  // Load all Company entitlements 
+  const allowedModuleIds = await getCompanyAccessibleModuleIds(user.companyId);
+
+  const companyPermissions = await CompanyPermission.findAll({
+    where: {
+      companyId: user.companyId,
+      isActive: true,
+      isDeleted: false,
+    },
+    attributes: ["permissionId"],
+  });
+
+  const companyPermissionSet = new Set(
+    companyPermissions.map(cp => cp.permissionId)
+  );
+
+  // Load all User overrides 
+  const overrides = await UserPermissionOverrides.findAll({
+    where: { userId, ...ACTIVE_OVERRIDE_FILTER },
+    attributes: ["permissionId", "effect"],
+  });
+
+  const denyOverrideSet = new Set(
+    overrides.filter(o => o.effect === "deny").map(o => o.permissionId)
+  );
+
+  const allowOverrideSet = new Set(
+    overrides.filter(o => o.effect === "allow").map(o => o.permissionId)
+  );
+
+  // Load all Role permissions
+  const rolePermissions = await RolePermissions.findAll({
+    where: { roleId: user.roleId },
+    attributes: ["permissionId"],
+  });
+
+  const rolePermissionSet = new Set(
+    rolePermissions.map(rp => rp.permissionId)
+  );
+
+  // Rule engine || MAIN LOGIC ||
+  const allowedPermissions: typeof allPermissions = [];
+
+  for (const permission of allPermissions) {
+    const permissionId = permission.id;
+
+    const isPermissionFree = permission.isFreeForAll === true;
+    const module = moduleMap.get(permission.moduleId);
+    const isModuleFree = module?.isFreeForAll === true;
+
+    // Company entitlement
+    if (
+      !permission.isSubscriptionExempt &&
+      !isPermissionFree &&
+      !isModuleFree
+    ) {
+      const hasModuleAccess = allowedModuleIds.has(permission.moduleId);
+      const hasPermissionAccess = companyPermissionSet.has(permissionId);
+
+      if (!hasModuleAccess && !hasPermissionAccess) {
+        continue;
+      }
+    }
+
+    // User overrides
+    if (denyOverrideSet.has(permissionId)) continue;
+
+    if (allowOverrideSet.has(permissionId)) {
+      allowedPermissions.push(permission);
+      continue;
+    }
+
+    // Role permissions
+    if (rolePermissionSet.has(permissionId)) {
+      allowedPermissions.push(permission);
+    }
+  }
+
+  // Build module → permissions mapping
+  const modulePermissionMap: Record<string, {
+    id: string;
+    name: string;
+    description?: string;
+    permissions: string[];
+  }> = {};
+
+  for (const perm of allowedPermissions) {
+    const mod = moduleMap.get(perm.moduleId);
+    if (!mod) continue;
+
+    if (!modulePermissionMap[mod.id]) {
+      modulePermissionMap[mod.id] = {
+        id: mod.id,
+        name: mod.name,
+        description: mod.description,
+        permissions: [],
+      };
+    }
+
+    modulePermissionMap[mod.id].permissions.push(perm.name);
+  }
+
+  // Final snapshot 
+  return {
+    permissions: allowedPermissions.map(p => p.name),
+    modules: Object.values(modulePermissionMap),
+  };
 }
