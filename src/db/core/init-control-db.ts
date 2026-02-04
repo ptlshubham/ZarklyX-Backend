@@ -1,9 +1,9 @@
 import type { Sequelize } from "sequelize";
 
 // Models for Web -app
+import { Role, initRoleModel } from "../../routes/api-webapp/roles/role-model";
 import { User } from "../../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../../routes/api-webapp/company/company-model";
-import { UserCompany, initUserCompanyModel } from "../../routes/api-webapp/company/user-company-model";
 import { Otp } from "../../routes/api-webapp/otp/otp-model";
 import { LoginHistory } from "../../routes/api-webapp/loginHistory/loginHistory-model";
 import { Category } from "../../routes/api-webapp/superAdmin/generalSetup/category/category-model";
@@ -12,11 +12,17 @@ import { Clients } from "../../routes/api-webapp/agency/clients/clients-model";
 import { BusinessType } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessType-model";
 import { BusinessSubcategory } from "../../routes/api-webapp/superAdmin/generalSetup/businessType/businessSubcategory-model";
 import { ItTickets } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-model";
+import { ItAssetsManagement } from "../../routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-model";
+import { ItTicketsAttachments } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-Attachments/it-Tickets-Attachments-model";
+import { ItAssetsAttachments } from "../../routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-Attachments/it-Assets-Management-Attachments-model";
+import { ItTicketsTimeline } from "../../routes/api-webapp/it-Management/it-Tickets/it-Tickets-Timeline/it-Tickets-Timeline-model";
+
 // import { Role } from "../../routes/api-webapp/roles/role-model";
 // import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 // Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
+import { EmployeeDocument } from "../../routes/api-webapp/agency/employee/employee-documents.model";
 
 // import { Role } from "../../routes/api-webapp/roles/role-model";
 // import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
@@ -48,11 +54,26 @@ import { PurchaseOrder } from "../../routes/api-webapp/accounting/purchaseOrder/
 import { PurchaseOrderItem } from "../../routes/api-webapp/accounting/purchaseOrder/purchase-order-item-model";
 import { Payments } from "../../routes/api-webapp/accounting/payments/payments-model";
 import { PaymentsDocuments } from "../../routes/api-webapp/accounting/payments/payments-documents-model";
+import { AccountingDocument } from "../../routes/api-webapp/accounting/accounting-document-model";
+import { Modules, initModulesModel } from "../../routes/api-webapp/superAdmin/modules/modules-model";
+import { Permissions, initPermissionsModel } from "../../routes/api-webapp/superAdmin/permissions/permissions-model";
+import { SubscriptionPlan, initSubscriptionPlanModel } from "../../routes/api-webapp/superAdmin/subscription-plan/subscription-plan-model";
+import { SubscriptionPlanModule, initSubscriptionPlanModuleModel } from "../../routes/api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-model";
+import { CompanyModule, initCompanyModuleModel } from "../../routes/api-webapp/company/company-module/company-module-model";
+import { CompanySubscription, initCompanySubscriptionModel } from "../../routes/api-webapp/company/company-subscription/company-subscription-model";
+import { CompanyPermission, initCompanyPermissionModel } from "../../routes/api-webapp/company/company-permission/company-permission-model";
+import { SubscriptionPlanPermission, initSubscriptionPlanPermissionModel } from "../../routes/api-webapp/superAdmin/subscription-plan-permission/subscription-plan-permission-model";
+import { RolePermissions, initRolePermissionsModel } from "../../routes/api-webapp/role-permissions/role-permissions-model";
+import { UserPermissionOverrides, initUserPermissionOverridesModel } from "../../routes/api-webapp/user-permission-overrides/user-permission-overrides-model";
+import { ZarklyXUser } from "../../routes/api-webapp/superAdmin/authentication/user/user-model";
+import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/rbac/roles/roles-model";
+import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permissions/permissions-model";
+import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
+import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
 
 export {
   User,
   Company,
-  UserCompany,
   Otp,
   LoginHistory,
   Category,
@@ -62,6 +83,7 @@ export {
   BusinessSubcategory,
   SocialToken,
   Employee,
+  EmployeeDocument,
   ItTickets,
   // GoogleToken
   InfluencerCategory,
@@ -88,13 +110,35 @@ export {
   PurchaseOrder,
   PurchaseOrderItem,
   Payments,
-  PaymentsDocuments
+  PaymentsDocuments,
+  AccountingDocument,
+  Modules,
+  Permissions,
+  SubscriptionPlan,
+  SubscriptionPlanModule,
+  SubscriptionPlanPermission,
+  CompanyModule,
+  CompanySubscription,
+  CompanyPermission,
+  Role,
+  RolePermissions,
+  UserPermissionOverrides,
+  ZarklyXUser,
+  ZarklyXRole,
+  ZarklyXPermission,
+  ZarklyXRolePermission,
+  ZarklyXUserPermissionOverride,
+  ItAssetsManagement,
+  ItTicketsAttachments,
+  ItAssetsAttachments,
+  ItTicketsTimeline
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
   // User.initModel(sequelize);
-  User.initModel(sequelize);
   Company.initModel(sequelize);
+  initRoleModel(sequelize);
+  User.initModel(sequelize);
   PremiumModule.initModel(sequelize);
   Category.initModel(sequelize);
   Clients.initModel(sequelize);
@@ -102,14 +146,17 @@ export function initControlDB(sequelize: Sequelize) {
   Otp.initModel(sequelize);
   LoginHistory.initModel(sequelize);
   ItTickets.initModel(sequelize);
+  ItAssetsManagement.initModel(sequelize);
+  ItemCategory.initModel(sequelize);
+  ItTicketsAttachments.initModel(sequelize);
+  ItTicketsTimeline.initModel(sequelize);
+  ItAssetsAttachments.initModel(sequelize);
+  Employee.initModel(sequelize);
+  EmployeeDocument.initModel(sequelize);
   // Roles
   // Role.initModel(sequelize);
   // SubRole.initModel(sequelize);
-  initUserCompanyModel(sequelize);
   SocialToken.initModel(sequelize);
-  // Role.initModel(sequelize);
-  // SubRole.initModel(sequelize);
-  initUserCompanyModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
   // GoogleToken.initModel(sequelize); 
@@ -142,6 +189,22 @@ export function initControlDB(sequelize: Sequelize) {
   PurchaseOrderItem.initModel(sequelize);
   Payments.initModel(sequelize);
   PaymentsDocuments.initModel(sequelize);
+  AccountingDocument.initModel(sequelize);
+  initModulesModel(sequelize);
+  initPermissionsModel(sequelize);
+  initSubscriptionPlanModel(sequelize);
+  initSubscriptionPlanModuleModel(sequelize);
+  initSubscriptionPlanPermissionModel(sequelize);
+  initCompanyModuleModel(sequelize);
+  initCompanySubscriptionModel(sequelize);
+  initCompanyPermissionModel(sequelize);
+  initRolePermissionsModel(sequelize);
+  initUserPermissionOverridesModel(sequelize);
+  ZarklyXRole.initModel(sequelize);
+  ZarklyXPermission.initModel(sequelize);
+  ZarklyXUser.initModel(sequelize);
+  ZarklyXRolePermission.initModel(sequelize);
+  ZarklyXUserPermissionOverride.initModel(sequelize);
 
 
   // Relations and associations
@@ -152,22 +215,6 @@ export function initControlDB(sequelize: Sequelize) {
   Company.hasMany(User, {
     foreignKey: "companyId",
   });
-
-  /***user <-> userCompany */
-  User.hasMany(UserCompany, {
-    foreignKey: "userId",
-  });
-  UserCompany.belongsTo(User, {
-    foreignKey: "userId",
-  });
-
-  Company.hasMany(UserCompany, {
-    foreignKey: "companyId",
-  });
-  UserCompany.belongsTo(Company, {
-    foreignKey: "companyId",
-  });
-
 
   /***user <-> otp */
   //   User.hasMany(Otp, {
@@ -241,6 +288,26 @@ export function initControlDB(sequelize: Sequelize) {
     as: "subordinates",     // manager.getSubordinates()
   });
 
+  /*** Employee <-> EmployeeDocument */
+  Employee.hasMany(EmployeeDocument, {
+    foreignKey: "employeeId",
+    as: "documents",
+  });
+  EmployeeDocument.belongsTo(Employee, {
+    foreignKey: "employeeId",
+    as: "employee",
+  });
+
+  /*** Company <-> EmployeeDocument */
+  Company.hasMany(EmployeeDocument, {
+    foreignKey: "companyId",
+    as: "employeeDocuments",
+  });
+  EmployeeDocument.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
   /*** BusinessType <-> BusinessSubcategory */
   BusinessType.hasMany(BusinessSubcategory, {
     foreignKey: "businessTypeId",
@@ -263,14 +330,14 @@ export function initControlDB(sequelize: Sequelize) {
   });
 
   /*** User <-> ItTickets */
-  User.hasMany(ItTickets, {
-    foreignKey: "userId",
-    as: "itTickets",
-  });
-  ItTickets.belongsTo(User, {
-    foreignKey: "userId",
-    as: "user",
-  });
+  // User.hasMany(ItTickets, {
+  //   foreignKey: "userId",
+  //   as: "itTickets",
+  // });
+  // ItTickets.belongsTo(User, {
+  //   foreignKey: "userId",
+  //   as: "user",
+  // });
 
   /*** Company <-> ItTickets */
   Company.hasMany(ItTickets, {
@@ -782,99 +849,99 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
-    /*** DebitNote <-> Company */
-    Company.hasMany(DebitNote, {
-      foreignKey: "companyId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Company, {
-      foreignKey: "companyId",
-      as: "company",
-      constraints: false,
-    });
+  /*** DebitNote <-> Company */
+  Company.hasMany(DebitNote, {
+    foreignKey: "companyId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Clients */
-    Clients.hasMany(DebitNote, {
-      foreignKey: "clientId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Clients, {
-      foreignKey: "clientId",
-      as: "client",
-      constraints: false,
-    });
+  /*** DebitNote <-> Clients */
+  Clients.hasMany(DebitNote, {
+    foreignKey: "clientId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Vendor */
-    Vendor.hasMany(DebitNote, {
-      foreignKey: "vendorId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Vendor, {
-      foreignKey: "vendorId",
-      as: "vendor",
-      constraints: false,
-    });
+  /*** DebitNote <-> Vendor */
+  Vendor.hasMany(DebitNote, {
+    foreignKey: "vendorId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Invoice */
-    Invoice.hasMany(DebitNote, {
-      foreignKey: "invoiceId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Invoice, {
-      foreignKey: "invoiceId",
-      as: "invoice",
-      constraints: false,
-    });
+  /*** DebitNote <-> Invoice */
+  Invoice.hasMany(DebitNote, {
+    foreignKey: "invoiceId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> PurchaseBill */
-    PurchaseBill.hasMany(DebitNote, {
-      foreignKey: "purchaseBillId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(PurchaseBill, {
-      foreignKey: "purchaseBillId",
-      as: "purchaseBill",
-      constraints: false,
-    });
+  /*** DebitNote <-> PurchaseBill */
+  PurchaseBill.hasMany(DebitNote, {
+    foreignKey: "purchaseBillId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(PurchaseBill, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBill",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
-    DebitNote.belongsToMany(Item, {
-      through: DebitNoteItem,
-      foreignKey: "debitNoteId",
-      otherKey: "itemId",
-      as: "items",
-    });
-    Item.belongsToMany(DebitNote, {
-      through: DebitNoteItem,
-      foreignKey: "itemId",
-      otherKey: "debitNoteId",
-      as: "debitNotes",
-    });
+  /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
+  DebitNote.belongsToMany(Item, {
+    through: DebitNoteItem,
+    foreignKey: "debitNoteId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(DebitNote, {
+    through: DebitNoteItem,
+    foreignKey: "itemId",
+    otherKey: "debitNoteId",
+    as: "debitNotes",
+  });
 
-    /*** DebitNote <-> DebitNoteItem */
-    DebitNote.hasMany(DebitNoteItem, {
-      foreignKey: "debitNoteId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(DebitNote, {
-      foreignKey: "debitNoteId",
-      as: "debitNote",
-    });
+  /*** DebitNote <-> DebitNoteItem */
+  DebitNote.hasMany(DebitNoteItem, {
+    foreignKey: "debitNoteId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(DebitNote, {
+    foreignKey: "debitNoteId",
+    as: "debitNote",
+  });
 
-    /*** Item <-> DebitNoteItem */
-    Item.hasMany(DebitNoteItem, {
-      foreignKey: "itemId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(Item, {
-      foreignKey: "itemId",
-      as: "item",
-    });
+  /*** Item <-> DebitNoteItem */
+  Item.hasMany(DebitNoteItem, {
+    foreignKey: "itemId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
 
   /*** InfluencerCategory <-> Influencer (Many-to-Many) */
   InfluencerCategory.belongsToMany(Influencer, {
@@ -917,7 +984,352 @@ export function initControlDB(sequelize: Sequelize) {
     otherKey: "platformId",
     as: "platforms",
   });
+  /*** ItemCategory <-> ItAssetsManagement */
+  ItemCategory.hasMany(ItAssetsManagement, {
+    foreignKey: "categoryId",
+    as: "assets",
+  });
 
+  ItAssetsManagement.belongsTo(ItemCategory, {
+    foreignKey: "categoryId",
+    as: "category",
+  });
+
+  /*** Company <-> ItAssetsManagement */
+  Company.hasMany(ItAssetsManagement, {
+    foreignKey: "companyId",
+    as: "assets",
+  });
+
+  ItAssetsManagement.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Clients <-> ItAssetsManagement */
+  Clients.hasMany(ItAssetsManagement, {
+    foreignKey: "clientId",
+    as: "assets",
+  });
+
+  ItAssetsManagement.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+  });
+  /***ItTicketsAttachments<->ItTickets */
+  ItTickets.hasMany(ItTicketsAttachments, {
+    foreignKey: "itTicketId",
+    as: "attachments",
+  });
+
+  ItTicketsAttachments.belongsTo(ItTickets, {
+    foreignKey: "itTicketId",
+    as: "itTickets",
+  });
+
+  //***ItAssetsAttachments<->ItAssetsManagement */
+  ItAssetsManagement.hasMany(ItAssetsAttachments, {
+    foreignKey: "itAssetId",
+    as: "attachments",
+  });
+
+  ItAssetsAttachments.belongsTo(ItAssetsManagement, {
+    foreignKey: "itAssetId",
+    as: "asset",
+  });
+  /***ItTickets<->ItTicketsTimeline */
+  ItTickets.hasMany(ItTicketsTimeline, {
+    foreignKey: "itTicketId",
+    as: "timeline",
+  });
+
+  ItTicketsTimeline.belongsTo(ItTickets, {
+    foreignKey: "itTicketId",
+    as: "itTickets",
+  });
+
+  /***ItTickets<->Employee */
+  Employee.hasMany(ItTickets, {
+    foreignKey: "employeeId",
+    as: "itTickets",
+  });
+  ItTickets.belongsTo(Employee, {
+    foreignKey: "employeeId", as: "assignedEmployee"
+  });
+
+  // /***ItTicketsTimeline<->Employee */
+  Employee.hasMany(ItTicketsTimeline, {
+    foreignKey: "employeeId",
+    as: "timeline",
+  });
+
+  ItTicketsTimeline.belongsTo(Employee, {
+    foreignKey: "employeeId", as: "assignedEmployee"
+  });
+
+  // Permissions <-> Modules association
+  // Each permission belongs to a module (moduleId foreign key)
+  Permissions.belongsTo(Modules, {
+    foreignKey: "moduleId",
+    as: "module"
+  });
+  // Each module has many permissions
+  Modules.hasMany(Permissions, {
+    foreignKey: "moduleId",
+    as: "permissions"
+  });
+
+  /*** SubscriptionPlan <-> SubscriptionPlanModule */
+  SubscriptionPlan.hasMany(SubscriptionPlanModule, {
+    foreignKey: "subscriptionPlanId",
+    as: "planModules"
+  });
+  SubscriptionPlanModule.belongsTo(SubscriptionPlan, {
+    foreignKey: "subscriptionPlanId",
+    as: "subscriptionPlan"
+  });
+
+  /*** Modules <-> SubscriptionPlanModule */
+  Modules.hasMany(SubscriptionPlanModule, {
+    foreignKey: "moduleId",
+    as: "planModules"
+  });
+  SubscriptionPlanModule.belongsTo(Modules, {
+    foreignKey: "moduleId",
+    as: "module"
+  });
+
+  /*** SubscriptionPlan <-> SubscriptionPlanPermission */
+  SubscriptionPlan.hasMany(SubscriptionPlanPermission, {
+    foreignKey: "subscriptionPlanId",
+    as: "planPermissions"
+  });
+  SubscriptionPlanPermission.belongsTo(SubscriptionPlan, {
+    foreignKey: "subscriptionPlanId",
+    as: "subscriptionPlan"
+  });
+
+  /*** Permissions <-> SubscriptionPlanPermission */
+  Permissions.hasMany(SubscriptionPlanPermission, {
+    foreignKey: "permissionId",
+    as: "planPermissions"
+  });
+  SubscriptionPlanPermission.belongsTo(Permissions, {
+    foreignKey: "permissionId",
+    as: "permission"
+  });
+
+  /*** Company <-> CompanyModule */
+  Company.hasMany(CompanyModule, {
+    foreignKey: "companyId",
+    as: "companyModules"
+  });
+  CompanyModule.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company"
+  });
+
+  /*** Modules <-> CompanyModule */
+  Modules.hasMany(CompanyModule, {
+    foreignKey: "moduleId",
+    as: "companyModules"
+  });
+  CompanyModule.belongsTo(Modules, {
+    foreignKey: "moduleId",
+    as: "module"
+  });
+
+  /*** Company <-> CompanySubscription */
+  Company.hasMany(CompanySubscription, {
+    foreignKey: "companyId",
+    as: "subscriptions"
+  });
+  CompanySubscription.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company"
+  });
+
+  /*** SubscriptionPlan <-> CompanySubscription */
+  SubscriptionPlan.hasMany(CompanySubscription, {
+    foreignKey: "subscriptionPlanId",
+    as: "companySubscriptions"
+  });
+  CompanySubscription.belongsTo(SubscriptionPlan, {
+    foreignKey: "subscriptionPlanId",
+    as: "subscriptionPlan"
+  });
+
+  /*** Company <-> CompanyPermission */
+  Company.hasMany(CompanyPermission, {
+    foreignKey: "companyId",
+    as: "companyPermissions"
+  });
+  CompanyPermission.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company"
+  });
+
+  /*** Permissions <-> CompanyPermission */
+  Permissions.hasMany(CompanyPermission, {
+    foreignKey: "permissionId",
+    as: "companyPermissions"
+  });
+  CompanyPermission.belongsTo(Permissions, {
+    foreignKey: "permissionId",
+    as: "permission"
+  });
+
+  /*** Company <-> Role (for company-scoped roles) */
+  Company.hasMany(Role, {
+    foreignKey: "companyId",
+    as: "customRoles"
+  });
+  Role.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company"
+  });
+
+  /*** User <-> Role */
+  Role.hasMany(User, {
+    foreignKey: "roleId",
+    as: "users"
+  });
+  User.belongsTo(Role, {
+    foreignKey: "roleId",
+    as: "role"
+  });
+
+  /*** Role <-> RolePermissions */
+  Role.hasMany(RolePermissions, {
+    foreignKey: "roleId",
+    as: "rolePermissions",
+    onDelete: "CASCADE",
+    hooks: true
+  });
+  RolePermissions.belongsTo(Role, {
+    foreignKey: "roleId",
+    as: "role"
+  });
+
+  /*** Permissions <-> RolePermissions */
+  Permissions.hasMany(RolePermissions, {
+    foreignKey: "permissionId",
+    as: "rolePermissions",
+    onDelete: "CASCADE",
+    hooks: true
+  });
+  RolePermissions.belongsTo(Permissions, {
+    foreignKey: "permissionId",
+    as: "permission"
+  });
+
+  /*** User <-> UserPermissionOverrides */
+  User.hasMany(UserPermissionOverrides, {
+    foreignKey: "userId",
+    as: "permissionOverrides",
+    onDelete: "CASCADE",
+    hooks: true
+  });
+  UserPermissionOverrides.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user"
+  });
+
+  /*** Permissions <-> UserPermissionOverrides */
+  Permissions.hasMany(UserPermissionOverrides, {
+    foreignKey: "permissionId",
+    as: "userOverrides",
+    onDelete: "CASCADE",
+    hooks: true
+  });
+  UserPermissionOverrides.belongsTo(Permissions, {
+    foreignKey: "permissionId",
+    as: "permission"
+  });
+
+  /*** User <-> UserPermissionOverrides (grantedBy self-reference) */
+  User.hasMany(UserPermissionOverrides, {
+    foreignKey: "grantedByUserId",
+    as: "grantedOverrides"
+  });
+  UserPermissionOverrides.belongsTo(User, {
+    foreignKey: "grantedByUserId",
+    as: "grantedBy"
+  });
+
+  // ============================================================
+  // ZarklyX RBAC Associations (Platform Admin System)
+  // ============================================================
+
+  // ZarklyXUser <-> ZarklyXRole
+  ZarklyXUser.belongsTo(ZarklyXRole, {
+    foreignKey: "roleId",
+    as: "role",
+  });
+  ZarklyXRole.hasMany(ZarklyXUser, {
+    foreignKey: "roleId",
+    as: "users",
+  });
+
+  // ZarklyXUser <-> ZarklyXUserPermissionOverride
+  ZarklyXUser.hasMany(ZarklyXUserPermissionOverride, {
+    foreignKey: "userId",
+    as: "permissionOverrides",
+  });
+  ZarklyXUserPermissionOverride.belongsTo(ZarklyXUser, {
+    foreignKey: "userId",
+    as: "user",
+  });
+  ZarklyXUserPermissionOverride.belongsTo(ZarklyXUser, {
+    foreignKey: "grantedByUserId",
+    as: "grantedBy",
+  });
+
+  // ZarklyXRole <-> ZarklyXRolePermission
+  ZarklyXRole.hasMany(ZarklyXRolePermission, {
+    foreignKey: "roleId",
+    as: "rolePermissions",
+  });
+  ZarklyXRolePermission.belongsTo(ZarklyXRole, {
+    foreignKey: "roleId",
+    as: "role",
+  });
+
+  // ZarklyXRole <-> ZarklyXPermission (Many-to-Many through RolePermission)
+  ZarklyXRole.belongsToMany(ZarklyXPermission, {
+    through: ZarklyXRolePermission,
+    foreignKey: "roleId",
+    otherKey: "permissionId",
+    as: "permissions",
+  });
+  ZarklyXPermission.belongsToMany(ZarklyXRole, {
+    through: ZarklyXRolePermission,
+    foreignKey: "permissionId",
+    otherKey: "roleId",
+    as: "roles",
+  });
+
+  // ZarklyXPermission <-> ZarklyXRolePermission
+  ZarklyXPermission.hasMany(ZarklyXRolePermission, {
+    foreignKey: "permissionId",
+    as: "rolePermissions",
+  });
+  ZarklyXRolePermission.belongsTo(ZarklyXPermission, {
+    foreignKey: "permissionId",
+    as: "permission",
+  });
+
+  // ZarklyXPermission <-> ZarklyXUserPermissionOverride
+  ZarklyXPermission.hasMany(ZarklyXUserPermissionOverride, {
+    foreignKey: "permissionId",
+    as: "userOverrides",
+  });
+  ZarklyXUserPermissionOverride.belongsTo(ZarklyXPermission, {
+    foreignKey: "permissionId",
+    as: "permission",
+  });
+
+  console.log("✅ ZarklyX RBAC associations initialized");
 
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
@@ -936,7 +1348,6 @@ export function initControlDB(sequelize: Sequelize) {
     Company,
     Otp,
     LoginHistory,
-    UserCompany,
     Category,
     PremiumModule,
     Clients,
@@ -950,6 +1361,10 @@ export function initControlDB(sequelize: Sequelize) {
     Industry,
     Platform,
     ItemCategory,
+    ItAssetsManagement,
+    ItTicketsAttachments,
+    ItTicketsTimeline,
+    ItAssetsAttachments,
     Unit,
     Item,
     Vendor,
@@ -970,5 +1385,17 @@ export function initControlDB(sequelize: Sequelize) {
     CreditNoteItem,
     DebitNote,
     DebitNoteItem,
+    AccountingDocument,
+    Modules,
+    Permissions,
+    SubscriptionPlan,
+    SubscriptionPlanModule,
+    SubscriptionPlanPermission,
+    CompanySubscription,
+    CompanyModule,
+    CompanyPermission,
+    Role,
+    RolePermissions,
+    UserPermissionOverrides,
   };
 }

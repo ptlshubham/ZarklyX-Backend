@@ -8,9 +8,11 @@ import {
   deleteInvoice,
   searchInvoices,
   convertInvoiceToPayment,
+  getInvoiceByPublicToken,
 } from "./invoice-handler";
 import { serverError } from "../../../../utils/responseHandler";
 import dbInstance from "../../../../db/core/control-db";
+import { Company } from "../../../../routes/api-webapp/company/company-model";
 
 const router = express.Router();
 
@@ -18,28 +20,51 @@ const router = express.Router();
 router.post("/createInvoice", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    // Validate required fields
-    const {
-      companyId,
-      invoiceType,
-      clientId,
-      taxSelectionOn,
-      placeOfSupply,
-      invoiceNo,
-      paymentTerms,
-      items,
-      showCess,
-      reverseCharge,
-    } = req.body;
-
-    if (!companyId || !invoiceType || !clientId || !invoiceNo || !items || items.length === 0) {
+    // Comprehensive manual validation
+    const requiredFields = [
+      "companyId",
+      "invoiceType",
+      "clientId",
+      "taxSelectionOn",
+      "placeOfSupply",
+      "invoiceNo",
+      "invoiceDate",
+      "poNo",
+      "poDate",
+      "paymentTerms",
+      "items",
+      "showCess",
+      "reverseCharge"
+    ];
+    for (const field of requiredFields) {
+      if (req.body[field] === undefined || req.body[field] === null || req.body[field] === "") {
+        return res.status(400).json({
+          success: false,
+          message: `Missing or empty required field: ${field}`,
+        });
+      }
+    }
+    if (!Array.isArray(req.body.items) || req.body.items.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: companyId, invoiceType, clientId, invoiceNo, items",
+        message: "items must be a non-empty array",
       });
     }
-
-    // Validate payment terms
+    for (const [i, item] of req.body.items.entries()) {
+      if (!item.itemId || typeof item.itemId !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: `items[${i}].itemId is required and must be a string`,
+        });
+      }
+      if (item.quantity === undefined || item.quantity === null || isNaN(item.quantity)) {
+        return res.status(400).json({
+          success: false,
+          message: `items[${i}].quantity is required and must be a number`,
+        });
+      }
+    }
+    // Validate paymentTerms
     const validPaymentTerms = [
       "specific date",
       "hide payment terms",
@@ -50,35 +75,55 @@ router.post("/createInvoice", async (req: Request, res: Response): Promise<any> 
       "NET 45",
       "NET 60",
     ];
-
-    if (!validPaymentTerms.includes(paymentTerms)) {
+    if (!validPaymentTerms.includes(req.body.paymentTerms)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid payment terms. Must be one of: ${validPaymentTerms.join(", ")}`,
+        message: `Invalid paymentTerms. Must be one of: ${validPaymentTerms.join(", ")}`,
       });
     }
-
-    // If payment terms is "specific date", require specificDueDate
-    if (paymentTerms === "specific date" && !req.body.specificDueDate) {
+    if (req.body.paymentTerms === "specific date" && !req.body.specificDueDate) {
       return res.status(400).json({
         success: false,
         message: 'specificDueDate is required when paymentTerms is "specific date"',
       });
     }
-
-    // Validate items structure
-    for (const item of items) {
-      if (!item.itemId || !item.quantity) {
+    // Optionally validate tdsTcsEntries
+    if (req.body.tdsTcsEntries) {
+      if (!Array.isArray(req.body.tdsTcsEntries)) {
         return res.status(400).json({
           success: false,
-          message: "Each item must have itemId and quantity",
+          message: "tdsTcsEntries must be an array",
         });
       }
+      for (const [i, entry] of req.body.tdsTcsEntries.entries()) {
+        if (entry.taxPercentage === undefined || entry.taxPercentage === null || isNaN(entry.taxPercentage)) {
+          return res.status(400).json({
+            success: false,
+            message: `tdsTcsEntries[${i}].taxPercentage is required and must be a number`,
+          });
+        }
+        if (!entry.type || typeof entry.type !== "string") {
+          return res.status(400).json({
+            success: false,
+            message: `tdsTcsEntries[${i}].type is required and must be a string`,
+          });
+        }
+        if (!entry.taxName || typeof entry.taxName !== "string") {
+          return res.status(400).json({
+            success: false,
+            message: `tdsTcsEntries[${i}].taxName is required and must be a string`,
+          });
+        }
+        if (!entry.applicableOn || typeof entry.applicableOn !== "string") {
+          return res.status(400).json({
+            success: false,
+            message: `tdsTcsEntries[${i}].applicableOn is required and must be a string`,
+          });
+        }
+      }
     }
-
     const data = await createInvoice(req.body, t);
     await t.commit();
-
     return res.status(201).json({
       success: true,
       message: "Invoice created successfully",
@@ -87,6 +132,13 @@ router.post("/createInvoice", async (req: Request, res: Response): Promise<any> 
   } catch (err: any) {
     await t.rollback();
     console.error("Create Invoice Error:", err);
+    if (err.name === 'SequelizeUniqueConstraintError' && err.errors && err.errors[0]?.path?.includes('invoice_invoice_no_company_id')) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice number must be unique for this company.",
+        error: err.message,
+      });
+    }
     return serverError(res, err.message || "Failed to create invoice.");
   }
 });
@@ -96,9 +148,26 @@ router.get("/getInvoiceById/:id", async (req: Request, res: Response): Promise<a
   try {
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
+
+    let { companyId } = req.query;
+    companyId = companyId as string;
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+    const company = await Company.findByPk(companyId);
+    if (!company) {
+        return res.status(400).json({
+        success: false,
+        message: "company not found",
+      });
+    }
+
     const data = await getInvoiceById(
       id,
-      req.query.companyId as string
+      companyId as string
     );
 
     if (!data) {
@@ -114,10 +183,32 @@ router.get("/getInvoiceById/:id", async (req: Request, res: Response): Promise<a
   }
 });
 
-// GET /accounting/invoice/get-by-company?companyId=
+// GET /accounting/invoice/getInvoiceByCompanyId?companyId=
 router.get("/getInvoiceByCompanyId", async (req: Request, res: Response): Promise<any> => {
     try {
-      const data = await getInvoicesByCompany(req.query.companyId as string);
+      let { companyId } = req.query;
+      companyId = companyId as string;
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "companyId is required",
+        });
+      }
+      const company = await Company.findByPk(companyId);
+      if (!company) {
+        return res.status(400).json({
+          success: false,
+          message: "company not found",
+        });
+      }
+
+      const data = await getInvoicesByCompany(companyId as string);
+      if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: `No invoices for company ${companyId}`,
+      });
+    }
 
       res.json({
         success: true,
@@ -135,10 +226,33 @@ router.get("/getInvoiceByClientId/:clientId", async (req: Request, res: Response
     try {
       let clientId = req.params.clientId;
       if (Array.isArray(clientId)) clientId = clientId[0];
+
+      let { companyId } = req.query;
+      companyId = companyId as string;
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "companyId is required",
+        });
+      } 
+      const company = await Company.findByPk(companyId);
+      if (!company) {
+        return res.status(400).json({
+          success: false,
+          message: "company not found",
+        });
+      }
+
       const data = await getInvoicesByClient(
         clientId,
-        req.query.companyId as string
+        companyId as string
       );
+      if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: `No invoices for client ${clientId}`,
+      });
+    }
 
       res.json({
         success: true,
@@ -154,12 +268,20 @@ router.get("/getInvoiceByClientId/:clientId", async (req: Request, res: Response
 // GET /accounting/invoice/searchInvoice/?companyId=...&clientName=...&invoiceNo=...&status=...&city=...&type=...&itemName=...&issueDateFrom=...&issueDateTo=...&dueDateFrom=...&dueDateTo=...
 router.get("/searchInvoice", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { companyId } = req.query;
+    let { companyId } = req.query;
+    companyId = companyId as string;
 
     if (!companyId) {
       return res.status(400).json({
         success: false,
         message: "companyId is required",
+      });
+    }
+    const company = await Company.findByPk(companyId);
+    if (!company) {
+      return res.status(400).json({
+        success: false,
+        message: "company not found",
       });
     }
 
@@ -221,33 +343,72 @@ router.get("/searchInvoice", async (req: Request, res: Response): Promise<any> =
   }
 });
 
-// PATCH /accounting/invoice/update/:id?companyId=
+// PATCH /accounting/invoice/updateInvoice/:id?companyId=
 router.patch("/updateInvoice/:id", async (req: Request, res: Response): Promise<any> => {
     const t = await dbInstance.transaction();
+    let { companyId } = req.query;
+    companyId = companyId as string;
+
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+    const company = await Company.findByPk(companyId);
+    if (!company) {
+      return res.status(400).json({
+        success: false,
+        message: "company not found",
+      });
+    }
     try {
       if(req.body.items){
-        const { companyId, clientId, items } = req.body; 
-
-        if (!companyId) {
-          return res.status(400).json({
-            success: false,
-            message: "companyId is required for updating purchase bill",
-          });
-        }
-
-        if (items.length === 0) {
-          return res.status(400).json({
-            success: false,
-            message: "items array cannot be empty",
-          });
-        }
-
-        // Validate items structure
-        for (const item of items) {
-          if (!item.itemId || !item.quantity) {
+        for (const [i, item] of req.body.items.entries()) {
+          if (!item.itemId || typeof item.itemId !== "string") {
             return res.status(400).json({
               success: false,
-              message: "Each item must have itemId and quantity",
+              message: `items[${i}].itemId is required and must be a string`,
+            });
+          }
+          if (item.quantity === undefined || item.quantity === null || isNaN(item.quantity)) {
+            return res.status(400).json({
+              success: false,
+              message: `items[${i}].quantity is required and must be a number`,
+            });
+          }
+        }
+      }
+      if (req.body.tdsTcsEntries) {
+        if (!Array.isArray(req.body.tdsTcsEntries)) {
+          return res.status(400).json({
+            success: false,
+            message: "tdsTcsEntries must be an array",
+          });
+        }
+        for (const [i, entry] of req.body.tdsTcsEntries.entries()) {
+          if (entry.taxPercentage === undefined || entry.taxPercentage === null || isNaN(entry.taxPercentage)) {
+            return res.status(400).json({
+              success: false,
+              message: `tdsTcsEntries[${i}].taxPercentage is required and must be a number`,
+            });
+          }
+          if (!entry.type || typeof entry.type !== "string") {
+            return res.status(400).json({
+              success: false,
+              message: `tdsTcsEntries[${i}].type is required and must be a string`,
+            });
+          }
+          if (!entry.taxName || typeof entry.taxName !== "string") {
+            return res.status(400).json({
+              success: false,
+              message: `tdsTcsEntries[${i}].taxName is required and must be a string`,
+            });
+          }
+          if (!entry.applicableOn || typeof entry.applicableOn !== "string") {
+            return res.status(400).json({
+              success: false,
+              message: `tdsTcsEntries[${i}].applicableOn is required and must be a string`,
             });
           }
         }
@@ -257,7 +418,7 @@ router.patch("/updateInvoice/:id", async (req: Request, res: Response): Promise<
       if (Array.isArray(id)) id = id[0];
       const data = await updateInvoice(
         id,
-        req.query.companyId as string,
+        companyId as string,
         req.body,
         t
       );
@@ -283,9 +444,25 @@ router.delete("/deleteInvoice/:id",async (req: Request, res: Response): Promise<
     try {
       let id = req.params.id;
       if (Array.isArray(id)) id = id[0];
+      let { companyId } = req.query;
+      companyId = companyId as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "companyId is required",
+        });
+      }
+      const company = await Company.findByPk(companyId);
+      if (!company) {
+        return res.status(400).json({
+          success: false,
+          message: "company not found",
+        });
+      }
       const deleteResult = await deleteInvoice(
         id,
-        req.query.companyId as string,
+        companyId as string,
         t
       );
 
@@ -317,12 +494,42 @@ router.post("/convertToPayment/:id",async (req: Request, res: Response): Promise
     let companyId = req.query.companyId;
     let invoiceId  = req.params.id;
     if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
-    if (Array.isArray(companyId)) companyId = companyId[0];
     companyId = companyId as string;
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+    const company = await Company.findByPk(companyId);
+    if (!company) {
+      return res.status(400).json({
+        success: false,
+        message: "company not found",
+      });
+    }
     const invoiceData = req.body;
-    if(!companyId) {
+    if (!companyId) {
       await t.rollback();
       return res.status(400).json({ success: false, message: "companyId is required" });
+    }
+
+    // Optionally validate invoiceData fields if needed
+    if (invoiceData && invoiceData.items) {
+      if (!Array.isArray(invoiceData.items) || invoiceData.items.length === 0) {
+        await t.rollback();
+        return res.status(400).json({ success: false, message: "items must be a non-empty array" });
+      }
+      for (const [i, item] of invoiceData.items.entries()) {
+        if (!item.itemId || typeof item.itemId !== "string") {
+          await t.rollback();
+          return res.status(400).json({ success: false, message: `items[${i}].itemId is required and must be a string` });
+        }
+        if (item.quantity === undefined || item.quantity === null || isNaN(item.quantity)) {
+          await t.rollback();
+          return res.status(400).json({ success: false, message: `items[${i}].quantity is required and must be a number` });
+        }
+      }
     }
     const result = await convertInvoiceToPayment(invoiceId, companyId, invoiceData, t);
     await t.commit();
@@ -336,5 +543,20 @@ router.post("/convertToPayment/:id",async (req: Request, res: Response): Promise
     return res.status(400).json({ success: false, message: err.message || "Failed to convert purchase order to bill" });
   }
 })
+
+// GET /accounting/invoice/getInvoiceByPublicToken/:publicToken
+router.get("/getInvoiceByPublicToken/:publicToken", async (req: Request, res: Response): Promise<any> => {
+  try {
+    let publicToken = req.params.publicToken;
+    if (Array.isArray(publicToken)) publicToken = publicToken[0];
+    const invoice = await getInvoiceByPublicToken(publicToken);
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: "Invoice not found" });
+    }
+    res.json({ success: true, data: invoice });
+  } catch (err) {
+    return serverError(res, "Failed to fetch invoice by public token.");
+  }
+});
 
 export default router;

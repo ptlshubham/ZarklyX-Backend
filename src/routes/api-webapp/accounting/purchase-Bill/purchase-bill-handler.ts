@@ -159,7 +159,7 @@ const calculatePurchaseBillTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLocaleLowerCase !== companyState.toLocaleLowerCase, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,

@@ -12,13 +12,13 @@ export class ItTickets extends Model<
     InferCreationAttributes<ItTickets>
 > {
     declare id: CreationOptional<string>; // UUID
-    declare userId: string;
+    declare employeeId: string;
     declare companyId: string;
     declare subject: string;
     declare description: string;
+    declare priority: string;
     declare preferredDate: Date | null;
     declare status: string | null;
-    declare attachments: string[] | null;
     declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
@@ -33,7 +33,7 @@ export class ItTickets extends Model<
                     allowNull: false,
                     unique: true,
                 },
-                userId: {
+                employeeId: {
                     type: DataTypes.UUID,
                     allowNull: true,
                     defaultValue: null,
@@ -51,19 +51,24 @@ export class ItTickets extends Model<
                     type: DataTypes.TEXT,
                     allowNull: false,
                 },
+                priority: {
+                    type: DataTypes.ENUM('Low', 'Medium', 'High'),
+                    allowNull: false,
+                },
                 preferredDate: {
                     type: DataTypes.DATE,
                     allowNull: true,
                     defaultValue: null,
                 },
                 status: {
-                    type: DataTypes.ENUM('Open', 'In Progress', 'Completed'),
+                    type: DataTypes.ENUM('Pending', 'In Progress', 'Hold', 'Completed', 'Rejected'),
                     allowNull: false,
-                    defaultValue: 'Open',
+                    defaultValue: 'Pending',
                 },
-                attachments: {
-                    type: DataTypes.JSON,
-                    allowNull: true,
+                isDeleted: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
                 },
                 createdAt: {
                     type: DataTypes.DATE,
@@ -75,11 +80,6 @@ export class ItTickets extends Model<
                     allowNull: false,
                     defaultValue: DataTypes.NOW,
                 },
-                isDeleted:{
-                    type: DataTypes.BOOLEAN,
-                    allowNull: false,
-                    defaultValue: false,
-                }
             },
             {
                 sequelize,

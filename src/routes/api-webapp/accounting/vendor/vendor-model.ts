@@ -12,6 +12,7 @@ export class Vendor extends Model<
     InferCreationAttributes<Vendor>
 > {
     declare id: CreationOptional<string>;
+    declare name: string;
     declare companyId: string;
     declare companyName: string;
     declare phone: string;
@@ -48,6 +49,10 @@ export class Vendor extends Model<
                     type: DataTypes.UUID,
                     defaultValue: DataTypes.UUIDV4,
                     primaryKey: true,
+                },
+                name:{
+                    type: DataTypes.STRING,
+                    allowNull: false,
                 },
                 companyId: {
                     type: DataTypes.UUID,

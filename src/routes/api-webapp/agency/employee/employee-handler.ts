@@ -1,5 +1,6 @@
 import { User } from "../../../../db/core/init-control-db";
 import { Employee } from "../../../../routes/api-webapp/agency/employee/employee-model";
+import { EmployeeDocument } from "../../../../routes/api-webapp/agency/employee/employee-documents.model";
 import { Op, Transaction } from "sequelize";
 const { MakeQuery } = require("../../../../services/model-service");
 
@@ -11,6 +12,9 @@ export interface EmployeePayload {
     departmentId?: number | null;
     reportingManagerId?: string | null;
     // Personal Information (stored in User table - do NOT duplicate here)
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
     dateOfBirth?: Date | null;
     gender?: string | null;
     nationality?: string | null;
@@ -18,9 +22,13 @@ export interface EmployeePayload {
     bloodGroup?: string | null;
     emergencyContactName?: string | null;
     emergencyContactNumber?: string | null;
+    emergencyContactIsdCode?: string | null;
+    emergencyContactIsoCode?: string | null;
     emergencyContactRelationship?: string | null;
     permanentAddress?: string | null;
     currentAddress?: string | null;
+    isoCode?: string | null;
+    isdCode?: string | null;
     // Employment Details
     designation?: string | null;
     dateOfJoining?: Date | null;
@@ -33,8 +41,7 @@ export interface EmployeePayload {
     passportNumber?: string | null;
     drivingLicenseNumber?: string | null;
     voterIdNumber?: string | null;
-    aadharDocumentPath?: string | null;
-    panDocumentPath?: string | null;
+    // Document files are stored in EmployeeDocument model, not here
     // Banking & Payroll
     bankAccountHolderName?: string | null;
     bankName?: string | null;
@@ -187,23 +194,6 @@ export const getAllEmployees = (query: any) => {
 export const getEmployeeById = async (id: string) => {
     return await Employee.findOne({
         where: { id },
-        include: [
-            {
-                model: User,
-                as: 'user',
-                attributes: {
-                    exclude: [
-                        'password',
-                        'secretCode',
-                        'googleId',
-                        'appleId',
-                        'authProvider',
-                        'deletedAt',
-                    ],
-                },
-                required: false,
-            },
-        ],
     });
 };
 
@@ -462,6 +452,84 @@ export const getEmployeesByEmploymentType = async (
             companyId,
             isDeleted: false,
             isActive: true,
+        },
+        raw: true,
+    });
+};
+
+// ======================== EMPLOYEE DOCUMENT FUNCTIONS ========================
+
+// Add employee document
+export const addEmployeeDocument = async (
+    employeeId: string,
+    companyId: string,
+    documentPath: string,
+    t?: Transaction
+) => {
+    const options: any = {};
+    if (t) {
+        options.transaction = t;
+    }
+
+    // Create new document entry
+    return await EmployeeDocument.create(
+        {
+            employeeId,
+            companyId,
+            documentPath,
+        },
+        options
+    );
+};
+
+// Get all documents for an employee
+export const getEmployeeDocuments = async (employeeId: string, companyId: string) => {
+    return await EmployeeDocument.findAll({
+        where: {
+            employeeId,
+            companyId,
+        },
+        raw: true,
+        order: [["createdAt", "DESC"]],
+    });
+};
+
+// Get document by ID
+export const getEmployeeDocumentById = async (documentId: string) => {
+    return await EmployeeDocument.findOne({
+        where: { id: documentId },
+    });
+};
+
+// Delete employee document
+export const removeEmployeeDocument = async (
+    documentId: string,
+    t?: Transaction
+) => {
+    const options: any = { where: { id: documentId } };
+    if (t) {
+        options.transaction = t;
+    }
+    return await EmployeeDocument.destroy(options);
+};
+
+// Get all documents by company
+export const getCompanyDocuments = async (companyId: string) => {
+    return await EmployeeDocument.findAll({
+        where: {
+            companyId,
+        },
+        raw: true,
+        order: [["createdAt", "DESC"]],
+    });
+};
+
+// Verify employee by email with isDeleted status
+export const verifyEmployeeByEmailDeleted = async (email: string, isDeleted: boolean = true) => {
+    return await Employee.findOne({
+        where: {
+            email,
+            isDeleted,
         },
         raw: true,
     });

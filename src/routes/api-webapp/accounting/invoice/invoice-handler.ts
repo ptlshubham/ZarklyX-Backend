@@ -8,6 +8,8 @@ import { Clients } from "../../agency/clients/clients-model";
 import { Payments, PaymentMethod } from "../payments/payments-model";
 import { PaymentsDocuments } from "../payments/payments-documents-model";
 import { PaymentTerms, TaxSelection } from "./invoice-model";
+import { sendEmail } from "../../../../services/mailService";
+import crypto from 'crypto';
 
 export type InvoiceStatus =
   | "Draft"
@@ -347,6 +349,9 @@ const calculateInvoiceTotals = (
 
 // Create invoice with all related data
 export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) => {
+  // Generate a unique public token for sharing
+  const publicToken = crypto.randomBytes(16).toString('hex');
+
   // Calculate due date based on payment terms
   const invoiceDate = body.invoiceDate || new Date();
   const dueDate = calculateDueDate(
@@ -448,6 +453,7 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
       cessValue: parseFloat(calculated.totalCess.toFixed(2)),
       total: parseFloat(calculated.total.toFixed(2)),
       balance: parseFloat(calculated.total.toFixed(2)),
+      publicToken,
       isActive: true,
       isDeleted: false,
     },
@@ -506,10 +512,43 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
     );
   }
 
+  const client = await Clients.findByPk(invoice.clientId,{ transaction: t} );
+
+  if (client && client.email) {
+    try {
+      await sendEmail({
+        from: "varadchaudhari04@gmail.com",
+        to: "varadchaudhari0210@gmail.com",
+        subject: `Invoice ${invoice.invoiceNo}`,
+        htmlFile: "invoice-created",
+        replacements: {
+          userName: client.clientfirstName || "Customer",
+          invoiceNo: invoice.invoiceNo,
+          invoiceDate: invoice.invoiceDate,
+          total: invoice.total,
+          dueDate: invoice.dueDate,
+          documentLink: `${process.env.BASE_URL}/document/${publicToken}`,
+          currentYear: new Date().getFullYear(),
+        },
+        html: null,
+        text: "",
+        attachments: null,
+        cc: null,
+        replyTo: null,
+      });
+    } catch (error) {
+      throw new Error("Invoice create email failed ")
+    }
+  } else{
+    throw new Error();
+  }
+
+
   return {
     invoice,
     invoiceItems: createdInvoiceItems,
-    tdsTcsEntries: createdTdsTcs,
+    invoiceTdsTcs: createdTdsTcs,
+    documentLink: `${process.env.BASE_URL}/document/${publicToken}`,
   };
 };
 
@@ -518,6 +557,14 @@ export const getInvoiceById = async (id: string, companyId: string) => {
   return await Invoice.findOne({
     where: { id, companyId, isDeleted: false },
     include: [
+      {
+        model: Clients,
+        as: "client",
+      },
+      {
+        model: Company,
+        as: "company",
+      },
       {
         model: InvoiceItem,
         as: "invoiceItems",
@@ -1010,7 +1057,62 @@ export const convertInvoiceToPayment = async (
     },
     { where: { id: invoiceId }, transaction: t }
   );
+  
+  // const client = await Clients.findByPk(invoice.clientId);
+  const client = await Clients.findOne({
+    where: { id: invoice.clientId }
+  });
+  const company = await Company.findByPk(companyId,{ transaction: t} );
+  if(!client){
+    throw new Error("Client not found");
+  }
 
+    if(newBalance === 0){
+      try {
+        await sendEmail({
+          from: company && company.email ? company.email : "",
+          to: client.email,
+          subject: `Payment received for Invoice ${invoice.invoiceNo}`,
+          htmlFile: "payment-received",
+          replacements: {
+            userName: client.clientfirstName || "Customer",
+            invoiceNo: invoice.invoiceNo,
+            amount: paymentData.paymentAmount,
+            currentYear: new Date().getFullYear(),
+          },
+          html: null,
+          text: "",
+          attachments: null,
+          cc: null,
+          replyTo: null,
+        });
+      } catch (error) {
+          throw new Error("Invoice convert email failed");
+      }
+    } else{
+      try {
+        await sendEmail({
+          from: (company && company.email) ? company.email : "",
+          to: client.email,
+          subject: `Partial Payment received for Invoice ${invoice.invoiceNo}`,
+          htmlFile: "partial-payment-received",
+          replacements: {
+            userName: client.clientfirstName || "Customer",
+            invoiceNo: invoice.invoiceNo,
+            amount: paymentData.paymentAmount,
+            currentYear: new Date().getFullYear(),
+            remainingBalance: newBalance,
+          },
+          html: null,
+          text: "",
+          attachments: null,
+          cc: null,
+          replyTo: null,
+        });
+      } catch (error) {
+          throw new Error("Invoice convert email failed");
+      }
+    }
   return {
     payment,
     convertedFromInvoice: invoiceId,
@@ -1019,4 +1121,29 @@ export const convertInvoiceToPayment = async (
     remainingBalance: newBalance,
     status: newStatus,
   };
+};
+
+// Handler to fetch invoice by publicToken, including related data
+export const getInvoiceByPublicToken = async (publicToken: string) => {
+  return await Invoice.findOne({
+    where: { publicToken, isDeleted: false },
+    include: [
+      {
+        model: InvoiceItem,
+        as: "invoiceItems",
+      },
+      {
+        model: InvoiceTdsTcs,
+        as:"tdsTcsEntries",
+      },
+      {
+        model: Clients,
+        as: "client",
+      },
+      {
+        model: Company,
+        as: "company",
+      },
+    ],
+  });
 };

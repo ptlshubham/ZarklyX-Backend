@@ -7,6 +7,7 @@ import {
   updateQuote,
   deleteQuote,
   convertQuoteToInvoice,
+  getQuoteByPublicToken
 } from "./quote-handler";
 import { serverError } from "../../../../utils/responseHandler";
 import dbInstance from "../../../../db/core/control-db";
@@ -28,7 +29,7 @@ router.post("/createQuote", async (req: Request, res: Response): Promise<any> =>
       showCess,
     } = req.body;
 
-    if (!companyId || !clientId || !quotationNo || !items || items.length === 0) {
+    if (!companyId || !clientId || !taxSelectionOn || !placeOfSupply || !quotationNo || !items || items.length === 0) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields: companyId, clientId, quotationNo, items",
@@ -237,6 +238,21 @@ router.post("/convertFromQuote/:quoteId", async (req: Request, res: Response): P
   } catch (err: any) {
     await t.rollback();
     return serverError(res, err.message);
+  }
+});
+
+// GET /accounting/quote/public/:publicToken
+router.get("/public/:publicToken", async (req: Request, res: Response): Promise<any> => {
+  try {
+    let { publicToken } = req.params;
+    if (Array.isArray(publicToken)) publicToken = publicToken[0];
+    const data = await getQuoteByPublicToken(publicToken);
+    if (!data) {
+      return res.status(404).json({ success: false, message: "Quote not found" });
+    }
+    return res.json({ success: true, data });
+  } catch (err) {
+    return serverError(res, "Failed to fetch quote by public token.");
   }
 });
 
