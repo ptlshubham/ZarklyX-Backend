@@ -22,18 +22,25 @@ export class Employee extends Model<
     // ✅ 1. PERSONAL INFORMATION (STORED IN USER TABLE)
     // firstName, lastName, email, contact, countryCode are in USER table
     // Only employee-specific personal info stored here:
+    declare firstName: string | null;
+    declare lastName: string | null;
+    declare email: string | null;
     declare dateOfBirth: Date | null;
     declare gender: string | null; // "Male", "Female", "Other"
     declare nationality: string | null;
     declare maritalStatus: string | null; // "Single", "Married", "Divorced", "Widowed"
     declare bloodGroup: string | null; // "O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"
+    declare contactNumber: string | null;
     declare emergencyContactName: string | null;
     declare emergencyContactNumber: string | null;
+    declare emergencyContactIsdCode: string | null;
+    declare emergencyContactIsoCode: string | null;
     declare emergencyContactRelationship: string | null;
     declare permanentAddress: string | null;
     declare currentAddress: string | null;
     declare isoCode: string | null; // ISO country code
     declare isdCode: string | null; // ISD country code
+    // NOTE: contactNumber removed - use User.contact instead
 
     // ✅ 2. EMPLOYMENT DETAILS
     declare designation: string | null; // Job Title
@@ -48,8 +55,7 @@ export class Employee extends Model<
     declare passportNumber: string | null;
     declare drivingLicenseNumber: string | null;
     declare voterIdNumber: string | null;
-    declare aadharDocumentPath: string | null;
-    declare panDocumentPath: string | null;
+    // Document files are stored in EmployeeDocument model, not here
 
     // ✅ 4. BANKING & PAYROLL DETAILS
     declare bankAccountHolderName: string | null;
@@ -141,7 +147,6 @@ export class Employee extends Model<
                 employeeId: {
                     type: DataTypes.STRING(50),
                     allowNull: false,
-                    unique: true,
                 },
                 departmentId: {
                     type: DataTypes.STRING,
@@ -151,7 +156,19 @@ export class Employee extends Model<
                     type: DataTypes.UUID,
                     allowNull: true,
                 },
-                // Personal Information (firstName, lastName from User table)
+                // Personal Information fields
+                firstName: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                },
+                lastName: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                },
+                email: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                },
                 dateOfBirth: {
                     type: DataTypes.DATE,
                     allowNull: true,
@@ -174,12 +191,24 @@ export class Employee extends Model<
                     ),
                     allowNull: true,
                 },
+                contactNumber: {
+                    type: DataTypes.STRING(15),
+                    allowNull: true,
+                },
                 emergencyContactName: {
                     type: DataTypes.STRING(255),
                     allowNull: true,
                 },
                 emergencyContactNumber: {
                     type: DataTypes.STRING(15),
+                    allowNull: true,
+                },
+                emergencyContactIsdCode: {
+                    type: DataTypes.STRING(10),
+                    allowNull: true,
+                },
+                emergencyContactIsoCode: {
+                    type: DataTypes.STRING(10),
                     allowNull: true,
                 },
                 emergencyContactRelationship: {
@@ -251,14 +280,6 @@ export class Employee extends Model<
                 },
                 voterIdNumber: {
                     type: DataTypes.STRING(20),
-                    allowNull: true,
-                },
-                aadharDocumentPath: {
-                    type: DataTypes.STRING(500),
-                    allowNull: true,
-                },
-                panDocumentPath: {
-                    type: DataTypes.STRING(500),
                     allowNull: true,
                 },
                 // Banking & Payroll

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .header {
+      background-color: #ff9800;
+      color: #ffffff;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .content {
+      padding: 25px;
+      color: #333333;
+    }
+
+    .footer {
+      padding: 15px;
+      font-size: 12px;
+      text-align: center;
+      color: #777777;
+      background: #f4f4f4;
+    }
+
+    .highlight {
+      color: #ff9800;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>{{emailTitle}}</h2>
+    </div>
+    <div class="content">
+      <p>Hi {{userName}},</p>
+
+      {{#if isExpired}}
+      <p>
+        The {{expiryLabel}} for your asset
+        <span class="highlight">{{assetName}}</span>
+        expired on {{expiryDate}}.
+      </p>
+      {{else}}
+      <p>
+        The {{expiryLabel}} for your asset
+        <span class="highlight">{{assetName}}</span>
+        will expire in <strong>{{daysLeft}}</strong> days
+        on {{expiryDate}}.
+      </p>
+      {{/if}}
+
+      <p>Please take the necessary action if renewal is required.</p>
+
+      <p>
+        Regards,<br />
+        <strong>ZarklyX Team</strong>
+      </p>
+    </div>
+
+    <div class="footer">
+      <p>© {{currentYear}} ZarklyX. This is an automated email.</p>
+    </div>
+  </div>
+</body>
+
+</html>
