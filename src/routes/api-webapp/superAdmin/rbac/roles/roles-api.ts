@@ -42,7 +42,7 @@ router.get("/getAllZarklyXRoles", zarklyXAuthMiddleware, async (req: Request, re
 router.get("/getZarklyXRoleById/:id", zarklyXAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     let { id } = req.params;
-    if(Array.isArray(id)) id = id[0];
+    if (Array.isArray(id)) id = id[0];
 
     const result = await getZarklyXRoleById(id);
 
@@ -123,7 +123,7 @@ router.post("/createZarklyXRole", zarklyXAuthMiddleware, async (req: Request, re
 router.patch("/updateZarklyXRole/:id", zarklyXAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     let { id } = req.params;
-    if(Array.isArray(id)) id = id[0];
+    if (Array.isArray(id)) id = id[0];
     const { name, description, priority, isActive } = req.body;
 
     const result = await updateZarklyXRole(
@@ -152,13 +152,51 @@ router.patch("/updateZarklyXRole/:id", zarklyXAuthMiddleware, async (req: Reques
 });
 
 /**
+ * PATCH /api/zarklyx/roles/setRoleStatus/:id
+ * Activate or deactivate a ZarklyX role
+ */
+router.patch("/setRoleStatus/:id", zarklyXAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    let { id } = req.params;
+    if (Array.isArray(id)) id = id[0];
+    const { isActive } = req.body;
+
+    if (typeof isActive !== "boolean") {
+      res.status(400).json({
+        success: false,
+        message: "isActive must be a boolean",
+      });
+      return;
+    }
+
+    const result = await updateZarklyXRole(id, { isActive }, req.zarklyXUser!.id);
+
+    if (!result.success) {
+      res.status(400).json(result);
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to set role status",
+    });
+  }
+});
+
+/**
  * DELETE /api/zarklyx/roles/deleteZarklyXRole/:id
  * Delete ZarklyX role
  */
 router.delete("/deleteZarklyXRole/:id", zarklyXAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     let { id } = req.params;
-    if(Array.isArray(id)) id = id[0];
+    if (Array.isArray(id)) id = id[0];
 
     const result = await deleteZarklyXRole(id, req.zarklyXUser!.id);
 
