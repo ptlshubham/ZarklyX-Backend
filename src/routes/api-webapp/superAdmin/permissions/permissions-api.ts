@@ -1,13 +1,15 @@
 import { Router, Request, Response } from "express";
-import { 
+import {
   createPermission,
-  createPermissions, 
-  getAllPermissions, 
-  getPermissionById, 
-  getPermissionsByModuleId, 
-  updatePermission, 
-  deletePermission, 
-  getActivePermissions 
+  createPermissions,
+  getAllPermissions,
+  getPermissionById,
+  getPermissionsByModuleId,
+  updatePermission,
+  deletePermission,
+  getActivePermissions,
+  togglePermissionActive,
+  hardDeletePermission
 } from "../../../api-webapp/superAdmin/permissions/permissions-handler";
 import dbInstance from "../../../../db/core/control-db";
 
@@ -29,9 +31,9 @@ router.post("/createPermission", async (req, res) => {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
       const field = error.errors?.[0]?.path || 'field';
-      return res.status(409).json({ 
-        success: false, 
-        error: "Permission already exists", 
+      return res.status(409).json({
+        success: false,
+        error: "Permission already exists",
         message: `A permission with this ${field} already exists`,
         field: field
       });
@@ -45,12 +47,12 @@ router.post("/createBulkPermissions", async (req: Request, res: Response): Promi
   const t = await dbInstance.transaction();
   try {
     const { permissions } = req.body;
-    
+
     if (!permissions || !Array.isArray(permissions) || permissions.length === 0) {
       await t.rollback();
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: "Permissions array is required and must not be empty" 
+        error: "Permissions array is required and must not be empty"
       });
     }
 
@@ -59,18 +61,18 @@ router.post("/createBulkPermissions", async (req: Request, res: Response): Promi
       const perm = permissions[i];
       if (!perm.name || !perm.description || !perm.moduleId || !perm.action) {
         await t.rollback();
-        return res.status(400).json({ 
+        return res.status(400).json({
           success: false,
-          error: `Permission at index ${i} is missing required fields (name, description, moduleId, action)` 
+          error: `Permission at index ${i} is missing required fields (name, description, moduleId, action)`
         });
       }
     }
 
     const result = await createPermissions(permissions, t);
-    
+
     if (result.failed > 0) {
       await t.rollback();
-      return res.status(207).json({ 
+      return res.status(207).json({
         success: false,
         message: `Created ${result.success} permissions, ${result.failed} failed`,
         data: result
@@ -78,17 +80,17 @@ router.post("/createBulkPermissions", async (req: Request, res: Response): Promi
     }
 
     await t.commit();
-    return res.status(201).json({ 
+    return res.status(201).json({
       success: true,
       message: `Successfully created ${result.success} permissions`,
       data: result
     });
   } catch (error: any) {
     await t.rollback();
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      error: "Failed to create permissions", 
-      details: error.message || error 
+      error: "Failed to create permissions",
+      details: error.message || error
     });
   }
 });
@@ -173,9 +175,9 @@ router.patch("/updatePermissionById/:id", async (req, res) => {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
       const field = error.errors?.[0]?.path || 'field';
-      return res.status(409).json({ 
-        success: false, 
-        error: "Permission already exists", 
+      return res.status(409).json({
+        success: false,
+        error: "Permission already exists",
         message: `A permission with this ${field} already exists`,
         field: field
       });
@@ -203,6 +205,52 @@ router.delete("/deletePermissionById/:id", async (req, res) => {
   } catch (error) {
     await t.rollback();
     return res.status(500).json({ error: "Failed to delete permission", details: error });
+  }
+});
+
+// Toggle permission active status | patch /superAdmin/permissions/togglePermissionStatus/:id/toggle
+router.patch("/togglePermissionStatus/:id/toggle", async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { id } = req.params;
+    if (Array.isArray(id)) id = id[0];
+    if (!id) {
+      await t.rollback();
+      return res.status(400).json({ error: "Permission ID is required" });
+    }
+    const permission = await togglePermissionActive(id, t);
+    if (!permission) {
+      await t.rollback();
+      return res.status(404).json({ error: "Permission not found" });
+    }
+    await t.commit();
+    return res.status(200).json({ success: true, data: permission });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({ error: "Failed to toggle permission status", details: error });
+  }
+});
+
+// Hard delete permission (permanent deletion) | delete /superAdmin/permissions/hardDeletePermissionById/:id
+router.delete("/hardDeletePermissionById/:id", async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { id } = req.params;
+    if (Array.isArray(id)) id = id[0];
+    if (!id) {
+      await t.rollback();
+      return res.status(400).json({ error: "Permission ID is required" });
+    }
+    const deleted = await hardDeletePermission(id, t);
+    if (!deleted) {
+      await t.rollback();
+      return res.status(404).json({ error: "Permission not found" });
+    }
+    await t.commit();
+    return res.status(200).json({ success: true, message: "Permission permanently deleted" });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({ error: "Failed to permanently delete permission", details: error });
   }
 });
 
