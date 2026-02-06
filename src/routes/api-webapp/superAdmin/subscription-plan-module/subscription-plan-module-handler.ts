@@ -27,9 +27,9 @@ export const getSubscriptionPlanModules = async () => {
 
 // Get active subscription plan module mappings
 export const getActiveSubscriptionPlanModules = async () => {
-    return await SubscriptionPlanModule.findAll({
-        where: { isActive: true, isDeleted: false},
-    });
+  return await SubscriptionPlanModule.findAll({
+    where: { isActive: true, isDeleted: false },
+  });
 };
 
 // Get by ID
@@ -60,7 +60,7 @@ export const updateSubscriptionPlanModule = async (id: string, updateFields: any
   return mapping;
 };
 
-// Delete mapping
+// Delete mapping (soft delete)
 export const deleteSubscriptionPlanModule = async (id: string, t: Transaction) => {
   const mapping = await SubscriptionPlanModule.findOne({
     where: { id, isActive: true, isDeleted: false },
@@ -74,6 +74,21 @@ export const deleteSubscriptionPlanModule = async (id: string, t: Transaction) =
     { isActive: false, isDeleted: true },
     { transaction: t }
   );
+
+  return true;
+};
+
+// Hard delete mapping (permanently removes from database)
+export const hardDeleteSubscriptionPlanModule = async (id: string, t: Transaction) => {
+  const mapping = await SubscriptionPlanModule.findOne({
+    where: { id },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!mapping) return false;
+
+  await mapping.destroy({ transaction: t });
 
   return true;
 };
