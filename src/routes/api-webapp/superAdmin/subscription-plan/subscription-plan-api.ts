@@ -161,6 +161,23 @@ router.get("/getSubscriptionPlans", async (_req, res) => {
   }
 });
 
+// Get only active subscription plans
+router.get("/getOnlyActivePlans", async (_req, res) => {
+  try {
+    const plans = await getActiveSubscriptionPlans();
+    return res.status(200).json({
+      success: true,
+      data: plans,
+      message: "Active subscription plans retrieved successfully"
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      error: "Failed to fetch active subscription plans",
+      details: error?.message,
+    });
+  }
+});
+
 // Get all subscription plans
 router.get("/getAllSubscriptionPlans", async (_req, res) => {
   try {
