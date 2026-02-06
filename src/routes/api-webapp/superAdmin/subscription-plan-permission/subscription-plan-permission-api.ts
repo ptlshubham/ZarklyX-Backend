@@ -6,6 +6,9 @@ import {
   updateSubscriptionPlanPermission,
   deleteSubscriptionPlanPermission,
   deleteAllPlanPermissions,
+  hardDeleteSubscriptionPlanPermission,
+  hardDeleteAllPlanPermissions,
+  toggleSubscriptionPlanPermissionStatus,
 } from "./subscription-plan-permission-handler";
 import dbInstance from "../../../../db/core/control-db";
 
@@ -271,6 +274,121 @@ router.delete("/deleteAllPlanPermissions/:subscriptionPlanId", async (req: Reque
     await t.rollback();
     return res.status(500).json({
       error: "Failed to delete subscription plan permissions",
+      details: error,
+    });
+  }
+});
+
+// Hard delete subscription plan permission (permanent)
+router.delete("/hardDeleteSubscriptionPlanPermissionById/:id", async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { id } = req.params;
+    id = Array.isArray(id) ? id[0] : id;
+
+    if (!id) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "ID is required",
+      });
+    }
+
+    const deleted = await hardDeleteSubscriptionPlanPermission(id, t);
+
+    if (!deleted) {
+      await t.rollback();
+      return res.status(404).json({
+        error: "Subscription plan permission not found",
+      });
+    }
+
+    await t.commit();
+    return res.status(200).json({
+      success: true,
+      message: "Subscription plan permission permanently deleted",
+    });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({
+      error: "Failed to hard delete subscription plan permission",
+      details: error,
+    });
+  }
+});
+
+// Hard delete all permissions for a subscription plan (permanent)
+router.delete("/hardDeleteAllPlanPermissions/:subscriptionPlanId", async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { subscriptionPlanId } = req.params;
+    subscriptionPlanId = Array.isArray(subscriptionPlanId) ? subscriptionPlanId[0] : subscriptionPlanId;
+
+    if (!subscriptionPlanId) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "Subscription Plan ID is required",
+      });
+    }
+
+    const affectedCount = await hardDeleteAllPlanPermissions(subscriptionPlanId, t);
+
+    await t.commit();
+    return res.status(200).json({
+      success: true,
+      message: `${affectedCount} permission(s) permanently deleted`,
+      count: affectedCount,
+    });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({
+      error: "Failed to hard delete subscription plan permissions",
+      details: error,
+    });
+  }
+});
+
+// Toggle subscription plan permission status (activate/deactivate)
+router.patch("/toggleSubscriptionPlanPermissionStatus/:id", async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { id } = req.params;
+    id = Array.isArray(id) ? id[0] : id;
+
+    if (!id) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "ID is required",
+      });
+    }
+
+    const { isActive } = req.body;
+
+    if (typeof isActive !== "boolean") {
+      await t.rollback();
+      return res.status(400).json({
+        error: "isActive must be a boolean value",
+      });
+    }
+
+    const updatedPermission = await toggleSubscriptionPlanPermissionStatus(id, isActive, t);
+
+    if (!updatedPermission) {
+      await t.rollback();
+      return res.status(404).json({
+        error: "Subscription plan permission not found",
+      });
+    }
+
+    await t.commit();
+    return res.status(200).json({
+      success: true,
+      message: `Permission ${isActive ? "activated" : "deactivated"} successfully`,
+      data: updatedPermission,
+    });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({
+      error: "Failed to toggle subscription plan permission status",
       details: error,
     });
   }

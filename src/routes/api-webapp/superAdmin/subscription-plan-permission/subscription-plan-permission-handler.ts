@@ -218,3 +218,74 @@ export async function deleteAllPlanPermissions(
     throw error;
   }
 }
+
+/**
+ * Hard delete a subscription plan permission (permanent removal from database)
+ */
+export async function hardDeleteSubscriptionPlanPermission(
+  id: string,
+  transaction?: Transaction
+): Promise<boolean> {
+  try {
+    const planPermission = await SubscriptionPlanPermission.findOne({
+      where: { id },
+      lock: transaction ? Transaction.LOCK.UPDATE : undefined,
+      transaction,
+    });
+
+    if (!planPermission) return false;
+
+    await planPermission.destroy({ transaction });
+
+    return true;
+  } catch (error) {
+    console.error("Error hard deleting subscription plan permission:", error);
+    throw error;
+  }
+}
+
+/**
+ * Hard delete all permissions for a subscription plan (permanent removal from database)
+ */
+export async function hardDeleteAllPlanPermissions(
+  subscriptionPlanId: string,
+  transaction?: Transaction
+): Promise<number> {
+  try {
+    const affectedCount = await SubscriptionPlanPermission.destroy({
+      where: { subscriptionPlanId },
+      transaction,
+    });
+
+    return affectedCount;
+  } catch (error) {
+    console.error("Error hard deleting all plan permissions:", error);
+    throw error;
+  }
+}
+
+/**
+ * Toggle subscription plan permission status (activate/deactivate)
+ */
+export async function toggleSubscriptionPlanPermissionStatus(
+  id: string,
+  isActive: boolean,
+  transaction?: Transaction
+): Promise<SubscriptionPlanPermission | null> {
+  try {
+    const planPermission = await SubscriptionPlanPermission.findOne({
+      where: { id, isDeleted: false },
+      lock: transaction ? Transaction.LOCK.UPDATE : undefined,
+      transaction,
+    });
+
+    if (!planPermission) return null;
+
+    await planPermission.update({ isActive }, { transaction });
+
+    return planPermission;
+  } catch (error) {
+    console.error("Error toggling subscription plan permission status:", error);
+    throw error;
+  }
+}

@@ -7,6 +7,7 @@ import {
   updateSubscriptionPlan,
   deleteSubscriptionPlan,
   calculateSubscriptionPrice,
+  setSubscriptionPlanStatus,
 } from "../../../api-webapp/superAdmin/subscription-plan/subscription-plan-handler";
 import dbInstance from "../../../../db/core/control-db";
 
@@ -108,7 +109,7 @@ router.post("/createSubscriptionPlan", async (req, res) => {
     );
 
     await t.commit();
-    
+
     const modulesCount = modules?.length || 0;
     const permissionsCount = permissions?.length || 0;
     let message = "Subscription plan created successfully";
@@ -120,8 +121,8 @@ router.post("/createSubscriptionPlan", async (req, res) => {
       message = `Subscription plan created with ${permissionsCount} permission(s)`;
     }
 
-    return res.status(201).json({ 
-      success: true, 
+    return res.status(201).json({
+      success: true,
       data: plan,
       message: message
     });
@@ -156,6 +157,23 @@ router.get("/getSubscriptionPlans", async (_req, res) => {
   } catch {
     return res.status(500).json({
       error: "Failed to fetch subscription plans",
+    });
+  }
+});
+
+// Get only active subscription plans
+router.get("/getOnlyActivePlans", async (_req, res) => {
+  try {
+    const plans = await getActiveSubscriptionPlans();
+    return res.status(200).json({
+      success: true,
+      data: plans,
+      message: "Active subscription plans retrieved successfully"
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      error: "Failed to fetch active subscription plans",
+      details: error?.message,
     });
   }
 });
@@ -237,7 +255,7 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
     // Validate min_users and max_users relationship
     const finalMinUsers = updateFields.min_users !== undefined ? updateFields.min_users : null;
     const finalMaxUsers = updateFields.max_users !== undefined ? updateFields.max_users : null;
-    
+
     if (finalMinUsers !== null && finalMaxUsers !== null && finalMinUsers > finalMaxUsers) {
       await t.rollback();
       return res.status(400).json({
@@ -278,6 +296,40 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
 
     return res.status(500).json({
       error: "Failed to update subscription plan",
+    });
+  }
+});
+
+// Change subscription plan status (activate/deactivate)
+router.patch("/changeSubscriptionPlanStatus/:id", async (req, res) => {
+  const t = await dbInstance.transaction();
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { status } = req.body;
+
+    if (!["active", "inactive"].includes(status)) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "status must be 'active' or 'inactive'",
+      });
+    }
+
+    const plan = await setSubscriptionPlanStatus(id, status, t);
+
+    if (!plan) {
+      await t.rollback();
+      return res.status(404).json({
+        error: "Subscription plan not found",
+      });
+    }
+
+    await t.commit();
+    return res.status(200).json({ success: true, data: plan, message: `Subscription plan ${status} successfully` });
+  } catch (error: any) {
+    await t.rollback();
+    return res.status(500).json({
+      error: "Failed to update subscription plan status",
+      details: error?.message,
     });
   }
 });
