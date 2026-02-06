@@ -153,6 +153,26 @@ export const updateSubscriptionPlan = async (
 };
 
 /**
+ * Set subscription plan status to active or inactive
+ */
+export const setSubscriptionPlanStatus = async (
+  id: string,
+  status: "active" | "inactive",
+  t: Transaction
+) => {
+  const plan = await SubscriptionPlan.findOne({
+    where: { id, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!plan) return null;
+
+  await plan.update({ status }, { transaction: t });
+  return plan;
+};
+
+/**
  * Soft delete subscription plan (set is_deleted to true)
  * Never hard delete subscription plans - preserve historical data for analytics
  */
@@ -232,7 +252,7 @@ export const calculateSubscriptionPrice = async (
   }
 
   const basePlanPrice = Number(plan.price);
-  
+
   // Calculate plan price based on pricing model
   let calculatedPlanPrice: number;
   if (plan.price_per_user) {
