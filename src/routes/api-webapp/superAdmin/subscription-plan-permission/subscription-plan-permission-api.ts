@@ -92,7 +92,7 @@ router.post("/bulkCreateSubscriptionPlanPermissions", async (req: Request, res: 
       });
     }
 
-    const planPermissions = await bulkCreateSubscriptionPlanPermissions(
+    const result = await bulkCreateSubscriptionPlanPermissions(
       subscriptionPlanId,
       permissionIds,
       source || "plan",
@@ -100,11 +100,33 @@ router.post("/bulkCreateSubscriptionPlanPermissions", async (req: Request, res: 
     );
 
     await t.commit();
-    return res.status(201).json({
+
+    // Return detailed response
+    const response: any = {
       success: true,
-      data: planPermissions,
-      count: planPermissions.length,
-    });
+      data: result.created,
+      count: result.created.length,
+      summary: {
+        requested: permissionIds.length,
+        created: result.created.length,
+        skipped: result.skipped.length,
+        errors: result.errors.length,
+      },
+    };
+
+    // Add messages for skipped/errors if any
+    if (result.skipped.length > 0) {
+      response.message = `${result.created.length} permission(s) created, ${result.skipped.length} already assigned`;
+      response.skipped = result.skipped;
+    }
+    if (result.errors.length > 0) {
+      response.notFound = result.errors;
+      if (!response.message) {
+        response.message = `${result.created.length} permission(s) created, ${result.errors.length} permission(s) not found`;
+      }
+    }
+
+    return res.status(201).json(response);
   } catch (error: any) {
     await t.rollback();
     return res.status(500).json({

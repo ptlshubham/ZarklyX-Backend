@@ -50,13 +50,14 @@ export async function createSubscriptionPlanPermission(
 
 /**
  * Bulk create subscription plan permissions
+ * Returns: { created: SubscriptionPlanPermission[], skipped: string[], errors: string[] }
  */
 export async function bulkCreateSubscriptionPlanPermissions(
   subscriptionPlanId: string,
   permissionIds: string[],
   source: "plan" | "addon" = "plan",
   transaction?: Transaction
-): Promise<SubscriptionPlanPermission[]> {
+): Promise<{ created: SubscriptionPlanPermission[]; skipped: string[]; errors: string[] }> {
   try {
     // Check if plan exists (use transaction to see uncommitted data)
     const plan = await SubscriptionPlan.findByPk(subscriptionPlanId, { transaction });
@@ -68,9 +69,10 @@ export async function bulkCreateSubscriptionPlanPermissions(
       transaction,
     });
 
-    if (permissions.length !== permissionIds.length) {
-      throw new Error("One or more permissions not found or inactive");
-    }
+    const foundPermissionIds = new Set(permissions.map((p) => p.id));
+    const notFoundPermissions = permissionIds.filter(
+      (id) => !foundPermissionIds.has(id)
+    );
 
     // Filter out existing records
     const existingRecords = await SubscriptionPlanPermission.findAll({
@@ -84,25 +86,34 @@ export async function bulkCreateSubscriptionPlanPermissions(
     );
 
     const newPermissionIds = permissionIds.filter(
-      (id) => !existingPermissionIds.has(id)
+      (id) => !existingPermissionIds.has(id) && foundPermissionIds.has(id)
     );
 
-    if (newPermissionIds.length === 0) {
-      return []; // All already exist
+    const skippedPermissions = permissionIds.filter(
+      (id) => existingPermissionIds.has(id)
+    );
+
+    const created: SubscriptionPlanPermission[] = [];
+
+    if (newPermissionIds.length > 0) {
+      const planPermissions = await SubscriptionPlanPermission.bulkCreate(
+        newPermissionIds.map((permissionId) => ({
+          subscriptionPlanId,
+          permissionId,
+          source,
+          isActive: true,
+          isDeleted: false,
+        })),
+        { transaction }
+      );
+      created.push(...planPermissions);
     }
 
-    const planPermissions = await SubscriptionPlanPermission.bulkCreate(
-      newPermissionIds.map((permissionId) => ({
-        subscriptionPlanId,
-        permissionId,
-        source,
-        isActive: true,
-        isDeleted: false,
-      })),
-      { transaction }
-    );
-
-    return planPermissions;
+    return {
+      created,
+      skipped: skippedPermissions,
+      errors: notFoundPermissions,
+    };
   } catch (error) {
     console.error("Error bulk creating subscription plan permissions:", error);
     throw error;
