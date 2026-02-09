@@ -17,12 +17,12 @@ const router = Router();
 router.post("/createSubscriptionPlanModule", async (req, res) => {
   const t = await dbInstance.transaction();
   try {
-    const { subscriptionPlanId, moduleId, isActive, isDeleted } = req.body;
+    const { subscriptionPlanId, moduleId, source, isActive, isDeleted } = req.body;
     if (!subscriptionPlanId || !moduleId) {
       await t.rollback();
       return res.status(400).json({ error: "subscriptionPlanId and moduleId are required" });
     }
-    const mapping = await createSubscriptionPlanModule({ subscriptionPlanId, moduleId, isActive, isDeleted }, t);
+    const mapping = await createSubscriptionPlanModule({ subscriptionPlanId, moduleId, source, isActive, isDeleted }, t);
     await t.commit();
     return res.status(201).json({ success: true, data: mapping });
   } catch (error: any) {
@@ -96,9 +96,10 @@ router.patch("/updateSubscriptionPlanModuleById/:id", async (req, res) => {
       return res.status(400).json({ error: "ID is required" });
     }
     const updateFields: any = {};
-    const { subscriptionPlanId, moduleId, isActive, isDeleted } = req.body;
+    const { subscriptionPlanId, moduleId, source, isActive, isDeleted } = req.body;
     if (typeof subscriptionPlanId === 'string') updateFields.subscriptionPlanId = subscriptionPlanId;
     if (typeof moduleId === 'string') updateFields.moduleId = moduleId;
+    if (typeof source === 'string') updateFields.source = source;
     if (typeof isActive === 'boolean') updateFields.isActive = isActive;
     if (typeof isDeleted === 'boolean') updateFields.isDeleted = isDeleted;
     if (Object.keys(updateFields).length === 0) {

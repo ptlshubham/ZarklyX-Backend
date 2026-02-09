@@ -1,5 +1,6 @@
 import { Transaction } from "sequelize";
 import { SubscriptionPlanModule } from "../../../api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-model";
+import { Modules } from "../../../api-webapp/superAdmin/modules/modules-model";
 
 // Create a new subscription plan module mapping
 export const createSubscriptionPlanModule = async (fields: {
@@ -36,6 +37,7 @@ export const getActiveSubscriptionPlanModules = async () => {
 export const getSubscriptionPlanModuleById = async (id: string) => {
   return await SubscriptionPlanModule.findOne({
     where: { id: id, isActive: true, isDeleted: false },
+    include: [{ model: Modules, as: 'module' }],
   });
 };
 
