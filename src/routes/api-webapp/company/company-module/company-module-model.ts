@@ -70,8 +70,9 @@ export class CompanyModule extends Model<
         },
         price: {
           type: DataTypes.DECIMAL(10,2),
-          allowNull: true,
-          defaultValue: 0.0
+          allowNull: false,
+          defaultValue: 0.00,
+          comment: "Price paid for this addon module",
         },
         isActive: {
           type: DataTypes.BOOLEAN,
@@ -104,6 +105,14 @@ export class CompanyModule extends Model<
             unique: true,
             fields: ["companyId", "moduleId"],
             name: "company_module_unique",
+          },
+          {
+            fields: ["companyId", "isActive", "isDeleted"],
+            name: "idx_company_module_active",
+          },
+          {
+            fields: ["subscriptionId"],
+            name: "idx_company_module_subscription",
           },
         ],
       }
