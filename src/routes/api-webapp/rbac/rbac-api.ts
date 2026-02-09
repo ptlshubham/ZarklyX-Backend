@@ -6,6 +6,7 @@ import {
 } from "./rbac-check-handler";
 import { User } from "../../api-webapp/authentication/user/user-model";
 import { Role } from "../../api-webapp/roles/role-model";
+import { getUserAccessSnapshot } from "../../api-webapp/rbac/rbac-check-handler";
 
 const router = Router();
 
@@ -167,6 +168,34 @@ router.get("/accessible-modules/:userId", async (req: Request, res: Response) =>
     return res.status(500).json({
       success: false,
       message: error.message || "Error retrieving accessible modules",
+    });
+  }
+});
+
+// Efficient user access snapshot endpoint
+router.get("/my-access", async (req: Request, res: Response) => {
+  try {
+    // const userId = req.user?.id;
+    const userId = "074183e5-fc69-11f0-9c1d-00155d4115e1";
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const snapshot = await getUserAccessSnapshot(userId);
+
+    return res.status(200).json({
+      success: true,
+      data: snapshot,
+      message: "User access snapshot retrieved successfully",
+    });
+  } catch (error: any) {
+    console.error("Error generating access snapshot:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to generate access snapshot",
     });
   }
 });

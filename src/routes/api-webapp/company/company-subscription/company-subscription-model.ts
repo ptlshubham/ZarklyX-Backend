@@ -149,6 +149,46 @@ export class CompanySubscription extends Model<
         modelName: "CompanySubscription",
         tableName: "company_subscription",
         timestamps: true,
+        indexes: [
+          {
+            fields: ["companyId", "isCurrent"],
+            name: "idx_company_subscription_current",
+            where: { isCurrent: true, isDeleted: false },
+          },
+          {
+            fields: ["companyId", "status"],
+            name: "idx_company_subscription_status",
+          },
+          {
+            fields: ["subscriptionPlanId"],
+            name: "idx_company_subscription_planId",
+          },
+          {
+            fields: ["startDate", "endDate"],
+            name: "idx_company_subscription_dates",
+          },
+        ],
+        validate: {
+          priceCalculation() {
+            // Validate that price = originalPrice - discountAmount
+            const calculatedPrice = parseFloat(this.originalPrice as any) - parseFloat(this.discountAmount as any);
+            if (Math.abs(calculatedPrice - parseFloat(this.price as any)) > 0.01) {
+              throw new Error("Price must equal originalPrice minus discountAmount");
+            }
+          },
+          discountValidation() {
+            if (this.discountType && !this.discountValue) {
+              throw new Error("discountValue is required when discountType is set");
+            }
+            if (
+              this.discountType === 'percentage' &&
+              this.discountValue !== null &&
+              (Number(this.discountValue) < 0 || Number(this.discountValue) > 100)
+            ) {
+              throw new Error("Percentage discount must be between 0 and 100");
+            }
+          },
+        },
       }
     );
 

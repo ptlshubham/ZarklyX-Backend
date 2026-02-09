@@ -209,6 +209,15 @@ export function requireModule(moduleName: string) {
           },
         });
       }
+      
+      // Check if module is free for all before subscription check
+      if (module.isFreeForAll) {
+        req.moduleCheck = {
+          module: moduleName,
+          granted: true,
+        };
+        return next();
+      }
 
       const hasModuleAccess = await checkCompanyModuleAccess(user.companyId, module.id);
 
