@@ -14,6 +14,7 @@ export class ItemCategory extends Model<
     declare id: CreationOptional<string>;      // PK
     declare companyId: string;
     declare categoryName: string;
+    declare categoryType: string;
     declare isActive: boolean;
     declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
@@ -33,6 +34,10 @@ export class ItemCategory extends Model<
                 },
                 categoryName: {
                     type: DataTypes.STRING(100),
+                    allowNull: false,
+                },
+                categoryType: {
+                    type: DataTypes.ENUM("Product", "Service"),
                     allowNull: false,
                 },
                 isActive: {
