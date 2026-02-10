@@ -609,6 +609,61 @@ export const deleteCreditNote = async (
   };
 };
 
+// Bulk delete credit notes
+export const bulkDeleteCreditNotes = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Fetch credit note with lock
+      const creditNote = await CreditNote.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!creditNote) {
+        results.failed.push({ id, reason: "Credit Note not found" });
+        continue;
+      }
+
+      // Soft delete credit note items
+      await CreditNoteItem.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { creditNoteId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete credit note
+      await CreditNote.update(
+        {
+          isActive: false,
+          isDeleted: true,
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
+};
+
 // Search credit note with filters
 export interface SearchCreditNoteFilters {
   companyId: string;

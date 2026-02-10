@@ -7,6 +7,7 @@ import {
   getExpensesByClient,
   updateExpense,
   deleteExpense,
+  bulkDeleteExpenses,
   searchExpenses,
   getExpenseSummary,
   getExpensesByPaymentMethod,
@@ -169,6 +170,42 @@ router.delete("/deleteExpenses/:id",(async (req: Request, res: Response) => {
     });
   })
 );
+
+// POST /accounting/expenses/bulkDelete
+router.post("/bulkDelete", async (req: Request, res: Response) => {
+  try {
+    const companyId = req.body.user.companyId;
+    const { ids } = req.body;
+
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ids array is required and must not be empty",
+      });
+    }
+
+    const results = await bulkDeleteExpenses(ids, companyId);
+
+    res.status(200).json({
+      success: true,
+      message: `Bulk delete completed. ${results.successful.length} deleted, ${results.failed.length} failed.`,
+      data: results,
+    });
+  } catch (err: any) {
+    console.error("Bulk Delete Expense Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to bulk delete expenses",
+    });
+  }
+});
 
 // Search expenses with filters
 router.post("/searchExpenses",async (req: Request, res: Response) => {

@@ -6,6 +6,7 @@ import {
   getQuotesByClient,
   updateQuote,
   deleteQuote,
+  bulkDeleteQuotes,
   convertQuoteToInvoice,
   getQuoteByPublicToken,
   getPendingQuoteAmount
@@ -198,6 +199,45 @@ router.delete("/deleteQuote/:id", async (req: Request, res: Response): Promise<a
     await t.rollback();
     console.error("Delete Quote Error:", err);
     return serverError(res, "Failed to delete quote");
+  }
+});
+
+// POST /accounting/quote/bulkDelete?companyId=
+router.post("/bulkDelete", async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    const { companyId } = req.query;
+    const { ids } = req.body;
+
+    if (!companyId) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "ids array is required and must not be empty",
+      });
+    }
+
+    const results = await bulkDeleteQuotes(ids, companyId as string, t);
+
+    await t.commit();
+
+    return res.json({
+      success: true,
+      message: `Bulk delete completed. ${results.successful.length} deleted, ${results.failed.length} failed.`,
+      data: results,
+    });
+  } catch (err: any) {
+    await t.rollback();
+    console.error("Bulk Delete Quote Error:", err);
+    return serverError(res, err.message || "Failed to bulk delete quotes");
   }
 });
 

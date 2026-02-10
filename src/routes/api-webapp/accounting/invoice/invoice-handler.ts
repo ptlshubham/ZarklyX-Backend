@@ -1196,6 +1196,94 @@ export const convertInvoiceToPayment = async (
   };
 };
 
+
+// Bulk delete invoices
+export const bulkDeleteInvoices = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+  for (const id of ids) {
+    try {
+      // Fetch invoice with lock
+      const invoice = await Invoice.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!invoice) {
+        results.failed.push({ id, reason: "Invoice not found" });
+        continue;
+      }
+
+      // Status validation
+      if (["Paid", "Partially Paid"].includes(invoice.status)) {
+        results.failed.push({
+          id,
+          reason: "Paid or partially paid invoices cannot be deleted",
+        });
+        continue;
+      }
+
+      // Check if payments exist
+      const paymentCount = await PaymentsDocuments.count({
+        where: {
+          documentId: id,
+          documentType: "Invoice",
+        },
+        transaction: t,
+      });
+      if (paymentCount > 0) {
+        results.failed.push({
+          id,
+          reason: "Invoice with payments cannot be deleted",
+        });
+        continue;
+      }
+
+      // Soft delete invoice items
+      await InvoiceItem.update(
+        { isDeleted: true },
+        {
+          where: { invoiceId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete TDS/TCS entries
+      await InvoiceTdsTcs.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { invoiceId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete invoice itself
+      await Invoice.update(
+        {
+          isActive: false,
+          isDeleted: true,
+          status: "Cancelled",
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+  return results;
+};
+
 export const getPendingInvoiceAmount = async (
   clientId: string,
   companyId: string,

@@ -784,6 +784,93 @@ export const deletePurchaseBill = async (
   return { success: true };
 };
 
+// Bulk delete purchase bills
+export const bulkDeletePurchaseBills = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Fetch purchase bill
+      const purchaseBill = await PurchaseBill.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!purchaseBill) {
+        results.failed.push({ id, reason: "Purchase bill not found" });
+        continue;
+      }
+
+      // Block delete if bill is not open
+      if (purchaseBill.status !== "Open") {
+        results.failed.push({
+          id,
+          reason: "Only OPEN purchase bills can be deleted",
+        });
+        continue;
+      }
+
+      // Check for linked payments
+      const paymentCount = await PaymentsDocuments.count({
+        where: {
+          documentId: id,
+          documentType: "PurchaseBill",
+        },
+        transaction: t,
+      });
+
+      if (paymentCount > 0) {
+        results.failed.push({
+          id,
+          reason: "Purchase bill has linked payments and cannot be deleted",
+        });
+        continue;
+      }
+
+      // Soft delete TDS/TCS entries
+      await PurchaseBillTdsTcs.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { purchaseBillId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete purchase bill items
+      await PurchaseBillItem.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { purchaseBillId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete purchase bill
+      await PurchaseBill.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
+};
+
 
 // Search purchase bill with filters
 export interface SearchPurchaseBillFilters {

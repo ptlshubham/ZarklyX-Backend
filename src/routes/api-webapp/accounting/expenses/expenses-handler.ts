@@ -418,6 +418,36 @@ export const deleteExpense = async (id: string, companyId: string) => {
   );
 };
 
+// Bulk delete expenses
+export const bulkDeleteExpenses = async (
+  ids: string[],
+  companyId: string
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      const [affectedRows] = await Expenses.update(
+        { isActive: false, isDeleted: true },
+        { where: { id, companyId, isDeleted: false } }
+      );
+
+      if (affectedRows > 0) {
+        results.successful.push(id);
+      } else {
+        results.failed.push({ id, reason: "Expense not found" });
+      }
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
+};
+
 // Search expenses with filters
 export interface SearchExpenseFilters {
   companyId: string;

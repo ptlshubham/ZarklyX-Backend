@@ -541,6 +541,71 @@ export const deletePurchaseOrder = async (
   };
 };
 
+// Bulk delete purchase orders
+export const bulkDeletePurchaseOrders = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Fetch purchase order with lock
+      const purchaseOrder = await PurchaseOrder.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!purchaseOrder) {
+        results.failed.push({ id, reason: "Purchase order not found" });
+        continue;
+      }
+
+      // Status validation
+      if (purchaseOrder.status === "Converted") {
+        results.failed.push({
+          id,
+          reason: "Converted purchase orders cannot be deleted",
+        });
+        continue;
+      }
+
+      // Soft delete purchase order items
+      await PurchaseOrderItem.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { poId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete purchase order
+      await PurchaseOrder.update(
+        {
+          isActive: false,
+          isDeleted: true,
+          status: "Cancelled",
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
+};
+
 // Search invoices with filters
 export interface SearchPurchaseOrderFilters {
   companyId: string;

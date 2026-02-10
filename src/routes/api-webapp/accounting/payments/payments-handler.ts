@@ -666,6 +666,68 @@ export const deletePayment = async (
   return affectedRows > 0;
 };
 
+// Bulk delete payments
+export const bulkDeletePayments = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Verify payment exists
+      const payment = await Payments.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+      });
+
+      if (!payment) {
+        results.failed.push({ id, reason: "Payment not found" });
+        continue;
+      }
+
+      // Reverse all document payments
+      const docs = await PaymentsDocuments.findAll({
+        where: { paymentId: id },
+        transaction: t,
+      });
+
+      for (const doc of docs) {
+        await updateDocumentBalance(
+          doc.documentId,
+          doc.documentType,
+          doc.paymentValue,
+          companyId,
+          true,
+          t
+        );
+      }
+
+      // Delete document links
+      await PaymentsDocuments.destroy({
+        where: { paymentId: id },
+        transaction: t,
+      });
+
+      // Soft delete payment
+      await Payments.update(
+        { isActive: false, isDeleted: true },
+        { where: { id, companyId }, transaction: t }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
+};
+
 // Search payments with filters
 export interface SearchPaymentFilters {
   companyId: string;

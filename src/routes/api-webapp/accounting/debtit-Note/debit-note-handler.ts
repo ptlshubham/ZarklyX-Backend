@@ -655,6 +655,61 @@ export const deleteDebitNote = async (
   };
 };
 
+// Bulk delete debit notes
+export const bulkDeleteDebitNotes = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Fetch debit note with lock
+      const debitNote = await DebitNote.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!debitNote) {
+        results.failed.push({ id, reason: "Debit Note not found" });
+        continue;
+      }
+
+      // Soft delete debit note items
+      await DebitNoteItem.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { debitNoteId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete debit note
+      await DebitNote.update(
+        {
+          isActive: false,
+          isDeleted: true,
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
+};
+
 // Search debit note with filters
 export interface SearchDebitNoteFilters {
   companyId: string;
