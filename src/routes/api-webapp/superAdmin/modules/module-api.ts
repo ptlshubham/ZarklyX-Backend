@@ -4,6 +4,8 @@ import {
   getModules,
   getModuleById,
   getActiveModules,
+  getModulesWithPermissions,
+  getActiveModulesWithPermissions,
   updateModule,
   deleteModule,
   toggleModuleActive
@@ -82,6 +84,42 @@ router.get("/getActiveModules", async (_req: Request, res: Response): Promise<an
     return res.status(200).json({ success: true, data: modules });
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch active modules", details: error });
+  }
+});
+
+// Get /superAdmin/modules/getAllModulesWithPermissions
+router.get("/getAllModulesWithPermissions", async (_req: Request, res: Response): Promise<any> => {
+  try {
+    const modulesWithPermissions = await getModulesWithPermissions();
+    return res.status(200).json({
+      success: true,
+      data: modulesWithPermissions,
+      message: "Modules with permissions fetched successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch modules with permissions",
+      details: error
+    });
+  }
+});
+
+// Get /superAdmin/modules/getActiveModulesWithPermissions
+router.get("/getActiveModulesWithPermissions", async (_req: Request, res: Response): Promise<any> => {
+  try {
+    const modulesWithPermissions = await getActiveModulesWithPermissions();
+    return res.status(200).json({
+      success: true,
+      data: modulesWithPermissions,
+      message: "Active modules with permissions fetched successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch active modules with permissions",
+      details: error
+    });
   }
 });
 
