@@ -53,6 +53,58 @@ const applyTaxSplit = (
   }
 };
 
+// Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
+const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
+  const p = (placeOfSupply ?? '').toString().trim();
+  const c = (companyState ?? '').toString().trim();
+  if (!p || !c) return false;
+  const pLower = p.toLowerCase();
+  const cLower = c.toLowerCase();
+  
+  // Direct substring match
+  if (pLower.includes(cLower) || cLower.includes(pLower)) return true;
+  
+  // State abbreviation to full name mapping
+  const stateCodeMap: Record<string, string> = {
+    AN: 'andaman', AP: 'andhra', AR: 'arunachal', AS: 'assam', BR: 'bihar', CH: 'chandigarh', CT: 'chhattisgarh',
+    DL: 'delhi', GA: 'goa', GJ: 'gujarat', HP: 'himachal', HR: 'haryana', JH: 'jharkhand', JK: 'jammu',
+    KA: 'karnataka', KL: 'kerala', LA: 'ladakh', MH: 'maharashtra', ML: 'meghalaya', MN: 'manipur',
+    MP: 'madhya', MZ: 'mizoram', NL: 'nagaland', OR: 'odisha', PB: 'punjab', PY: 'puducherry',
+    RJ: 'rajasthan', SK: 'sikkim', TN: 'tamil', TR: 'tripura', TS: 'telangana', UP: 'uttar', UK: 'uttarakhand', WB: 'west'
+  };
+  
+  // Extract 2-letter state code from place (handles 'GJ (24)', 'AS (18)', etc.)
+  const codeMatchPlace = p.match(/^([A-Za-z]{2})\s*\(/);
+  if (codeMatchPlace) {
+    const code = codeMatchPlace[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+  
+  // Also check if place is just the state code
+  const justCodeMatch = p.match(/^([A-Za-z]{2})(\s|$)/i);
+  if (justCodeMatch) {
+    const code = justCodeMatch[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+  
+  // Try to extract any 2-letter sequence from place and match against codes
+  for (const [code, stateName] of Object.entries(stateCodeMap)) {
+    if (pLower.includes(code.toLowerCase()) || pLower.startsWith(code.toLowerCase())) {
+      if (cLower.includes(stateName)) return true;
+    }
+  }
+  
+  // Also try reverse: check if company state code matches place state name
+  for (const [code, stateName] of Object.entries(stateCodeMap)) {
+    if (cLower.includes(code.toLowerCase()) && pLower.includes(stateName)) return true;
+    if (cLower === code.toLowerCase() && pLower.includes(stateName)) return true;
+  }
+  
+  return false;
+};
+
 interface PurchaseBillCalculationResult {
   subTotal: number;
   finalDiscount: number;
@@ -159,11 +211,24 @@ const calculatePurchaseBillTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
+    const isInterstate = !isSameState(placeOfSupply, companyState);
+    console.log('Tax Calculation Debug:', {
+      placeOfSupply,
+      companyState,
+      isSameState: isSameState(placeOfSupply, companyState),
+      isInterstate,
+      itemTax,
+      amountForTax
+    });
+
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, isInterstate, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
     });
+    totalCgst = taxTotals.cgst;
+    totalSgst = taxTotals.sgst;
+    totalIgst = taxTotals.igst;
     totalCgst = taxTotals.cgst;
     totalSgst = taxTotals.sgst;
     totalIgst = taxTotals.igst;
@@ -195,7 +260,7 @@ const calculatePurchaseBillTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
+      if (!isSameState(placeOfSupply, companyState)) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -426,6 +491,14 @@ export const getPurchaseBillById = async (id: string, companyId: string) => {
     where: { id, companyId, isDeleted: false },
     include: [
       {
+        model: Vendor,
+        as: "vendor",
+      },
+      {
+        model: Company,
+        as: "company",
+      },
+      {
         model: PurchaseBillItem,
         as: "purchaseBillItems",
       },
@@ -441,6 +514,12 @@ export const getPurchaseBillById = async (id: string, companyId: string) => {
 export const getPurchaseBillsByCompany = async (companyId: string) => {
   return await PurchaseBill.findAll({
     where: { companyId, isDeleted: false },
+    include: [
+      {
+        model: Vendor,
+        as: "vendor",
+      },
+    ],
     order: [["purchaseBillDate", "DESC"]],
   });
 };

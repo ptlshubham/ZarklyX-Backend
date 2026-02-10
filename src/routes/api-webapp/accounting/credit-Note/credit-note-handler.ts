@@ -8,6 +8,52 @@ import { sendEmail } from "../../../../services/mailService";
 import crypto from "crypto";
 import { Invoice } from "../invoice/invoice-model";
 
+// Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
+const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
+  const p = (placeOfSupply ?? '').toString().trim();
+  const c = (companyState ?? '').toString().trim();
+  if (!p || !c) return false;
+  const pLower = p.toLowerCase();
+  const cLower = c.toLowerCase();
+  
+  // Direct substring match
+  if (pLower.includes(cLower) || cLower.includes(pLower)) return true;
+  
+  // State abbreviation to full name mapping
+  const stateCodeMap: Record<string, string> = {
+    AN: 'andaman', AP: 'andhra', AR: 'arunachal', AS: 'assam', BR: 'bihar', CH: 'chandigarh', CT: 'chhattisgarh',
+    DL: 'delhi', GA: 'goa', GJ: 'gujarat', HP: 'himachal', HR: 'haryana', JH: 'jharkhand', JK: 'jammu',
+    KA: 'karnataka', KL: 'kerala', LA: 'ladakh', MH: 'maharashtra', ML: 'meghalaya', MN: 'manipur',
+    MP: 'madhya', MZ: 'mizoram', NL: 'nagaland', OR: 'odisha', PB: 'punjab', PY: 'puducherry',
+    RJ: 'rajasthan', SK: 'sikkim', TN: 'tamil', TR: 'tripura', TS: 'telangana', UP: 'uttar', UK: 'uttarakhand', WB: 'west'
+  };
+  
+  // Extract 2-letter state code from place (handles 'GJ (24)', 'AS (18)', etc.)
+  const codeMatchPlace = p.match(/^([A-Za-z]{2})\s*\(/);
+  if (codeMatchPlace) {
+    const code = codeMatchPlace[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+  
+  // Also check if place is just the state code or code-like pattern
+  const justCodeMatch = p.match(/^([A-Za-z]{2})(\s|$)/i);
+  if (justCodeMatch) {
+    const code = justCodeMatch[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+  
+  // Try to extract any 2-letter sequence and match against codes
+  for (const [code, stateName] of Object.entries(stateCodeMap)) {
+    if (pLower.includes(code.toLowerCase()) || pLower.startsWith(code.toLowerCase())) {
+      if (cLower.includes(stateName)) return true;
+    }
+  }
+  
+  return false;
+};
+
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
   quantity: number,
@@ -148,7 +194,7 @@ const calculateCreditNoteTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, !isSameState(placeOfSupply, companyState), {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -184,7 +230,7 @@ const calculateCreditNoteTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (isTaxInvoice && shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
+      if (!isSameState(placeOfSupply, companyState)) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -300,37 +346,48 @@ export const createCreditNote = async (body: CreateCreditNoteInput, t: Transacti
     { transaction: t }
   );
 
-  // sending email to the client about payment created
-  const client = await Clients.findOne({
-    where: { id: creditNote?.clientId }
-  })
-  if(!client){
-    throw new Error("Client not found");
-  }
-  const invoice = await Invoice.findByPk(body.invoiceId);
+  // sending email to the client about credit note created (non-blocking)
+  try {
+    const client = await Clients.findOne({
+      where: { id: creditNote?.clientId }
+    })
+    
+    if(client && client.email){
+      const invoice = await Invoice.findByPk(body.invoiceId);
+      
+      try {
+        const baseUrl = process.env.ADMIN_URL || process.env.BASE_URL || process.env.APP_BASE_URL || '';
+        const normalizedBase = baseUrl ? baseUrl.replace(/\/$/, '') : '';
+        const creditNoteLink = normalizedBase ? `${normalizedBase}/public-credit-note/${creditNote.publicToken}` : `/public-credit-note/${creditNote.publicToken}`;
 
-    try {
-      await sendEmail({
-        from: "" as any,
-        to: client.email,
-        subject: `Credit Note ${creditNote.creditNo}`,
-        htmlFile: "credit-note",
-        replacements: {
-          userName: client.clientfirstName || "Customer",
-          creditNoteNo: creditNote.creditNo,
-          invoiceNo: invoice ? invoice.invoiceNo : "",
-          amount: creditNote.total,
-          currentYear: new Date().getFullYear(),
-        },
-        html: null,
-        text: "",
-        attachments: null,
-        cc: null,
-        replyTo: null,
-      });
-    } catch (error) {
-      throw new Error("Credit Note create email failed");
+        await sendEmail({
+          from: company?.email || "" as any,
+          to: client.email,
+          subject: `Credit Note ${creditNote.creditNo}`,
+          htmlFile: "credit-note",
+          replacements: {
+            clientName: client.clientfirstName || client.businessName || "Customer",
+            creditNoteNo: creditNote.creditNo,
+            invoiceNo: invoice ? invoice.invoiceNo : "",
+            creditAmount: creditNote.total,
+            creditNoteLink,
+            currentYear: new Date().getFullYear(),
+          },
+          html: null,
+          text: "",
+          attachments: null,
+          cc: null,
+          replyTo: null,
+        });
+      } catch (emailError) {
+        console.error("Failed to send credit note email:", emailError);
+        // Don't throw error - email is non-blocking, credit note is already created
+      }
     }
+  } catch (error) {
+    console.error("Error preparing email for credit note:", error);
+    // Don't throw error - email is optional, credit note creation should succeed
+  }
 
   return {
     creditNote,
@@ -363,6 +420,18 @@ export const getCreditNoteById = async (id: string, companyId: string) => {
 export const getCreditNotesByCompany = async (companyId: string) => {
   return await CreditNote.findAll({
     where: { companyId, isDeleted: false },
+    include: [
+      {
+        model: Clients,
+        as: "client",
+        attributes: ["id", "clientfirstName", "clientlastName", "businessName", "email"]
+      },
+      {
+        model: Invoice,
+        as: "invoice",
+        attributes: ["id", "invoiceNo", "invoiceDate"]
+      }
+    ],
     order: [["creditDate", "DESC"]],
   });
 };
@@ -658,8 +727,7 @@ export const getCreditNoteByPublicToken = async (publicToken: string) => {
     include: [
       { model: Company, as: "company" },
       { model: Clients, as: "client" },
-      { model: CreditNoteItem, as: "creditNoteItem" }
-      // Add items association if exists
+      { model: CreditNoteItem, as: "creditNoteItems" }
     ],
   });
 };

@@ -13,6 +13,39 @@ import { createInvoice } from "../invoice/invoice-handler";
 import { Clients } from "../../agency/clients/clients-model";
 import { sendEmail } from "../../../../services/mailService";
 import crypto from "crypto";
+import { PaymentsDocuments } from "../payments/payments-documents-model";
+import { Payments } from "../payments/payments-model";
+
+// Helper function to check if two states are the same
+const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
+  const p = (placeOfSupply ?? '').toString().trim();
+  const c = (companyState ?? '').toString().trim();
+  if (!p || !c) return false;
+  const pLower = p.toLowerCase();
+  const cLower = c.toLowerCase();
+
+  // Direct substring match
+  if (pLower.includes(cLower) || cLower.includes(pLower)) return true;
+
+  // State abbreviation to full name mapping
+  const stateCodeMap: Record<string, string> = {
+    AN: 'andaman', AP: 'andhra', AR: 'arunachal', AS: 'assam', BR: 'bihar', CH: 'chandigarh', CT: 'chhattisgarh',
+    DL: 'delhi', GA: 'goa', GJ: 'gujarat', HP: 'himachal', HR: 'haryana', JH: 'jharkhand', JK: 'jammu',
+    KA: 'karnataka', KL: 'kerala', LA: 'ladakh', MH: 'maharashtra', ML: 'meghalaya', MN: 'manipur',
+    MP: 'madhya', MZ: 'mizoram', NL: 'nagaland', OR: 'odisha', PB: 'punjab', PY: 'puducherry',
+    RJ: 'rajasthan', SK: 'sikkim', TN: 'tamil', TR: 'tripura', TS: 'telangana', UP: 'uttar', UK: 'uttarakhand', WB: 'west'
+  };
+
+  // Extract 2-letter state code from place (handles 'GJ (24)', 'AS (18)', etc.)
+  const codeMatchPlace = p.match(/^([A-Za-z]{2})\s*\(/);
+  if (codeMatchPlace) {
+    const code = codeMatchPlace[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+
+  return false;
+};
 
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
@@ -24,17 +57,17 @@ const calculateLineItemTotal = (
 ): { discountAmount: number; taxAmount: number; totalAmount: number } => {
   // Calculate base amount
   const baseAmount = quantity * unitPrice;
-  
+
   // Apply discount percentage
   const discountAmount = baseAmount * (discountPercentage / 100);
   const amountAfterDiscount = baseAmount - discountAmount;
-  
+
   // Calculate tax on discounted amount
   const taxAmount = (amountAfterDiscount * (tax / 100)) + (amountAfterDiscount * (cessPercentage / 100));
-  
+
   // Calculate total
   const totalAmount = amountAfterDiscount + taxAmount;
-  
+
   return {
     discountAmount: parseFloat(discountAmount.toFixed(2)),
     taxAmount: parseFloat(taxAmount.toFixed(2)),
@@ -138,7 +171,8 @@ const calculateQuoteTotals = (
       ? addDiscountToAll
       : (inputItem.discount || 0);
 
-    const itemTax = itemFromDb.tax || 0;
+    // Use item tax from database, default to 18% if not set (9% CGST + 9% SGST)
+    const itemTax = itemFromDb.tax !== null && itemFromDb.tax !== undefined ? itemFromDb.tax : 18;
     const cessTax = showCess ? (itemFromDb.cessPercentage || 0) : 0;
 
     const quantity = inputItem.quantity ?? 1;
@@ -163,7 +197,8 @@ const calculateQuoteTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
+    const isInterstate = !isSameState(placeOfSupply, companyState);
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, isInterstate, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -199,7 +234,7 @@ const calculateQuoteTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
+      if (!isSameState(placeOfSupply, companyState)) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -210,21 +245,19 @@ const calculateQuoteTotals = (
 
   const customAmountValue = customAmount || 0;
   const discountOnTotal = addDiscountTotal || 0;
+  // Total before applying TDS/TCS (this includes shipping/custom and discount adjustments)
   const totalBeforeTdsTcs = subTotal + totalCgst + totalSgst + totalIgst + totalCess - finalDiscount + (shippingAmount || 0) + customAmountValue - discountOnTotal;
 
   // Calculate TDS and TCS amounts
   let totalTds = 0;
   let totalTcs = 0;
   const taxableBase = subTotal - finalDiscount;
-  // Invoice total BEFORE TDS/TCS
+  // TDS/TCS base should include taxable + tax amounts + cess, but NOT shipping/custom/discount-on-total (invoice-compatible)
   const totalBase = taxableBase
         + totalCgst
         + totalSgst
         + totalIgst
-        + totalCess
-        + (shippingAmount || 0)
-        + (customAmount || 0)
-        - (addDiscountTotal || 0);
+        + totalCess;
   if (tdsTcsEntries && tdsTcsEntries.length > 0) {
     tdsTcsEntries.forEach(entry => {
 
@@ -313,6 +346,18 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
     body.tdsTcsEntries
   );
 
+  console.log('Quote calculation result:', {
+    subTotal: calculated.subTotal,
+    finalDiscount: calculated.finalDiscount,
+    totalCgst: calculated.totalCgst,
+    totalSgst: calculated.totalSgst,
+    totalIgst: calculated.totalIgst,
+    totalCess: calculated.totalCess,
+    total: calculated.total,
+    itemCount: body.items.length,
+    itemsFromDb: itemsFromDb.map(i => ({ id: i.id, name: i.itemName, tax: i.tax, unitPrice: i.unitPrice }))
+  });
+
   // Generate a unique publicToken
   const publicToken = crypto.randomBytes(32).toString("hex");
   // Create quote
@@ -378,7 +423,7 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
   // Create TDS/TCS entries if provided
   let createdTdsTcs: any[] = [];
   if (body.tdsTcsEntries && body.tdsTcsEntries.length > 0) {
-    
+
     createdTdsTcs = await QuoteTdsTcs.bulkCreate(
       body.tdsTcsEntries.map(entry => {
         const baseAmount = entry.applicableOn === "total" ? totalBase : taxableBase;
@@ -406,20 +451,28 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
       id: quote.clientId
     }
   })
-  if(!client){
-    throw new Error("Client not found");
-  }
+  if (client && client.email) {
     try {
+      // Prepare display-friendly values
+      const clientName = client.clientfirstName || 'Customer';
+      const expiryDate = quote.validUntilDate ? new Date(quote.validUntilDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+      const quoteAmount = typeof quote.total === 'number' ? quote.total.toFixed(2) : (quote.total || '0');
+      const baseUrl = process.env.ADMIN_URL || process.env.BASE_URL || process.env.APP_BASE_URL || '';
+      if (!baseUrl) console.warn('ADMIN_URL not set — sending relative public-quote link in email for quote', quote.id);
+      const normalizedBase = baseUrl ? baseUrl.replace(/\/$/, '') : '';
+      const quoteLink = normalizedBase ? `${normalizedBase}/public-quote/${quote.publicToken}` : `/public-quote/${quote.publicToken}`;
+
       await sendEmail({
         from: "" as any,
         to: client.email,
         subject: `Quote ${quote.quotationNo}`,
         htmlFile: "quote-created",
         replacements: {
-          userName: client.clientfirstName || "Customer",
-          quotationNo: quote.quotationNo,
-          validUntilDate: quote.validUntilDate,
-          total: quote.total,
+          clientName,
+          quoteNo: quote.quotationNo,
+          expiryDate,
+          quoteAmount,
+          quoteLink,
           currentYear: new Date().getFullYear(),
         },
         html: null,
@@ -428,9 +481,11 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
         cc: null,
         replyTo: null,
       });
-    } catch (error) {
-      throw new Error("Quote create email failed");
+    } catch (emailError) {
+      // Log email error but don't fail the quote creation
+      console.error('Failed to send quote creation email:', emailError);
     }
+  }
 
   return {
     quote,
@@ -468,6 +523,12 @@ export const getQuoteById = async (id: string, companyId: string) => {
 export const getQuotesByCompany = async (companyId: string) => {
   return await Quote.findAll({
     where: { companyId, isDeleted: false },
+    include: [
+      {
+        model: Clients,
+        as: "client",
+      },
+    ],
     order: [["quotationDate", "DESC"]],
   });
 };
@@ -476,6 +537,12 @@ export const getQuotesByCompany = async (companyId: string) => {
 export const getQuotesByClient = async (clientId: string, companyId: string) => {
   return await Quote.findAll({
     where: { clientId, companyId, isDeleted: false },
+    include: [
+      {
+        model: Clients,
+        as: "client",
+      },
+    ],
     order: [["quotationDate", "DESC"]],
   });
 };
@@ -488,9 +555,9 @@ export const updateQuote = async (
   t: Transaction
 ) => {
   // Check if items or numerical values are being updated
-  const needsRecalculation = body.items || body.shippingAmount !== undefined || 
-    body.shippingTax !== undefined || body.addDiscountTotal !== undefined || 
-    body.addDiscountToAll !== undefined || body.customAmount !== undefined || 
+  const needsRecalculation = body.items || body.shippingAmount !== undefined ||
+    body.shippingTax !== undefined || body.addDiscountTotal !== undefined ||
+    body.addDiscountToAll !== undefined || body.customAmount !== undefined ||
     body.showCess !== undefined || body.tdsTcsEntries;
 
   if(needsRecalculation){
@@ -877,7 +944,7 @@ export const convertQuoteToInvoice = async (
   };
 
   // Prepare items for invoice (use body items if provided, otherwise use quote items)
-  const invoiceItems = body.items && body.items.length > 0 
+  const invoiceItems = body.items && body.items.length > 0
     ? body.items.map((item: any) => ({
         itemId: item.itemId,
         quantity: toNumber(item.quantity) ?? 1,
@@ -955,7 +1022,7 @@ export const convertQuoteToInvoice = async (
 
   // Mark quote as converted
   await Quote.update(
-    { 
+    {
       status: "Converted",
     },
     { where: { id: quoteId }, transaction: t }
@@ -966,6 +1033,114 @@ export const convertQuoteToInvoice = async (
     invoiceItems: result.invoiceItems,
     tdsTcsEntries: result.invoiceTdsTcs,
     convertedFromQuote: quoteId,
+  };
+};
+
+export const getPendingQuoteAmount = async (
+  clientId: string,
+  companyId: string,
+) => {
+  // Validate client exists
+  const client = await Clients.findOne({
+    where: { id: clientId, isDeleted: false }
+  });
+  
+  if (!client) {
+    throw new Error("Client not found");
+  }
+  
+  // Validate company exists
+  const company = await Company.findOne({
+    where: { id: companyId, isActive: true }
+  });
+  
+  if (!company) {
+    throw new Error("Company not found");
+  }
+  
+  // Fetch all invoices for the client in the company with pending status
+  const pendingInvoices = await Invoice.findAll({
+    where: {
+      clientId,
+      companyId,
+      isDeleted: false,
+      status: {
+        [Op.in]: ["Unpaid", "Partially Paid", "Overdue"]
+      }
+    },
+    include: [
+      {
+        model: Clients,
+        as: "client",
+        attributes: ["id", "name", "email"]
+      },
+      {
+        model: Company,
+        as: "company",
+        attributes: ["id", "companyName"]
+      }
+    ],
+    order: [["invoiceDate", "ASC"]]
+  });
+  
+  // Calculate total pending amount (balance already accounts for payments made)
+  const totalPendingAmount = pendingInvoices.reduce((sum, invoice) => {
+    return sum + (invoice.balance || 0);
+  }, 0);
+  
+  // Calculate total invoice amount and total paid amount
+  const totalInvoiceAmount = pendingInvoices.reduce((sum, invoice) => {
+    return sum + (invoice.total || 0);
+  }, 0);
+  
+  const totalPaidAmount = totalInvoiceAmount - totalPendingAmount;
+  
+  // Prepare detailed invoice information with payment breakdown
+  const invoiceDetails = await Promise.all(pendingInvoices.map(async (invoice) => {
+    // Calculate amount paid for this invoice
+    const amountPaid = Number(invoice.total) - Number(invoice.balance);
+    
+    // Get payment records for this invoice
+    const paymentRecords = await PaymentsDocuments.findAll({
+      where: {
+        documentId: invoice.id,
+        documentType: "Invoice",
+        isDeleted: false
+      },
+      include: [
+        {
+          model: Payments,
+          as: "payment",
+          attributes: ["id", "paymentNo", "paymentDate", "paymentAmount", "method"]
+        }
+      ]
+    });
+    
+    return {
+      invoiceId: invoice.id,
+      invoiceNo: invoice.invoiceNo,
+      invoiceDate: invoice.invoiceDate,
+      dueDate: invoice.dueDate,
+      status: invoice.status,
+      totalAmount: invoice.total,
+      paidAmount: parseFloat(amountPaid.toFixed(2)),
+      balanceAmount: invoice.balance,
+      paymentCount: paymentRecords.length,
+      overdueDays: invoice.dueDate < new Date() ? 
+        Math.floor((new Date().getTime() - invoice.dueDate.getTime()) / (1000 * 60 * 60 * 24)) : 0
+    };
+  }));
+  
+  return {
+    clientId,
+    companyId,
+    clientName: client.clientfirstName,
+    companyName: company.name,
+    totalInvoiceAmount: parseFloat(totalInvoiceAmount.toFixed(2)),
+    totalPaidAmount: parseFloat(totalPaidAmount.toFixed(2)),
+    totalPendingAmount: parseFloat(totalPendingAmount.toFixed(2)),
+    pendingInvoicesCount: pendingInvoices.length,
+    invoices: invoiceDetails
   };
 };
 

@@ -50,6 +50,8 @@ import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/pur
 import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
 import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
 import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
+import expensesRouter from './routes/api-webapp/accounting/expenses/expenses-api';
+import expenseItemRouter from './routes/api-webapp/accounting/expenses/expenses-item/expense-item-api';
 
 import path from "path";
 const app = express();
@@ -126,6 +128,8 @@ app.use("/accounting/purchase-bill",purchaseBillRouter);
 app.use("/accounting/purchaseOrder",purchaseOrderRouter);
 app.use("/accounting/payments",paymentsRouter);
 app.use("/accounting/debit-note",debitNoteRouter);
+app.use("/accounting/expense",expensesRouter);
+app.use("/accounting/expense-item",expenseItemRouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it

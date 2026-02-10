@@ -56,7 +56,7 @@ export class PurchaseOrder extends Model<
                 publicToken: {
                     type: DataTypes.STRING(64),
                     allowNull: true,
-                    unique: true,
+                    
                 },
                 companyId: {
                     type: DataTypes.UUID,
