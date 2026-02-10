@@ -156,6 +156,7 @@ export async function updateRole(
     name?: string;
     description?: string | null;
     isActive?: boolean;
+    baseRoleId?: string | null;
   },
   transaction?: Transaction
 ) {
@@ -180,6 +181,7 @@ export async function updateRoleRestricted(
     name?: string;
     description?: string | null;
     isActive?: boolean;
+    baseRoleId?: string | null;
   },
   transaction?: Transaction
 ) {
@@ -271,11 +273,10 @@ export async function getAvailableRolesForCompany(companyId: string) {
   return await Role.findAll({
     where: {
       [require("sequelize").Op.or]: [
-        { scope: "platform" },
+        { scope: "platform", isActive: true },
         { scope: "company", companyId },
       ],
       isDeleted: false,
-      isActive: true,
     },
     order: [
       ["scope", "ASC"], // platform first

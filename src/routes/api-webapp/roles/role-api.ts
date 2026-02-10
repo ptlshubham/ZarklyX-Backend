@@ -370,7 +370,7 @@ router.put("/updateRole/:id", async (req: Request, res: Response) => {
 router.put("/updateRoleRestricted/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
   if (Array.isArray(id)) id = id[0];
-  const { name, description, isActive, permissionIds } = req.body;
+  const { name, description, isActive, baseRoleId, permissionIds } = req.body;
 
   if (permissionIds !== undefined && !Array.isArray(permissionIds)) {
     return res.status(400).json({
@@ -379,9 +379,37 @@ router.put("/updateRoleRestricted/:id", async (req: Request, res: Response) => {
     });
   }
 
+  // Validate baseRoleId if provided
+  if (baseRoleId !== undefined && typeof baseRoleId !== "string") {
+    return res.status(400).json({
+      success: false,
+      message: "baseRoleId must be a string"
+    });
+  }
+
   const t = await dbInstance.transaction();
   try {
-    const role = await updateRoleRestricted(id, { name, description, isActive }, t);
+    // Verify baseRoleId exists and is a platform role
+    if (baseRoleId) {
+      const baseRole = await getRoleById(baseRoleId);
+
+      if (!baseRole) {
+        await t.rollback();
+        return res.status(404).json({
+          success: false,
+          message: "Base role not found"
+        });
+      }
+      if (baseRole.scope !== "platform") {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Base role must be a platform-scoped role"
+        });
+      }
+    }
+
+    const role = await updateRoleRestricted(id, { name, description, isActive, baseRoleId }, t);
 
     if (!role) {
       await t.rollback();
@@ -420,6 +448,96 @@ router.put("/updateRoleRestricted/:id", async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Error updating role"
+    });
+  }
+});
+
+// Update platform role active status (activate/deactivate)
+router.put("/updatePlatformRoleStatus/:id", async (req: Request, res: Response) => {
+  let { id } = req.params;
+  if (Array.isArray(id)) id = id[0];
+  const { isActive } = req.body;
+
+  if (typeof isActive !== "boolean") {
+    return res.status(400).json({
+      success: false,
+      message: "isActive must be a boolean value"
+    });
+  }
+
+  try {
+    const role = await getRoleById(id);
+
+    if (!role) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
+      });
+    }
+
+    if (role.scope !== "platform") {
+      return res.status(400).json({
+        success: false,
+        message: "This endpoint is only for platform-scoped roles"
+      });
+    }
+
+    const updatedRole = await updateRole(id, { isActive });
+
+    return res.status(200).json({
+      success: true,
+      data: updatedRole,
+      message: `Platform role ${isActive ? 'activated' : 'deactivated'} successfully`
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error updating platform role status"
+    });
+  }
+});
+
+// Update company role active status (activate/deactivate)
+router.put("/updateCompanyRoleStatus/:id", async (req: Request, res: Response) => {
+  let { id } = req.params;
+  if (Array.isArray(id)) id = id[0];
+  const { isActive } = req.body;
+
+  if (typeof isActive !== "boolean") {
+    return res.status(400).json({
+      success: false,
+      message: "isActive must be a boolean value"
+    });
+  }
+
+  try {
+    const role = await getRoleById(id);
+
+    if (!role) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
+      });
+    }
+
+    if (role.scope !== "company") {
+      return res.status(400).json({
+        success: false,
+        message: "This endpoint is only for company-scoped roles"
+      });
+    }
+
+    const updatedRole = await updateRole(id, { isActive });
+
+    return res.status(200).json({
+      success: true,
+      data: updatedRole,
+      message: `Company role ${isActive ? 'activated' : 'deactivated'} successfully`
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error updating company role status"
     });
   }
 });
