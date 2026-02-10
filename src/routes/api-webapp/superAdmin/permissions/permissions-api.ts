@@ -151,15 +151,17 @@ router.patch("/updatePermissionById/:id", async (req, res) => {
       return res.status(400).json({ error: "Permission ID is required" });
     }
     const updateFields: any = {};
-    const { name, description, moduleId, action, isActive, isDeleted, isSystemPermission, isSubscriptionExempt } = req.body;
+    const { name, description, moduleId, action, price, isActive, isDeleted, isSystemPermission, isSubscriptionExempt, isFreeForAll } = req.body;
     if (typeof name === 'string') updateFields.name = name;
     if (typeof description === 'string') updateFields.description = description;
     if (typeof moduleId === 'string') updateFields.moduleId = moduleId;
     if (typeof action === 'string') updateFields.action = action;
+    if (typeof price === 'number' && price >= 0) updateFields.price = price;
     if (typeof isActive === 'boolean') updateFields.isActive = isActive;
     if (typeof isDeleted === 'boolean') updateFields.isDeleted = isDeleted;
     if (typeof isSystemPermission === 'boolean') updateFields.isSystemPermission = isSystemPermission;
     if (typeof isSubscriptionExempt === 'boolean') updateFields.isSubscriptionExempt = isSubscriptionExempt;
+    if (typeof isFreeForAll === 'boolean') updateFields.isFreeForAll = isFreeForAll;
     if (Object.keys(updateFields).length === 0) {
       await t.rollback();
       return res.status(400).json({ error: "At least one field must be provided" });
