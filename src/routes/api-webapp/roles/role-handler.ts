@@ -29,11 +29,11 @@ export async function createRole(
 
   // EDGE CASE 2: Enforce priority floors by scope (prevent privilege escalation)
   const priority = data.priority !== undefined ? data.priority : 50;
-  
+
   if (data.scope === "company" && priority < 20) {
     throw new Error("Company roles cannot have priority lower than 20. Only platform roles can be admins.");
   }
-  
+
   if (data.scope === "platform" && !data.isSystemRole && priority < 10) {
     throw new Error("Custom platform roles cannot have priority lower than 10. Reserved for system roles.");
   }
@@ -151,6 +151,30 @@ export async function getRoleByName(
  * Update role
  */
 export async function updateRole(
+  id: string,
+  updates: {
+    name?: string;
+    description?: string | null;
+    isActive?: boolean;
+  },
+  transaction?: Transaction
+) {
+  const role = await Role.findOne({
+    where: { id, isDeleted: false },
+  });
+
+  if (!role) {
+    return null;
+  }
+
+  await role.update(updates, { transaction });
+  return role;
+}
+
+/**
+ * Update role with restrictions (cannot modify name of system roles)
+ */
+export async function updateRoleRestricted(
   id: string,
   updates: {
     name?: string;
@@ -317,11 +341,11 @@ export async function cloneRoleToCompany(
 
       // Check company has module access
       const hasModuleAccess = await checkCompanyModuleAccess(companyId, permission.moduleId);
-      
+
       if (!hasModuleAccess) {
         // Check company has specific permission access
         const hasPermissionAccess = await checkCompanyPermissionAccess(companyId, permission.id);
-        
+
         if (!hasPermissionAccess) {
           unauthorizedPermissions.push(`${permission.name} (${permission.action})`);
         }
@@ -346,7 +370,7 @@ export async function cloneRoleToCompany(
       baseRoleId: platformRoleId,
       level: platformRole.level,
       isSystemRole: false,
-      priority: platformRole.priority >= 20 ? platformRole.priority : 20, 
+      priority: platformRole.priority >= 20 ? platformRole.priority : 20,
       isActive: true,
       isDeleted: false,
     },
