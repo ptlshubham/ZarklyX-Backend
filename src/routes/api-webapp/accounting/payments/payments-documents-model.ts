@@ -7,7 +7,7 @@ import {
   Sequelize,
 } from "sequelize";
 
-export type DocumentType = "Invoice" | "PurchaseBill";
+export type DocumentType = "Invoice" | "PurchaseBill" | "PurchaseOrder" | "Advance Payment Received" | "Advance Payment Made";
 
 export class PaymentsDocuments extends Model<
   InferAttributes<PaymentsDocuments>,
@@ -40,7 +40,7 @@ export class PaymentsDocuments extends Model<
           allowNull: false,
         },
         documentType: {
-          type: DataTypes.ENUM("Invoice", "PurchaseBill"),
+          type: DataTypes.ENUM("Invoice", "PurchaseBill", "PurchaseOrder", "Advance Payment Received", "Advance Payment Made"),
           allowNull: false,
         },
         paymentValue: {

@@ -9,10 +9,12 @@ import {
   searchInvoices,
   convertInvoiceToPayment,
   getInvoiceByPublicToken,
+  getPendingInvoiceAmount,
 } from "./invoice-handler";
 import { serverError } from "../../../../utils/responseHandler";
 import dbInstance from "../../../../db/core/control-db";
 import { Company } from "../../../../routes/api-webapp/company/company-model";
+import ErrorLogger from "../../../../db/core/logger/error-logger";
 
 const router = express.Router();
 
@@ -542,7 +544,47 @@ router.post("/convertToPayment/:id",async (req: Request, res: Response): Promise
     await t.rollback();
     return res.status(400).json({ success: false, message: err.message || "Failed to convert purchase order to bill" });
   }
-})
+});
+
+/**
+ * GET /accounting/invoice/getInvoicePendingAmount/:clientId?companyId=
+ * Calculate the pending invoice amount of client in accounting
+ */
+router.get("/getInvoicePendingAmount/:clientId", async (req: Request, res: Response): Promise<any> => {
+  let companyId = req.query.companyId;
+  if(Array.isArray(companyId)) companyId = companyId[0];
+  let clientId = req.params.clientId;
+  if(Array.isArray(clientId)) clientId = clientId[0];
+  
+  companyId = companyId as string;
+  clientId = clientId as string;
+  
+  if (!clientId || !companyId) {
+    return res.status(400).json({
+      success: false,
+      message: "clientId and companyId are required",
+    });
+  }
+  
+  const t = await dbInstance.transaction();
+  try {
+    const pendingAmount = await getPendingInvoiceAmount(clientId, companyId);
+    
+    await t.commit();
+    return res.status(200).json({
+      success: true,
+      message: "Pending amount of client calculated successfully",
+      data: pendingAmount,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    ErrorLogger.write({ type: "getPendingAmount for client error", error });
+    return serverError(
+      res,
+      error?.message || "Failed to get the pending amount for client"
+    );
+  }
+});
 
 // GET /accounting/invoice/getInvoiceByPublicToken/:publicToken
 router.get("/getInvoiceByPublicToken/:publicToken", async (req: Request, res: Response): Promise<any> => {

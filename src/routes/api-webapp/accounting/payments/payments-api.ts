@@ -11,6 +11,10 @@ import {
   deletePayment,
   searchPayments,
   getPaymentStatistics,
+  getPaymentsForInvoice,
+  getInvoicesForPayment,
+  getPaymentsForPurchaseBill,
+  getPurchaseBillsForPayment,
 } from "./payments-handler";
 import { serverError } from "../../../../utils/responseHandler";
 import dbInstance from "../../../../db/core/control-db";
@@ -458,6 +462,96 @@ router.get("/searchPayments", async (req: Request, res: Response): Promise<any> 
   } catch (err: any) {
     console.error("Search Payments Error:", err);
     return serverError(res, err.message || "Failed to search payments.");
+  }
+});
+
+// GET /accounting/payments/getPaymentsForInvoice/:invoiceId?companyId=
+router.get("/getPaymentsForInvoice/:invoiceId", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { companyId } = req.query;
+
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId query parameter is required",
+      });
+    }
+
+    let invoiceId = req.params.invoiceId;
+    if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
+
+    const data = await getPaymentsForInvoice(invoiceId, companyId as string);
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err: any) {
+    console.error("Get Payments For Invoice Error:", err);
+    return serverError(res, "Failed to fetch payments for invoice.");
+  }
+});
+
+// GET /accounting/payments/getInvoicesForPayment/:paymentId
+router.get("/getInvoicesForPayment/:paymentId", async (req: Request, res: Response): Promise<any> => {
+  try {
+    let paymentId = req.params.paymentId;
+    if (Array.isArray(paymentId)) paymentId = paymentId[0];
+
+    const data = await getInvoicesForPayment(paymentId);
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err: any) {
+    console.error("Get Invoices For Payment Error:", err);
+    return serverError(res, "Failed to fetch invoices for payment.");
+  }
+});
+
+// GET /accounting/payments/getPaymentsForPurchaseBill/:purchaseBillId?companyId=
+router.get("/getPaymentsForPurchaseBill/:purchaseBillId", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { companyId } = req.query;
+
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId query parameter is required",
+      });
+    }
+
+    let purchaseBillId = req.params.purchaseBillId;
+    if (Array.isArray(purchaseBillId)) purchaseBillId = purchaseBillId[0];
+
+    const data = await getPaymentsForPurchaseBill(purchaseBillId, companyId as string);
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err: any) {
+    console.error("Get Payments For Purchase Bill Error:", err);
+    return serverError(res, "Failed to fetch payments for purchase bill.");
+  }
+});
+
+// GET /accounting/payments/getPurchaseBillsForPayment/:paymentId
+router.get("/getPurchaseBillsForPayment/:paymentId", async (req: Request, res: Response): Promise<any> => {
+  try {
+    let paymentId = req.params.paymentId;
+    if (Array.isArray(paymentId)) paymentId = paymentId[0];
+
+    const data = await getPurchaseBillsForPayment(paymentId);
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err: any) {
+    console.error("Get Purchase Bills For Payment Error:", err);
+    return serverError(res, "Failed to fetch purchase bills for payment.");
   }
 });
 

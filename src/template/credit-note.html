@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Invoice Created</title>
+    <title>Credit Note Issued</title>
 
     <!-- Font Awesome (browser support; limited email support) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
@@ -55,7 +55,7 @@
                 <tr>
                     <td style="padding-bottom:14px;">
                         <h2 style="margin:0; color:#0f2d2f;">
-                            Invoice Created Successfully
+                            Credit Note Issued
                         </h2>
                     </td>
                 </tr>
@@ -70,35 +70,35 @@
                 <!-- CONTENT -->
                 <tr>
                     <td style="padding-bottom:20px; font-size:18px; line-height:1.6;">
-                        We have generated a new invoice for you. Please find the
-                        invoice details below and review them at your convenience.
+                        We would like to inform you that a credit note has been
+                        successfully issued for your account. Please find the
+                        details below.
                     </td>
                 </tr>
 
-                <!-- INVOICE DETAILS -->
+                <!-- CREDIT NOTE DETAILS -->
                 <tr>
                     <td style="padding-bottom:20px; font-size:18px; line-height:1.6;">
-                        <strong>Invoice Number:</strong> {{invoiceNo}}<br>
-                        <strong>Invoice Date:</strong> {{invoiceDate}}<br>
-                        <strong>Due Date:</strong> {{dueDate}}<br>
-                        <strong>Total Amount:</strong> {{totalAmount}}
+                        <strong>Credit Note Number:</strong> {{creditNoteNo}}<br>
+                        <strong>Credit Amount:</strong> {{creditAmount}}
                     </td>
                 </tr>
 
                 <!-- CTA -->
                 <tr>
                     <td style="padding-bottom:28px; font-size:17px; line-height:1.6;">
-                        You can view or download the invoice document using the link below.
+                        You can view or download the credit note document using
+                        the link below.
                     </td>
                 </tr>
 
                 <tr>
                     <td style="padding-bottom:28px;">
-                        <a href="{{invoiceLink}}"
+                        <a href="{{creditNoteLink}}"
                            style="display:inline-block; background:#0f2d2f; color:#ffffff;
                            padding:12px 24px; text-decoration:none; border-radius:6px;
                            font-size:16px;">
-                            View Invoice
+                            View Credit Note
                         </a>
                     </td>
                 </tr>
@@ -126,7 +126,8 @@
                 </tr>
 
             </table>
-            <!-- FOOTER -->
+
+             <!-- FOOTER -->
                 <table width="100%" cellpadding="0" cellspacing="0" align="center" style="max-width:600px; background:#000000; border-radius:0 0 12px 12px;
                         border-radius:12px 12px 0 0; ">
 

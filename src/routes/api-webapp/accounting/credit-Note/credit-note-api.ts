@@ -23,13 +23,10 @@ router.post("/createCreditNote", async (req: Request, res: Response): Promise<an
     const {
       companyId,
       clientId,
-      taxSelectionOn,
-      placeOfSupply,
       creditNo,
       invoiceId,
       reason,
       items,
-      showCess,
     } = req.body;
 
     if (!companyId || !clientId || !creditNo || !invoiceId || !reason || !items || items.length === 0) {
@@ -38,6 +35,11 @@ router.post("/createCreditNote", async (req: Request, res: Response): Promise<an
         message: "Missing required fields: companyId, clientId, creditNo, invoiceId, reason, items",
       });
     }
+    
+    // Set defaults for optional fields
+    req.body.taxSelectionOn = req.body.taxSelectionOn || 'inclusive';
+    req.body.placeOfSupply = req.body.placeOfSupply || '';
+    req.body.showCess = req.body.showCess || false;
 
     const result = await createCreditNote(req.body, t);
     await t.commit();

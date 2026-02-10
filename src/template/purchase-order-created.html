@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Invoice Created</title>
+    <title>Purchase Order Issued</title>
 
     <!-- Font Awesome (browser support; limited email support) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
@@ -55,7 +55,7 @@
                 <tr>
                     <td style="padding-bottom:14px;">
                         <h2 style="margin:0; color:#0f2d2f;">
-                            Invoice Created Successfully
+                            Purchase Order Issued
                         </h2>
                     </td>
                 </tr>
@@ -63,42 +63,42 @@
                 <!-- GREETING -->
                 <tr>
                     <td style="padding-bottom:16px; font-size:20px;">
-                        Hi {{clientName}},
+                        Hi {{vendorName}},
                     </td>
                 </tr>
 
                 <!-- CONTENT -->
                 <tr>
                     <td style="padding-bottom:20px; font-size:18px; line-height:1.6;">
-                        We have generated a new invoice for you. Please find the
-                        invoice details below and review them at your convenience.
+                        We would like to inform you that a new purchase order
+                        has been issued. Please find the order details below
+                        for your reference.
                     </td>
                 </tr>
 
-                <!-- INVOICE DETAILS -->
+                <!-- PURCHASE ORDER DETAILS -->
                 <tr>
                     <td style="padding-bottom:20px; font-size:18px; line-height:1.6;">
-                        <strong>Invoice Number:</strong> {{invoiceNo}}<br>
-                        <strong>Invoice Date:</strong> {{invoiceDate}}<br>
-                        <strong>Due Date:</strong> {{dueDate}}<br>
-                        <strong>Total Amount:</strong> {{totalAmount}}
+                        <strong>Purchase Order Number:</strong> {{purchaseOrderNo}}<br>
+                        <strong>Total Amount:</strong> {{purchaseOrderAmount}}
                     </td>
                 </tr>
 
                 <!-- CTA -->
                 <tr>
                     <td style="padding-bottom:28px; font-size:17px; line-height:1.6;">
-                        You can view or download the invoice document using the link below.
+                        You can view or download the purchase order document
+                        using the link below.
                     </td>
                 </tr>
 
                 <tr>
                     <td style="padding-bottom:28px;">
-                        <a href="{{invoiceLink}}"
+                        <a href="{{purchaseOrderLink}}"
                            style="display:inline-block; background:#0f2d2f; color:#ffffff;
                            padding:12px 24px; text-decoration:none; border-radius:6px;
                            font-size:16px;">
-                            View Invoice
+                            View Purchase Order
                         </a>
                     </td>
                 </tr>
@@ -126,6 +126,7 @@
                 </tr>
 
             </table>
+
             <!-- FOOTER -->
                 <table width="100%" cellpadding="0" cellspacing="0" align="center" style="max-width:600px; background:#000000; border-radius:0 0 12px 12px;
                         border-radius:12px 12px 0 0; ">

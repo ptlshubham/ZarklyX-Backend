@@ -69,10 +69,11 @@ router.get("/getPurchaseBillById/:id", async (req: Request, res: Response): Prom
   try {
     let id = req.params.id;
     if (Array.isArray(id)) id = id[0];
-    const data = await getPurchaseBillById(
-      id,
-      req.query.companyId as string
-    );
+    const companyId = req.query.companyId as string;
+    
+    console.log(`[getPurchaseBillById] Fetching bill - id: ${id}, companyId: ${companyId}`);
+    
+    const data = await getPurchaseBillById(id, companyId);
 
     if (!data) {
       return res.status(404).json({
@@ -83,6 +84,7 @@ router.get("/getPurchaseBillById/:id", async (req: Request, res: Response): Prom
 
     res.json({ success: true, data });
   } catch (err) {
+    console.error("[getPurchaseBillById] Error:", err);
     return serverError(res, "Failed to fetch purchase bill.");
   }
 });
@@ -90,7 +92,15 @@ router.get("/getPurchaseBillById/:id", async (req: Request, res: Response): Prom
 // GET /accounting/purchase-bill/getPurchaseBillByCompanyId?companyId=
 router.get("/getPurchaseBillByCompanyId", async (req: Request, res: Response): Promise<any> => {
     try {
-      const data = await getPurchaseBillsByCompany(req.query.companyId as string);
+      const companyId = req.query.companyId as string;
+      console.log(`[getPurchaseBillByCompanyId] Fetching bills for company: ${companyId}`);
+      
+      const data = await getPurchaseBillsByCompany(companyId);
+
+      console.log(`[getPurchaseBillByCompanyId] Found ${data.length} bills`);
+      if (data.length > 0) {
+        console.log(`[getPurchaseBillByCompanyId] First bill vendor:`, (data[0] as any).vendor);
+      }
 
       res.json({
         success: true,
@@ -98,6 +108,7 @@ router.get("/getPurchaseBillByCompanyId", async (req: Request, res: Response): P
         count: data.length,
       });
     } catch (err) {
+      console.error("[getPurchaseBillByCompanyId] Error:", err);
       return serverError(res, "Failed to fetch purchase bills.");
     }
   }

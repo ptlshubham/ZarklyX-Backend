@@ -2,6 +2,7 @@ import { Op, Transaction } from "sequelize";
 import { Payments, PaymentMethod, PaymentType } from "./payments-model";
 import { Invoice } from "../invoice/invoice-model";
 import { PurchaseBill } from "../purchase-Bill/purchase-bill-model";
+import { PurchaseOrder } from "../purchaseOrder/purchase-order-model";
 import { Clients } from "../../agency/clients/clients-model";
 import { Vendor } from "../vendor/vendor-model";
 import { PaymentsDocuments, DocumentType } from "./payments-documents-model";
@@ -47,15 +48,16 @@ const updateDocumentBalance = async (
       throw new Error(`Invoice ${documentId} not found`);
     }
 
-    const currentBalance = invoice.balance ?? invoice.total ?? 0;
+    const currentBalance = Number(invoice.balance ?? invoice.total ?? 0);
+    const paymentVal = Number(paymentValue);
     const newBalance = isReversal
-      ? currentBalance + paymentValue
-      : currentBalance - paymentValue;
+      ? currentBalance + paymentVal
+      : currentBalance - paymentVal;
 
     // Validate payment value
-    if (!isReversal && paymentValue > currentBalance) {
+    if (!isReversal && paymentVal > currentBalance) {
       throw new Error(
-        `Payment value ${paymentValue} exceeds invoice balance ${currentBalance}`
+        `Payment value ${paymentVal} exceeds invoice balance ${currentBalance}`
       );
     }
 
@@ -63,7 +65,7 @@ const updateDocumentBalance = async (
     let newStatus = invoice.status;
     if (newBalance <= 0) {
       newStatus = "Paid";
-    } else if (newBalance < (invoice.total ?? 0)) {
+    } else if (newBalance < (Number(invoice.total ?? 0))) {
       newStatus = "Partially Paid";
     } else {
       newStatus = "Unpaid";
@@ -84,15 +86,16 @@ const updateDocumentBalance = async (
       throw new Error(`Purchase Bill ${documentId} not found`);
     }
 
-    const currentBalance = bill.balance ?? bill.total ?? 0;
+    const currentBalance = Number(bill.balance ?? bill.total ?? 0);
+    const paymentVal = Number(paymentValue);
     const newBalance = isReversal
-      ? currentBalance + paymentValue
-      : currentBalance - paymentValue;
+      ? currentBalance + paymentVal
+      : currentBalance - paymentVal;
 
     // Validate payment value
-    if (!isReversal && paymentValue > currentBalance) {
+    if (!isReversal && paymentVal > currentBalance) {
       throw new Error(
-        `Payment value ${paymentValue} exceeds bill balance ${currentBalance}`
+        `Payment value ${paymentVal} exceeds bill balance ${currentBalance}`
       );
     }
 
@@ -100,7 +103,7 @@ const updateDocumentBalance = async (
     let newStatus = bill.status;
     if (newBalance <= 0) {
       newStatus = "paid";
-    } else if (newBalance < (bill.total ?? 0)) {
+    } else if (newBalance < (Number(bill.total ?? 0))) {
       newStatus = "partially paid";
     } else {
       newStatus = "unpaid";
@@ -292,7 +295,7 @@ export const getPaymentById = async (id: string, companyId: string) => {
         model: Vendor,
         as: "vendor",
         required: false,
-        attributes: ["id", "companyName", "firstName", "lastName"],
+        attributes: ["id", "companyName", "name", "email"],
       },
     ],
   });
@@ -308,33 +311,108 @@ export const getPaymentById = async (id: string, companyId: string) => {
 
 // Get all payments for a company with documents
 export const getPaymentsByCompany = async (companyId: string) => {
-  const payments = await Payments.findAll({
-    where: { companyId, isDeleted: false },
-    include: [
-      {
-        model: Clients,
-        as: "client",
-        required: false,
-        attributes: ["id", "businessName", "clientfirstName", "clientLastName"],
-      },
-      {
-        model: Vendor,
-        as: "vendor",
-        required: false,
-        attributes: ["id", "companyName", "firstName", "lastName"],
-      },
-    ],
-    order: [["paymentDate", "DESC"]],
-  });
+  try {
+    const payments = await Payments.findAll({
+      where: { companyId, isDeleted: false },
+      order: [["paymentDate", "DESC"]],
+      raw: false,
+    });
 
-  return await Promise.all(
-    payments.map(async (p) => {
-      const docs = await PaymentsDocuments.findAll({
-        where: { paymentId: p.id },
-      });
-      return { ...p.toJSON(), documents: docs };
-    })
-  );
+    return await Promise.all(
+      payments.map(async (p) => {
+        try {
+          // Fetch related documents and enrich with invoice details
+          const docs = await PaymentsDocuments.findAll({
+            where: { paymentId: p.id },
+            raw: true,
+          });
+
+          const enrichedDocs = await Promise.all(
+            docs.map(async (doc: any) => {
+              let invoiceNo = null;
+              let poNo = null;
+              
+              try {
+                if (doc.documentType === "Invoice") {
+                  const invoice = await Invoice.findByPk(doc.documentId, {
+                    attributes: ["id", "invoiceNo"],
+                    raw: true,
+                  });
+                  if (invoice) {
+                    invoiceNo = invoice.invoiceNo;
+                  }
+                } else if (doc.documentType === "PurchaseOrder") {
+                  const po = await PurchaseOrder.findByPk(doc.documentId, {
+                    attributes: ["id", "poNo"],
+                    raw: true,
+                  });
+                  if (po) {
+                    poNo = po.poNo;
+                  }
+                } else if (doc.documentType === "PurchaseBill") {
+                  const bill = await PurchaseBill.findByPk(doc.documentId, {
+                    attributes: ["id", "invoiceNo", "poNo"],
+                    raw: true,
+                  });
+                  if (bill) {
+                    invoiceNo = bill.invoiceNo;
+                    poNo = bill.poNo;
+                  }
+                }
+              } catch (err) {
+                console.error(`Error fetching document ${doc.documentId}:`, err);
+              }
+              
+              return {
+                ...doc,
+                invoiceNo: invoiceNo || doc.documentId,
+                poNo: poNo || null,
+              };
+            })
+          );
+
+          // Fetch client/vendor details separately if IDs exist
+          let client = null;
+          let vendor = null;
+
+          if (p.clientId) {
+            try {
+              client = await Clients.findByPk(p.clientId, {
+                attributes: ["id", "businessName", "clientfirstName", "clientLastName"],
+                raw: true,
+              });
+            } catch (err) {
+              console.warn(`Failed to fetch client ${p.clientId}:`, err);
+            }
+          }
+
+          if (p.vendorId) {
+            try {
+              vendor = await Vendor.findByPk(p.vendorId, {
+                attributes: ["id", "companyName", "name", "email"],
+                raw: true,
+              });
+            } catch (err) {
+              console.warn(`Failed to fetch vendor ${p.vendorId}:`, err);
+            }
+          }
+
+          return {
+            ...p.toJSON(),
+            documents: enrichedDocs,
+            client,
+            vendor,
+          };
+        } catch (err) {
+          console.error(`Error processing payment ${p.id}:`, err);
+          return { ...p.toJSON(), documents: [], client: null, vendor: null };
+        }
+      })
+    );
+  } catch (err) {
+    console.error("Error in getPaymentsByCompany:", err);
+    throw err;
+  }
 };
 
 // Get payments by client with documents
@@ -371,7 +449,7 @@ export const getPaymentsByVendor = async (vendorId: string, companyId: string) =
         model: Vendor,
         as: "vendor",
         required: false,
-        attributes: ["id", "companyName", "firstName", "lastName"],
+        attributes: ["id", "companyName", "name", "email"],
       },
     ],
     order: [["paymentDate", "DESC"]],
@@ -668,7 +746,7 @@ export const searchPayments = async (filters: SearchPaymentFilters) => {
         model: Vendor,
         as: "vendor",
         required: false,
-        attributes: ["id", "companyName", "firstName", "lastName"],
+        attributes: ["id", "companyName", "name", "email"],
       },
     ],
     order: [["paymentDate", "DESC"]],
@@ -682,6 +760,74 @@ export const searchPayments = async (filters: SearchPaymentFilters) => {
       return { ...p.toJSON(), documents: docs };
     })
   );
+};
+
+// Get payments for an invoice
+export const getPaymentsForInvoice = async (
+  invoiceId: string,
+  companyId: string
+) => {
+  return PaymentsDocuments.findAll({
+    where: {
+      documentId: invoiceId,
+      documentType: "Invoice",
+      isDeleted: false,
+    },
+    include: [
+      {
+        model: Payments,
+        where: { companyId, isDeleted: false },
+      },
+    ],
+  });
+};
+
+// Get invoices paid by a payment
+export const getInvoicesForPayment = async (
+  paymentId: string
+) => {
+  return PaymentsDocuments.findAll({
+    where: {
+      paymentId,
+      documentType: "Invoice",
+      isDeleted: false,
+    },
+    include: [{ model: Invoice }],
+  });
+};
+
+// Get payments for a purchase bill
+export const getPaymentsForPurchaseBill = async (
+  purchaseBillId: string,
+  companyId: string
+) => {
+  return PaymentsDocuments.findAll({
+    where: {
+      documentId: purchaseBillId,
+      documentType: "PurchaseBill",
+      isDeleted: false,
+    },
+    include: [
+      {
+        model: Payments,
+        where: { companyId, isDeleted: false },
+      },
+    ],
+  });
+};
+
+// Get purchase bills paid by a payment
+export const getPurchaseBillsForPayment = async (
+  paymentId: string
+) => {
+  return PaymentsDocuments.findAll({
+    where: {
+      paymentId,
+      documentType: "PurchaseBill",
+      isDeleted: false,
+    },
+    include: [{ model: PurchaseBill }],
+  });
 };
 
 // Get payment statistics for dashboard

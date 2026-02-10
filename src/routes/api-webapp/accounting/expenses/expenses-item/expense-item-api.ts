@@ -40,7 +40,7 @@ router.post("/createExpenseItem/", async (req: Request, res: Response): Promise<
 router.get("/getExpenseItemById/:id", async (req: Request, res: Response): Promise<any> => {
     try {
         const data = await getExpenseItemById(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string
         );
 
@@ -111,7 +111,7 @@ router.patch("/updateExpenseItem/:id", async (req: Request, res: Response): Prom
     const t = await dbInstance.transaction();
     try {
         const [affectedRows] = await updateExpenseItem(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string,
             req.body,
             t
@@ -126,7 +126,7 @@ router.patch("/updateExpenseItem/:id", async (req: Request, res: Response): Prom
         }
 
         const updatedItem = await getExpenseItemById(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string
         );
 
@@ -147,7 +147,7 @@ router.patch("/deactivateExpenseItem/:id", async (req: Request, res: Response): 
     const t = await dbInstance.transaction();
     try {
         const [affectedRows] = await deactivateExpenseItem(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string,
             t
         );
@@ -176,7 +176,7 @@ router.patch("/activateExpenseItem/:id", async (req: Request, res: Response): Pr
     const t = await dbInstance.transaction();
     try {
         const [affectedRows] = await activateExpenseItem(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string,
             t
         );
@@ -205,7 +205,7 @@ router.delete("/deleteExpenseItem/:id", async (req: Request, res: Response): Pro
     const t = await dbInstance.transaction();
     try {
         const affectedRows = await deleteExpenseItem(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string,
             t
         );

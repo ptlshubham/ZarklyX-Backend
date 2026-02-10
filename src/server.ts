@@ -160,25 +160,6 @@ app.use("/accounting/purchaseOrder",purchaseOrderRouter);
 app.use("/itManagement/itAssetsManagement", itAssetsManagementRoutes);
 app.use("/accounting/payments",paymentsRouter);
 app.use("/accounting/debit-note",debitNoteRouter);
-app.use("/superAdmin/modules",modulesRouter);
-app.use("/superAdmin/permissions",permissionsRouter);
-app.use("/superAdmin/subscription-plan",subscriptionPlanRouter);
-app.use("/superAdmin/subscription-plan-module",subscriptionPlanModuleRouter);
-app.use("/superAdmin/subscription-plan-permission",subscriptionPlanPermissionRouter);
-app.use("/company-subscription",companySubscriptionRouter);
-app.use("/company-module",companyModuleRouter);
-app.use("/company-permission",companyPermissionRouter);
-app.use("/role-permissions",RolePermissionsRouter);
-app.use("/user-overrides",UserPermissionOverridesRouter);
-app.use("/rbac",RbacRouter);
-app.use("/superAdmin/zarklyx/auth",zarklyXAuthRouter),
-app.use("/superAdmin/zarklyx/user",zarklyXUsersRouter),
-app.use("/superAdmin/zarklyx/roles",zarklyXRolesRouter),
-app.use("/superAdmin/zarklyx/permissions",zarklyXPermissionsRouter),
-app.use("/superAdmin/zarklyx/role-permissions",zarklyXRolePermissionsRouter),
-app.use("/superAdmin/zarklyx/overrides",zarklyXOverridesRouter),
-app.use("/superAdmin/zarklyx/2fa",zarklyX2FARouter),
-app.use("/clients/client-assignment",clientUserAssignmentRouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
