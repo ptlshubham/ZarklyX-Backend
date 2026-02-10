@@ -69,6 +69,7 @@ import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/rbac/roles/roles
 import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permissions/permissions-model";
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
+import { ClientUserAssignment, initClientUserAssignmentModel } from "../../routes/api-webapp/agency/clients/client-assignment/client-assignment-model";
 
 export {
   User,
@@ -201,7 +202,7 @@ export function initControlDB(sequelize: Sequelize) {
   ZarklyXUser.initModel(sequelize);
   ZarklyXRolePermission.initModel(sequelize);
   ZarklyXUserPermissionOverride.initModel(sequelize);
-
+  initClientUserAssignmentModel(sequelize);
 
   // Relations and associations
   /***user <-> company */
@@ -1305,6 +1306,22 @@ export function initControlDB(sequelize: Sequelize) {
     as: "permission",
   });
 
+  // ClientUserAssignment <-> User
+  User.hasMany(ClientUserAssignment, { 
+    foreignKey: "userId" 
+  });
+  ClientUserAssignment.belongsTo(User, { 
+    foreignKey: "userId" 
+  });
+
+  // ClientUserAssignment <-> Clients
+  ClientUserAssignment.belongsTo(Clients, { 
+    foreignKey: "clientId" 
+  });
+  Clients.hasMany(ClientUserAssignment, { 
+    foreignKey: "clientId" 
+  });
+
   console.log("✅ ZarklyX RBAC associations initialized");
 
   // Role <-> SubRole
@@ -1373,5 +1390,6 @@ export function initControlDB(sequelize: Sequelize) {
     Role,
     RolePermissions,
     UserPermissionOverrides,
+    ClientUserAssignment,
   };
 }

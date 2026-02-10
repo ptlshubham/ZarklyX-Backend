@@ -74,6 +74,7 @@ export default (app: Application) => {
     app.use("/superAdmin/zarklyx/role-permissions", require("./api-webapp/superAdmin/zarklyX-role-permissions/zarklyX-role-permissions-api"));
     app.use("/superAdmin/zarklyx/overrides", require("./api-webapp/superAdmin/zarklyX-user-permission-override/zarklyX-user-permission-override-api"));
     app.use("/superAdmin/zarklyx/2fa", require("./api-webapp/superAdmin/zarklyX-2fa/zarklyX-2fa-api"));
-    
+  
+    app.use("/clients/client-assignment",require("./api-webapp/agency/clients/client-assignment/client-assignment-api"));
 };
 

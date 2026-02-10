@@ -75,6 +75,7 @@ import zarklyXOverridesRouter from "./routes/api-webapp/superAdmin/rbac/user-per
 import zarklyX2FARouter from "./routes/api-webapp/superAdmin/authentication/2fa/zarklyX-2fa-api";
 import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-api';
 
+import clientUserAssignmentRouter from './routes/api-webapp/agency/clients/client-assignment/client-assignment-api'
 
 import path from "path";
 const app = express();
@@ -177,6 +178,7 @@ app.use("/superAdmin/zarklyx/permissions",zarklyXPermissionsRouter),
 app.use("/superAdmin/zarklyx/role-permissions",zarklyXRolePermissionsRouter),
 app.use("/superAdmin/zarklyx/overrides",zarklyXOverridesRouter),
 app.use("/superAdmin/zarklyx/2fa",zarklyX2FARouter),
+app.use("/clients/client-assignment",clientUserAssignmentRouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
