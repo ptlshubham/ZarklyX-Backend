@@ -14,6 +14,7 @@ import dbInstance from "../../../../db/core/control-db";
 const router = Router();
 
 // Create subscription plan
+
 router.post("/createSubscriptionPlan", async (req, res) => {
   const t = await dbInstance.transaction();
   try {
@@ -218,6 +219,7 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
       display_order,
       status,
       is_popular,
+      modules,
     } = req.body;
 
     if (typeof name === "string" && name.trim()) updateFields.name = name;
@@ -236,6 +238,17 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
     if (typeof display_order === "number") updateFields.display_order = display_order;
     if (["active", "inactive"].includes(status)) updateFields.status = status;
     if (typeof is_popular === "boolean") updateFields.is_popular = is_popular;
+
+    // Validate modules array if provided
+    if (modules !== undefined) {
+      if (!Array.isArray(modules) || modules.some((id: any) => typeof id !== 'string')) {
+        await t.rollback();
+        return res.status(400).json({
+          error: "modules must be an array of valid module IDs",
+        });
+      }
+      updateFields.modules = modules;
+    }
 
     // Validate min_users and max_users relationship
     const finalMinUsers = updateFields.min_users !== undefined ? updateFields.min_users : null;
