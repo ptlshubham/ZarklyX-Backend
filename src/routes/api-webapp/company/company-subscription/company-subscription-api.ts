@@ -24,11 +24,11 @@ const router = Router();
 router.post("/createCompanySubscription", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    const { 
-      companyId, 
-      subscriptionPlanId, 
-      numberOfUsers, 
-      startDate, 
+    const {
+      companyId,
+      subscriptionPlanId,
+      numberOfUsers,
+      startDate,
       status,
       isCurrent,
       discountType,
@@ -36,12 +36,12 @@ router.post("/createCompanySubscription", async (req: Request, res: Response): P
       addonModules,     // Array: [{ moduleId, price }]
       addonPermissions  // Array: [{ permissionId, price }]
     } = req.body;
-    
+
     if (!companyId || !subscriptionPlanId || !numberOfUsers) {
       await t.rollback();
       return res.status(400).json({ error: "companyId, subscriptionPlanId, and numberOfUsers are required" });
     }
-    
+
     if (typeof numberOfUsers !== 'number' || numberOfUsers < 1) {
       await t.rollback();
       return res.status(400).json({ error: "numberOfUsers must be a positive number" });
@@ -106,36 +106,36 @@ router.post("/createCompanySubscription", async (req: Request, res: Response): P
 
     // Fetch addon modules with prices from database
     let addonModuleCost = 0;
-    let addonModulesWithPrices: Array<{moduleId: string, price: number}> = [];
+    let addonModulesWithPrices: Array<{ moduleId: string, price: number }> = [];
     if (addonModules && addonModules.length > 0) {
       const modules = await Modules.findAll({
         where: { id: addonModules, isActive: true, isDeleted: false },
         transaction: t,
       });
-      
+
       if (modules.length !== addonModules.length) {
         await t.rollback();
         return res.status(404).json({ error: "One or more addon modules not found or inactive" });
       }
-      
+
       addonModulesWithPrices = modules.map(m => ({ moduleId: m.id, price: Number(m.price) }));
       addonModuleCost = addonModulesWithPrices.reduce((sum, addon) => sum + addon.price, 0);
     }
 
     // Fetch addon permissions with prices from database
     let addonPermissionCost = 0;
-    let addonPermissionsWithPrices: Array<{permissionId: string, price: number}> = [];
+    let addonPermissionsWithPrices: Array<{ permissionId: string, price: number }> = [];
     if (addonPermissions && addonPermissions.length > 0) {
       const permissions = await Permissions.findAll({
         where: { id: addonPermissions, isActive: true, isDeleted: false },
         transaction: t,
       });
-      
+
       if (permissions.length !== addonPermissions.length) {
         await t.rollback();
         return res.status(404).json({ error: "One or more addon permissions not found or inactive" });
       }
-      
+
       addonPermissionsWithPrices = permissions.map(p => ({ permissionId: p.id, price: Number(p.price) }));
       addonPermissionCost = addonPermissionsWithPrices.reduce((sum, addon) => sum + addon.price, 0);
     }
@@ -144,10 +144,10 @@ router.post("/createCompanySubscription", async (req: Request, res: Response): P
     const finalPrice = (originalPrice - discountAmount) + addonModuleCost + addonPermissionCost;
 
     const subscription = await createCompanySubscription(
-      { 
-        companyId, 
-        subscriptionPlanId, 
-        numberOfUsers, 
+      {
+        companyId,
+        subscriptionPlanId,
+        numberOfUsers,
         originalPrice,
         discountType: discountType || null,
         discountValue: discountValue || null,
@@ -155,7 +155,7 @@ router.post("/createCompanySubscription", async (req: Request, res: Response): P
         addonModuleCost,
         addonPermissionCost,
         price: finalPrice,
-        startDate, 
+        startDate,
         status: status || 'active',
         isCurrent: isCurrent ?? true,
         addonModules: addonModulesWithPrices,
@@ -164,16 +164,29 @@ router.post("/createCompanySubscription", async (req: Request, res: Response): P
       t
     );
     await t.commit();
-    
+
+    // Fetch all permissions associated with this subscription
+    const subscriptionPermissions = await CompanyPermission.findAll({
+      where: { companyId, subscriptionId: subscription.id },
+      include: [
+        {
+          model: Permissions,
+          as: "permission",
+          attributes: ["id", "name", "description", "action", "moduleId", "price"],
+        },
+      ],
+    });
+
     let message = "Company subscription created successfully";
     const addonCount = (addonModules?.length || 0) + (addonPermissions?.length || 0);
     if (addonCount > 0) {
       message += ` with ${addonCount} addon(s)`;
     }
-    
-    return res.status(201).json({ 
-      success: true, 
+
+    return res.status(201).json({
+      success: true,
       data: subscription,
+      permissions: subscriptionPermissions,
       message,
       summary: {
         subscriptionPrice: originalPrice - discountAmount,
@@ -185,10 +198,10 @@ router.post("/createCompanySubscription", async (req: Request, res: Response): P
   } catch (error: any) {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ 
+      return res.status(409).json({
         success: false,
         error: "Subscription already exists",
-        message: "This company already has an active subscription" 
+        message: "This company already has an active subscription"
       });
     }
     return res.status(500).json({ error: "Failed to create company subscription", details: error.message || error });
@@ -262,14 +275,14 @@ router.post("/renewCompanySubscription/:companyId", async (req: Request, res: Re
   try {
     let { companyId } = req.params;
     if (Array.isArray(companyId)) companyId = companyId[0];
-    const { 
-      subscriptionPlanId, 
-      numberOfUsers, 
+    const {
+      subscriptionPlanId,
+      numberOfUsers,
       startDate,
       discountType,
       discountValue
     } = req.body;
-    
+
     if (!companyId || !subscriptionPlanId) {
       await t.rollback();
       return res.status(400).json({ error: "companyId and subscriptionPlanId are required" });
@@ -288,8 +301,8 @@ router.post("/renewCompanySubscription/:companyId", async (req: Request, res: Re
 
     // Set current subscription to not current
     await updateCurrentCompanySubscription(
-      companyId, 
-      { isCurrent: false }, 
+      companyId,
+      { isCurrent: false },
       t
     );
 
@@ -321,9 +334,9 @@ router.post("/renewCompanySubscription/:companyId", async (req: Request, res: Re
 
     // Create new subscription with calculated endDate
     const newSubscription = await createCompanySubscription(
-      { 
-        companyId, 
-        subscriptionPlanId, 
+      {
+        companyId,
+        subscriptionPlanId,
         numberOfUsers,
         originalPrice,
         discountType: discountType || null,
@@ -332,29 +345,29 @@ router.post("/renewCompanySubscription/:companyId", async (req: Request, res: Re
         price: finalPrice,
         startDate,
         status: 'active',
-        isCurrent: true 
+        isCurrent: true
       },
       t
     );
 
     await t.commit();
-    return res.status(201).json({ 
-      success: true, 
+    return res.status(201).json({
+      success: true,
       message: "Subscription renewed successfully",
-      data: newSubscription 
+      data: newSubscription
     });
   } catch (error: any) {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ 
+      return res.status(409).json({
         success: false,
         error: "Subscription already exists",
-        message: "This company already has an active subscription" 
+        message: "This company already has an active subscription"
       });
     }
-    return res.status(500).json({ 
-      error: "Failed to renew subscription", 
-      details: error.message || error 
+    return res.status(500).json({
+      error: "Failed to renew subscription",
+      details: error.message || error
     });
   }
 });
@@ -387,7 +400,7 @@ router.get("/getSubscriptionDetails/:companyId", async (req: Request, res: Respo
   try {
     let { companyId } = req.params;
     if (Array.isArray(companyId)) companyId = companyId[0];
-    
+
     if (!companyId) {
       return res.status(400).json({ error: "Company ID is required" });
     }

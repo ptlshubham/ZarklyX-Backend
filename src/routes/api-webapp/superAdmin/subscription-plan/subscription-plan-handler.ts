@@ -43,7 +43,6 @@ export const createSubscriptionPlan = async (
     status?: "active" | "inactive";
     is_popular?: boolean;
     modules?: string[]; // Array of module IDs (full module access)
-    permissions?: string[]; // Array of permission IDs (feature-level access)
   },
   t: Transaction
 ) => {
@@ -82,16 +81,6 @@ export const createSubscriptionPlan = async (
     }));
 
     await SubscriptionPlanModule.bulkCreate(moduleAssociations, { transaction: t });
-  }
-
-  // If permissions are provided, create subscription-plan-permission associations (feature-level access)
-  if (fields.permissions && Array.isArray(fields.permissions) && fields.permissions.length > 0) {
-    await bulkCreateSubscriptionPlanPermissions(
-      plan.id,
-      fields.permissions,
-      "plan",
-      t
-    );
   }
 
   return plan;

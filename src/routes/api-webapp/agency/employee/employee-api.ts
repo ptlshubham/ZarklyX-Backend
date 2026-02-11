@@ -125,15 +125,6 @@ router.post("/register", authMiddleware, async (req: Request, res: Response): Pr
 
         const companyId = req.user?.companyId;
 
-        if (req.user?.userType != 'agency') {
-            await t.rollback();
-            res.status(403).json({
-                success: false,
-                message: "Only accessible for agency",
-            });
-            return;
-        }
-
         //  Validate required user fields
         if (!firstName || !lastName || !email || !sanitizedContactNumber || !companyId || !employeeId) {
             await t.rollback();
@@ -156,7 +147,7 @@ router.post("/register", authMiddleware, async (req: Request, res: Response): Pr
         }
 
         //  STEP 1: Create or get User entry with basic details
-        
+
         // Check if OTP was verified for this email (from verify flow)
         const verifiedOtp = await Otp.findOne({
             where: {
@@ -178,7 +169,7 @@ router.post("/register", authMiddleware, async (req: Request, res: Response): Pr
         }
 
         let user = await User.findOne({
-            where: { 
+            where: {
                 email,
                 userType: 'employee'
             },

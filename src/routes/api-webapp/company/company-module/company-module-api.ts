@@ -11,6 +11,7 @@ import {
   updateCompanyModule,
   deleteCompanyModule,
   disableAllCompanyModules,
+  getCompanyModulesWithPermissions,
 } from "../../../api-webapp/company/company-module/company-module-handler";
 
 const router = Router();
@@ -44,9 +45,9 @@ router.post("/createCompanyModule", async (req: Request, res: Response) => {
   } catch (error: any) {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ 
-        success: false, 
-        message: "This module is already assigned to the company" 
+      return res.status(409).json({
+        success: false,
+        message: "This module is already assigned to the company"
       });
     }
     return res.status(500).json({ success: false, message: error.message || "Error creating company module" });
@@ -112,7 +113,7 @@ router.get("/getActiveCompanyModule", async (req: Request, res: Response) => {
 // Get company module by ID
 router.get("/getCompanyModuleById/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
-  if(Array.isArray(id)) id = id[0];
+  if (Array.isArray(id)) id = id[0];
   try {
     const companyModule = await getCompanyModuleById(id);
     if (!companyModule) {
@@ -127,7 +128,7 @@ router.get("/getCompanyModuleById/:id", async (req: Request, res: Response) => {
 // Get all modules for a specific company
 router.get("/getCompanyModuleByCompanyId/:companyId", async (req: Request, res: Response) => {
   let { companyId } = req.params;
-  if(Array.isArray(companyId)) companyId = companyId[0];
+  if (Array.isArray(companyId)) companyId = companyId[0];
   try {
     const companyModules = await getModulesByCompanyId(companyId);
     return res.status(200).json({ success: true, data: companyModules, message: "Company modules fetched successfully" });
@@ -136,11 +137,30 @@ router.get("/getCompanyModuleByCompanyId/:companyId", async (req: Request, res: 
   }
 });
 
+// Get company modules with their permissions
+router.get("/getCompanyModulesWithPermissions/:companyId", async (req: Request, res: Response) => {
+  let { companyId } = req.params;
+  if (Array.isArray(companyId)) companyId = companyId[0];
+  try {
+    const modulesWithPermissions = await getCompanyModulesWithPermissions(companyId);
+    return res.status(200).json({
+      success: true,
+      data: modulesWithPermissions,
+      message: "Company modules with permissions fetched successfully"
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching company modules with permissions"
+    });
+  }
+});
+
 // Check if company has access to a specific module
 router.get("/check-access-CompanyModule/:companyId/:moduleId", async (req: Request, res: Response) => {
   let { companyId, moduleId } = req.params;
-  if(Array.isArray(companyId)) companyId = companyId[0];
-  if(Array.isArray(moduleId)) moduleId = moduleId[0];
+  if (Array.isArray(companyId)) companyId = companyId[0];
+  if (Array.isArray(moduleId)) moduleId = moduleId[0];
   try {
     const hasAccess = await checkCompanyModuleAccess(companyId, moduleId);
     return res.status(200).json({
@@ -156,7 +176,7 @@ router.get("/check-access-CompanyModule/:companyId/:moduleId", async (req: Reque
 // Update company module
 router.put("/updateCompanyModule/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
-  if(Array.isArray(id)) id = id[0];
+  if (Array.isArray(id)) id = id[0];
   const updateFields = req.body;
 
   const t = await dbInstance.transaction();
@@ -170,9 +190,9 @@ router.put("/updateCompanyModule/:id", async (req: Request, res: Response) => {
   } catch (error: any) {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ 
-        success: false, 
-        message: "This module is already assigned to the company" 
+      return res.status(409).json({
+        success: false,
+        message: "This module is already assigned to the company"
       });
     }
     return res.status(500).json({ success: false, message: error.message || "Error updating company module" });
@@ -182,7 +202,7 @@ router.put("/updateCompanyModule/:id", async (req: Request, res: Response) => {
 // Delete company module (soft delete)
 router.delete("/deleteCompanyModule/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
-  if(Array.isArray(id)) id = id[0];
+  if (Array.isArray(id)) id = id[0];
 
   const t = await dbInstance.transaction();
   try {
@@ -201,7 +221,7 @@ router.delete("/deleteCompanyModule/:id", async (req: Request, res: Response) =>
 // Disable all modules for a company (when subscription expires)
 router.put("/disable-allCompanyModule/:companyId", async (req: Request, res: Response) => {
   let { companyId } = req.params;
-  if(Array.isArray(companyId)) companyId = companyId[0];
+  if (Array.isArray(companyId)) companyId = companyId[0];
 
   const t = await dbInstance.transaction();
   try {
