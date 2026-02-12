@@ -1191,7 +1191,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     // -------- Generate Auth Token (Login Activation) --------
     const token = await generateToken(
       {
-        userId: user.id,
+        id: user.id,
         companyId: company.id,
         role: "user",
       },
