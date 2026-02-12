@@ -116,7 +116,7 @@ export const createCompanySubscription = async (fields: {
           isDeleted: false
         }));
       if (planModulePermissionEntries.length > 0) {
-        await CompanyPermission.bulkCreate(planModulePermissionEntries, { transaction: t });
+        await CompanyPermission.bulkCreate(planModulePermissionEntries, { transaction: t, ignoreDuplicates: true });
       }
     }
   }
@@ -144,7 +144,7 @@ export const createCompanySubscription = async (fields: {
         isDeleted: false
       }));
     if (companyPermissions.length > 0) {
-      await CompanyPermission.bulkCreate(companyPermissions, { transaction: t });
+      await CompanyPermission.bulkCreate(companyPermissions, { transaction: t, ignoreDuplicates: true });
     }
   }
 
@@ -183,7 +183,7 @@ export const createCompanySubscription = async (fields: {
           isDeleted: false
         }));
       if (addonModulePermissionEntries.length > 0) {
-        await CompanyPermission.bulkCreate(addonModulePermissionEntries, { transaction: t });
+        await CompanyPermission.bulkCreate(addonModulePermissionEntries, { transaction: t, ignoreDuplicates: true });
       }
     }
   }
@@ -203,7 +203,7 @@ export const createCompanySubscription = async (fields: {
         isDeleted: false
       }));
     if (addonPermissionEntries.length > 0) {
-      await CompanyPermission.bulkCreate(addonPermissionEntries, { transaction: t });
+      await CompanyPermission.bulkCreate(addonPermissionEntries, { transaction: t, ignoreDuplicates: true });
     }
   }
 
