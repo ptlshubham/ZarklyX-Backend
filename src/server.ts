@@ -13,7 +13,7 @@ import userRoutes from "./routes/api-webapp/authentication/user/user-api";
 import companyRoutes from './routes/api-webapp/company/company-api';
 import otpRoutes from './routes/api-webapp/otp/otp-api';
 import Category from './routes/api-webapp/superAdmin/generalSetup/category/category-api';
-import PremiumModule  from './routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api';
+import PremiumModule from './routes/api-webapp/superAdmin/generalSetup/premiumModule/premiumModule-api';
 import ClientsRoutes from './routes/api-webapp/agency/clients/clients-api';
 import businessTypeRoutes from './routes/api-webapp/superAdmin/generalSetup/businessType/businessType-api';
 const youtubeRoutes = require('./routes/api-webapp/agency/social-Integration/youtube/youtube-api');
@@ -28,7 +28,7 @@ import twitterRoutes from './routes/api-webapp/agency/social-Integration/twitter
 import tiktokRoutes from './routes/api-webapp/agency/social-Integration/tiktok/tiktok-api';
 // const twitterRoutes = require('./routes/api-webapp/agency/social-Integration/twitter/twitter-api');
 // import rolesRoutes from './routes/api-webapp/roles/roles-api';
-import rolesRoutes from './routes/api-webapp/roles/roles-api';
+import rolesRoutes from './routes/api-webapp/roles/role-api';
 // const influencerRoutes = require ('./routes/api-webapp/influencer/influencer-api');
 import influencerRoutes from './routes/api-webapp/influencer/influencer-api';
 import influencerCategoryRoutes from './routes/api-webapp/superAdmin/influencer/category/influencerCategory-api';
@@ -39,7 +39,7 @@ const cookieSession = require('cookie-session');
 
 import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
 import itTicketsRoutes from './routes/api-webapp/it-Management/it-Tickets/it-Tickets-api';
-import  itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/item-Category-api';
+import itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/item-Category-api';
 import unitRouter from './routes/api-webapp/accounting/unit/unit-api';
 import itemRouter from './routes/api-webapp/accounting/item/item-api';
 import vendorRouter from './routes/api-webapp/accounting/vendor/vendor-api';
@@ -48,10 +48,35 @@ import quoteRouter from './routes/api-webapp/accounting/quote/quote-api';
 import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-note-api';
 import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
 import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
+import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-api';
+
+// Import cron jobs
+// import './cron/warranty-reminder.cron';
 import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
 import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
 import expensesRouter from './routes/api-webapp/accounting/expenses/expenses-api';
 import expenseItemRouter from './routes/api-webapp/accounting/expenses/expenses-item/expense-item-api';
+import modulesRouter from './routes/api-webapp/superAdmin/modules/module-api';
+import permissionsRouter from './routes/api-webapp/superAdmin/permissions/permissions-api';
+import subscriptionPlanRouter from './routes/api-webapp/superAdmin/subscription-plan/subscription-plan-api';
+import subscriptionPlanModuleRouter from './routes/api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-api';
+import subscriptionPlanPermissionRouter from './routes/api-webapp/superAdmin/subscription-plan-permission/subscription-plan-permission-api';
+import companySubscriptionRouter from './routes/api-webapp/company/company-subscription/company-subscription-api';
+import companyModuleRouter from './routes/api-webapp/company/company-module/company-module-api';
+import companyPermissionRouter from './routes/api-webapp/company/company-permission/company-permission-api';
+import RolePermissionsRouter from './routes/api-webapp/role-permissions/role-permissions-api'
+import UserPermissionOverridesRouter from './routes/api-webapp/user-permission-overrides/user-permission-overrides-api'
+import RbacRouter from './routes/api-webapp/rbac/rbac-api';
+
+// ROUTES for zarklyX User Role bases system
+import zarklyXAuthRouter from "./routes/api-webapp/superAdmin/authentication/auth-api";
+import zarklyXUsersRouter from "./routes/api-webapp/superAdmin/authentication/user/user-api";
+import zarklyXRolesRouter from "./routes/api-webapp/superAdmin/rbac/roles/roles-api";
+import zarklyXPermissionsRouter from "./routes/api-webapp/superAdmin/rbac/permissions/permissions-api";
+import zarklyXOverridesRouter from "./routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-api";
+import zarklyX2FARouter from "./routes/api-webapp/superAdmin/authentication/2fa/zarklyX-2fa-api";
+import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-api';
+
 
 import path from "path";
 const app = express();
@@ -81,7 +106,14 @@ app.use(cookieSession({
 
 // console.log("FB APP ID:", process.env.FACEBOOK_APP_ID);
 app.use('/profileFile', express.static(path.join(__dirname, '..', 'public', 'profileFile')));
+app.use('/itManagement', express.static(path.join(__dirname, 'public', 'itManagement'))); 
 app.use(express.json()); 
+const publicPath = path.join(process.cwd(), 'src', 'public');
+app.use(
+  express.static(publicPath, { maxAge: '1d', etag: true, immutable: true })
+);
+
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/user", userRoutes);
 app.use("/company", companyRoutes);
@@ -97,10 +129,10 @@ app.use("/google", googleRoutes);
 
 // 🔍 DEBUG: Log all /drive requests
 app.use("/drive", (req, res, next) => {
-  console.log(`📍 [DRIVE REQUEST] ${req.method} ${req.path}`, { 
-    hasAccessToken: !!req.query.access_token || !!req.headers['x-access-token'],
-    hasRefreshToken: !!req.query.refresh_token || !!req.headers['x-refresh-token']
-  });
+  // console.log(`📍 [DRIVE REQUEST] ${req.method} ${req.path}`, { 
+  //   hasAccessToken: !!req.query.access_token || !!req.headers['x-access-token'],
+  //   hasRefreshToken: !!req.query.refresh_token || !!req.headers['x-refresh-token']
+  // });
   next();
 });
 
@@ -126,10 +158,29 @@ app.use("/accounting/quote",quoteRouter);
 app.use("/accounting/credit-note",creditNoteRouter);
 app.use("/accounting/purchase-bill",purchaseBillRouter);
 app.use("/accounting/purchaseOrder",purchaseOrderRouter);
+app.use("/itManagement/itAssetsManagement", itAssetsManagementRoutes);
 app.use("/accounting/payments",paymentsRouter);
 app.use("/accounting/debit-note",debitNoteRouter);
 app.use("/accounting/expense",expensesRouter);
 app.use("/accounting/expense-item",expenseItemRouter);
+app.use("/superAdmin/modules",modulesRouter);
+app.use("/superAdmin/permissions",permissionsRouter);
+app.use("/superAdmin/subscription-plan",subscriptionPlanRouter);
+app.use("/superAdmin/subscription-plan-module",subscriptionPlanModuleRouter);
+app.use("/superAdmin/subscription-plan-permission",subscriptionPlanPermissionRouter);
+app.use("/company-subscription",companySubscriptionRouter);
+app.use("/company-module",companyModuleRouter);
+app.use("/company-permission",companyPermissionRouter);
+app.use("/role-permissions",RolePermissionsRouter);
+app.use("/user-overrides",UserPermissionOverridesRouter);
+app.use("/rbac",RbacRouter);
+app.use("/superAdmin/zarklyx/auth",zarklyXAuthRouter),
+app.use("/superAdmin/zarklyx/user",zarklyXUsersRouter),
+app.use("/superAdmin/zarklyx/roles",zarklyXRolesRouter),
+app.use("/superAdmin/zarklyx/permissions",zarklyXPermissionsRouter),
+app.use("/superAdmin/zarklyx/role-permissions",zarklyXRolePermissionsRouter),
+app.use("/superAdmin/zarklyx/overrides",zarklyXOverridesRouter),
+app.use("/superAdmin/zarklyx/2fa",zarklyX2FARouter),
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it
