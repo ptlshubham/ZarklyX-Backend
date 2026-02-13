@@ -1,10 +1,10 @@
 import axios from "axios";
 import express, { Request, Response } from "express";
-import jwt from 'jsonwebtoken'
-import { exchangeInstagramCodeForTokens, exchangeShortLivedForLongLived, generateInstagramAuthUrl, getAddedIgAccountDetails, getBusinessIgAccounts, getFacebookUser, getIgAccountsAndBusinesses, getPageAdminIgAccounts } from "../../../../../services/instagram-service";
-import { saveOrUpdateToken } from "../../../../../services/token-store.service";
+import { exchangeInstagramCodeForTokens, exchangeShortLivedForLongLived, generateInstagramAuthUrl, getAddedIgAccountDetails, getBusinessIgAccounts, getFacebookUser, getIgAccountsAndBusinesses, getPageAdminIgAccounts, searchInstagramUserByUsername } from "../../../../../services/instagram-service";
+import { getConnectedSocialTokenByCompanyId, saveOrUpdateToken } from "../../../../../services/token-store.service";
 import { v4 as uuidv4 } from "uuid";
-import { getAddedInstagramAccountsFromDb, markInstagramAccountsAsAddedInDb, saveInstagramAccountsToDb } from './instagram-handler'
+import { assignClientToInstagramAccount, getAddedInstagramAccountsFromDb, markInstagramAccountsAsAddedInDb, saveInstagramAccountsToDb, getAssignedInstagramAccountsByCompanyId, getUnassignedInstagramAccountsByCompanyId, searchInstagramUserHandler, getAccountsWithAddedStatus, removeInstagramAccount } from './instagram-handler'
+import { notifySocialConnectionAdded } from "../../../../../services/socket-service";
 
 const router = express.Router();
 const oauthStateStore = new Map<string, { companyId: string; timestamp: number, successRedirectUri: string | null, errorRedirectUri: string | null }>();
@@ -234,13 +234,6 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
 
         console.log("[INSTAGRAM OAUTH2CALLBACK] Step 4: Fetching INSTAGRAM pages...");
 
-        // Fetch pages linked to this account
-        // const pagesResponse = await getFacebookPages(longToken.access_token);
-        // const pages = pagesResponse?.data || [];
-
-        // console.log("[FACEBOOK OAUTH2CALLBACK] Step 5: Pages fetched. Count:", pages.length);
-
-        // Save tokens with companyId for multiple accounts support
         console.log("[INSTAGRAM OAUTH2CALLBACK] Step 6: Saving token to database...");
 
         const savedToken = await saveOrUpdateToken({
@@ -274,17 +267,17 @@ router.get("/oauth2callback", async (req: Request, res: Response): Promise<void>
 
         // Notify company users of successful connection
         if (companyId) {
-            //     try {
-            //         await notifySocialConnectionAdded(companyId, {
-            //             provider: "facebook",
-            //             accountEmail: accountEmail ?? undefined,
-            //             accountId: accountId ?? undefined,
-            // accountName: accountEmail.split("@")[0],
-            //         });
-            //         console.log("[FACEBOOK OAUTH2CALLBACK] Users notified successfully");
-            //     } catch (err: any) {
-            //         console.warn("[FACEBOOK OAUTH2CALLBACK] Failed to notify social connection added:", err.message);
-            //     }
+                try {
+                    await notifySocialConnectionAdded(companyId, {
+                        provider: "instagram",
+                        accountEmail: accountEmail ?? undefined,
+                        accountId: accountId ?? undefined,
+            accountName: accountEmail.split("@")[0],
+                    });
+                    console.log("[INSTAGRAM OAUTH2CALLBACK] Users notified successfully");
+                } catch (err: any) {
+                    console.warn("[INSTAGRAM OAUTH2CALLBACK] Failed to notify social connection added:", err.message);
+                }
         } else {
             console.log("[INSTAGRAM OAUTH2CALLBACK] No companyId, skipping notification");
         }
@@ -348,8 +341,10 @@ router.get("/get-accounts-businesses", async (req: Request, res: Response): Prom
             return;
         }
 
+        // Get fresh accounts from Instagram API
         const { accounts, businesses } = await getIgAccountsAndBusinesses(tokens.access_token);
 
+        // Save to database
         await saveInstagramAccountsToDb(
             { accounts, businesses },
             String(companyId),
@@ -358,7 +353,45 @@ router.get("/get-accounts-businesses", async (req: Request, res: Response): Prom
             String(userAccessTokenId)
         );
 
-        res.status(200).json({ success: true, data: { accounts, businesses } });
+        // Fetch all accounts with their isAdded status from database
+        const dbAccountsWithStatus = await getAccountsWithAddedStatus(
+            String(companyId),
+            String(userAccessTokenId)
+        );
+
+        // Create a map for easy lookup
+        const isAddedMap = new Map();
+        dbAccountsWithStatus.forEach((acc: any) => {
+            isAddedMap.set(acc.instagramBusinessId, acc.isAdded);
+        });
+
+        // Map standalone accounts and add isAdded status
+        const mappedAccounts = accounts?.map((acc: any) => ({
+            ...acc,
+            isAdded: isAddedMap.get(acc.instagram_business_account?.id) ?? false,
+        })) || [];
+
+        // Map business accounts and add isAdded status
+        const mappedBusinesses = businesses?.map((business: any) => ({
+            ...business,
+            igAccounts: business.igAccounts?.map((ig: any) => ({
+                ...ig,
+                isAdded: isAddedMap.get(ig.id) ?? false,
+            })) || [],
+        })) || [];
+
+        res.status(200).json({
+            success: true,
+            data: {
+                accounts: mappedAccounts,
+                businesses: mappedBusinesses,
+                summary: {
+                    totalAccounts: dbAccountsWithStatus.length,
+                    addedCount: dbAccountsWithStatus.filter(a => a.isAdded).length,
+                    notAddedCount: dbAccountsWithStatus.filter(a => !a.isAdded).length,
+                }
+            }
+        });
 
     } catch (e: any) {
         res.status(500).json({
@@ -368,6 +401,72 @@ router.get("/get-accounts-businesses", async (req: Request, res: Response): Prom
     }
 });
 
+// GET /instagram/me/profile/:companyId
+router.get("/:companyId/profile", async (req: Request, res: Response): Promise<void> => {
+    try {
+        const companyId = Array.isArray(req.params.companyId) ? req.params.companyId[0] : req.params.companyId;
+        const provider = "instagram"; // Default platform to Instagram
+        
+        if (!companyId || typeof companyId !== 'string') {
+            res.status(400).json({
+                message: 'companyId is required in URL params!'
+            });
+            return;
+        }
+        const data = await getConnectedSocialTokenByCompanyId(companyId, provider)
+        if (!data || data.length === 0) {
+            res.status(404).json({
+                success: false,
+                message: 'No connected Instagram accounts found',
+            });
+            return;
+        }
+
+        // 🔥 Fetch profile for each access token
+        const profiles = await Promise.all(
+            data.map(async (tokenRecord: any) => {
+                const accessToken = tokenRecord.dataValues.accessToken;
+
+                if (!accessToken) return null;
+
+                try {
+                    const response = await axios.get(
+                        "https://graph.facebook.com/me?fields=id,name,email,picture",
+                        {
+                            headers: {
+                                Authorization: `Bearer ${accessToken}`,
+                            },
+                        }
+                    );
+
+                    return {
+                        ...response.data,
+                        accountId: tokenRecord.dataValues.accountId,
+                        provider: tokenRecord.dataValues.provider,
+                    };
+                } catch (err: any) {
+                    return {
+                        accountId: tokenRecord.dataValues.accountId,
+                        error: "Failed to fetch profile",
+                    };
+                }
+            })
+        );
+
+        // Remove failed ones if needed
+        const validProfiles = profiles.filter(p => p !== null);
+
+        res.status(200).json({
+            success: true,
+            count: validProfiles.length,
+            users: validProfiles,
+        });
+        return;
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message || "Failed to get profile" });
+        return;
+    }
+});
 
 // POST /instagram/add-instagram-account
 router.post("/add-instagram-account", async (req: Request, res: Response): Promise<void> => {
@@ -402,7 +501,6 @@ router.post("/add-instagram-account", async (req: Request, res: Response): Promi
         });
 
     } catch (error: any) {
-        console.error("addInstagramAccountsHandler:", error);
         res.status(500).json({
             success: false,
             message: error.message || "Failed to add Instagram accounts",
@@ -410,25 +508,132 @@ router.post("/add-instagram-account", async (req: Request, res: Response): Promi
     }
 })
 
-// GET instagram/added-accounts
-router.get('/get-added-accounts', async (req: Request, res: Response): Promise<void> => {
+// POST /instagram/remove-instagram-account/:id
+// Removes Instagram account by ID - deletes records where isAdded=false, sets isAdded=false for others
+router.delete("/remove-instagram-account/:id", async (req: Request, res: Response): Promise<void> => {
     try {
-        const tokens = extractTokens(req);
-        if (!tokens.access_token) {
-            res.status(400).json({ success: false, message: "Provide access_token" });
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+        if (!id) {
+            res.status(400).json({
+                success: false,
+                message: "Account ID is required in URL params"
+            });
             return;
         }
 
-        const { companyId } = req.query;
+        const result = await removeInstagramAccount(id);
+
+        res.status(200).json({
+            success: true,
+            message: "Instagram account removed successfully",
+            data: result,
+        });
+
+    } catch (error: any) {
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to remove Instagram account",
+        });
+    }
+})
+
+// assign account to the client
+// POST instagram/assign-account
+router.post('/assign-account', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { clientId, instagramBusinessId, companyId } = req.body;
+
+        if (!companyId || !instagramBusinessId || clientId === undefined || clientId === null) {
+            res.status(400).json({
+                success: false,
+                message: "companyId, instagramBusinessId and clientId are required"
+            });
+            return;
+        }
+        let updatedIgAccount;
+        try {
+            updatedIgAccount = await assignClientToInstagramAccount(
+                companyId,
+                instagramBusinessId,
+                clientId
+            );
+        } catch (error:any) {
+            res.status(400).json({
+                success: false,
+                message: error.message || "Failed to assign client",
+            });
+            return;
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Client assigned successfully",
+            updatedIgAccount,
+        });
+    } catch (error: any) {
+        res.status(400).json({
+            success: false,
+            message: error.message || "Failed to assign client",
+        });
+        return;
+    }
+});
+
+// GET instagram/added-accounts/:companyId
+router.get('/get-added-accounts/:companyId', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const companyId = Array.isArray(req.params.companyId) ? req.params.companyId[0] : req.params.companyId;
+        const igAccountId = (req.query.igAccountId as string) || ''; // Get specific account ID if provided
+        const provider = "instagram"; // Default platform to Instagram
 
         if (!companyId) {
             res.status(400).json({ success: false, message: "companyId is required" });
             return;
         }
 
+        // Get access token from social-token table based on companyId and provider
+        const socialTokens = await getConnectedSocialTokenByCompanyId(String(companyId), provider);
+
+        if (!socialTokens || socialTokens.length === 0) {
+            res.status(404).json({
+                success: false,
+                message: "No connected Instagram tokens found for this company"
+            });
+            return;
+        }
+
+        // Select specific token if igAccountId provided, otherwise use default [0]
+        let selectedToken = socialTokens[0];
+        
+        if (igAccountId) {
+            const foundToken = socialTokens.find((token: any) => token.dataValues?.id === igAccountId);
+            if (foundToken) {
+                selectedToken = foundToken;
+            } else {
+                res.status(404).json({
+                    success: false,
+                    message: `Instagram account with ID '${igAccountId}' not found for this company. Available accounts: ${socialTokens.map((t: any) => t.dataValues?.id).join(', ')}`
+                });
+                return;
+            }
+        }
+
+        const accessToken = selectedToken.dataValues?.accessToken;
+
+        if (!accessToken) {
+            res.status(400).json({
+                success: false,
+                message: "Access token not found for the selected Instagram account"
+            });
+            return;
+        }
+
+        // Get added accounts from database
         const accounts = await getAddedInstagramAccountsFromDb(String(companyId));
 
-        const accountsDetails = await getAddedIgAccountDetails(tokens.access_token, accounts)
+        // Fetch account details and associate with pages from API
+        const accountsDetails = await getAddedIgAccountDetails(accessToken, accounts);
 
         res.status(200).json({
             success: true,
@@ -436,7 +641,6 @@ router.get('/get-added-accounts', async (req: Request, res: Response): Promise<v
         });
 
     } catch (error: any) {
-        console.error("getAddedInstagramAccountsHandler:", error);
         res.status(500).json({
             success: false,
             message: error.message || "Failed to fetch added Instagram accounts",
@@ -444,7 +648,65 @@ router.get('/get-added-accounts', async (req: Request, res: Response): Promise<v
     }
 })
 
+// GET instagram/assigned-accounts
+router.get('/assigned-accounts', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { companyId } = req.query;
 
+        if (!companyId) {
+            res.status(400).json({
+                success: false,
+                message: "companyId is required"
+            });
+            return;
+        }
+
+        const assignedAccounts = await getAssignedInstagramAccountsByCompanyId(String(companyId));
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetched assigned Instagram accounts",
+            data: assignedAccounts,
+            count: assignedAccounts.length
+        });
+
+    } catch (error: any) {
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to fetch assigned Instagram accounts",
+        });
+    }
+})
+
+// GET instagram/unassigned-accounts
+router.get('/unassigned-accounts', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { companyId } = req.query;
+
+        if (!companyId) {
+            res.status(400).json({
+                success: false,
+                message: "companyId is required"
+            });
+            return;
+        }
+
+        const unassignedAccounts = await getUnassignedInstagramAccountsByCompanyId(String(companyId));
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetched unassigned Instagram accounts",
+            data: unassignedAccounts,
+            count: unassignedAccounts.length
+        });
+
+    } catch (error: any) {
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to fetch unassigned Instagram accounts",
+        });
+    }
+})
 
 //GET /instagram/businesses
 router.get("/businesses", async (req: Request, res: Response): Promise<void> => {
@@ -459,8 +721,8 @@ router.get("/businesses", async (req: Request, res: Response): Promise<void> => 
 });
 
 
-// POST /instagram/social/post/instagram
-router.post("/social/post/instagram", async (req: Request, res: Response): Promise<void> => {
+// POST /instagram/social/post
+router.post("/social/post", async (req: Request, res: Response): Promise<void> => {
     try {
         const { instagramBusinessId, userAccessToken, caption, imageUrl } = req.body;
 
@@ -498,7 +760,6 @@ router.post("/social/post/instagram", async (req: Request, res: Response): Promi
         });
         return
     } catch (error: any) {
-        console.error("Instagram Post Error:", error.response?.data || error.message);
         res.status(500).json({
             success: false,
             platform: "instagram",
@@ -507,5 +768,73 @@ router.post("/social/post/instagram", async (req: Request, res: Response): Promi
         return
     }
 });
+
+router.get("/search-user", async (req, res) => {
+  try {
+    const { accountId, username } = req.query;
+
+    // Basic validation
+    if (!accountId || !username) {
+      return res.status(400).json({
+        success: false,
+        message: "accountId and username are required in query params",
+      });
+    }
+
+    const metaSocialAccount = await searchInstagramUserHandler(String(accountId))
+
+    if (!metaSocialAccount) {
+      return res.status(404).json({
+        success: false,
+        message: `No account found with accountId: ${accountId}`
+      });
+    }
+
+    // Get access token from joined SocialToken
+    const accessToken = metaSocialAccount.userAccessTokenData?.accessToken;
+
+    if (!accessToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Access token not found for the given account"
+      });
+    }
+
+    // Use instagramBusinessId from MetaSocialAccount as the IG user ID
+    const igUserId = metaSocialAccount.instagramBusinessId;
+
+    if (!igUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "Instagram Business ID not found in account data"
+      });
+    }
+
+    // Call handler to search Instagram user
+    const result = await searchInstagramUserByUsername(
+      igUserId,
+      String(username),
+      accessToken
+    );  
+
+    return res.json({
+      success: true,
+      result
+    });
+  } catch (error:any) {
+    if (error.response) {
+      return res.status(error.response.status).json({
+        success: false,
+        error: error.response.data,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+});
+
 
 module.exports = router;

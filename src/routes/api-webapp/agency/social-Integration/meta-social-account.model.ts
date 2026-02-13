@@ -6,6 +6,7 @@ import {
   Model,
   Sequelize,
 } from "sequelize";
+import { SocialToken } from "./social-token.model";
 
 export class MetaSocialAccount extends Model<
   InferAttributes<MetaSocialAccount>,
@@ -13,17 +14,21 @@ export class MetaSocialAccount extends Model<
 > {
   declare id: CreationOptional<string>;
   declare companyId: string;
-  declare assignedClientId: string;
+  declare assignedClientId: string | null;
   declare platform: "facebook" | "instagram";
-  declare userAccessToken: string | null;
+  declare userAccessTokenId: string | null;
   declare facebookUserId: string;
-  declare facebookPageId: string;
+  declare facebookPageId: string | null;
+  declare facebookBusinessId: string | null;
   declare instagramBusinessId: string | null;
   declare accountName: string;
+  declare profilePhoto: string | null;
   declare pageAccessToken: string | null;
   declare isAdded: boolean;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
+
+  declare userAccessTokenData?: SocialToken;
 
   static initModel(sequelize: Sequelize): typeof MetaSocialAccount {
     MetaSocialAccount.init(
@@ -41,7 +46,7 @@ export class MetaSocialAccount extends Model<
         },
 
         assignedClientId: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.UUID,
           allowNull: true,
         },
 
@@ -50,9 +55,9 @@ export class MetaSocialAccount extends Model<
           allowNull: false,
         },
 
-        userAccessToken: {
+        userAccessTokenId: {
           type: DataTypes.UUID,
-          allowNull: false
+          allowNull: true,
         },
 
         facebookUserId: {
@@ -62,7 +67,14 @@ export class MetaSocialAccount extends Model<
 
         facebookPageId: {
           type: DataTypes.STRING(255),
-          allowNull: false,
+          allowNull: true,
+          defaultValue: null,
+        },
+
+        facebookBusinessId: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
         },
 
         instagramBusinessId: {
@@ -74,6 +86,12 @@ export class MetaSocialAccount extends Model<
         accountName: {
           type: DataTypes.STRING(255),
           allowNull: false,
+        },
+
+        profilePhoto: {
+          type: DataTypes.STRING(1024),
+          allowNull: true,
+          defaultValue: null,
         },
 
         pageAccessToken: {

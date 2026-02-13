@@ -70,6 +70,10 @@ import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/rbac/roles/roles
 import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permissions/permissions-model";
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
+import { initMetaSocialAccountModel, MetaSocialAccount } from "../../routes/api-webapp/agency/social-Integration/meta-social-account.model";
+import { initPostDetailsModel, PostDetails } from "../../routes/api-webapp/agency/social-Integration/social-posting/post-details.model";
+import { initPostScheduleModel, PostSchedule } from "../../routes/api-webapp/agency/social-Integration/social-posting/post-schedule.model";
+import { initPostMediaFilesModel, PostMediaFiles } from "../../routes/api-webapp/agency/social-Integration/social-posting/post-media-files.model";
 
 export {
   User,
@@ -131,7 +135,11 @@ export {
   ItAssetsManagement,
   ItTicketsAttachments,
   ItAssetsAttachments,
-  ItTicketsTimeline
+  ItTicketsTimeline,
+  MetaSocialAccount,
+  PostDetails,
+  PostSchedule,
+  PostMediaFiles,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -205,7 +213,10 @@ export function initControlDB(sequelize: Sequelize) {
   ZarklyXUser.initModel(sequelize);
   ZarklyXRolePermission.initModel(sequelize);
   ZarklyXUserPermissionOverride.initModel(sequelize);
-
+  initMetaSocialAccountModel(sequelize);
+  initPostDetailsModel(sequelize);
+  initPostScheduleModel(sequelize);
+  initPostMediaFilesModel(sequelize);
 
   // Relations and associations
   /***user <-> company */
@@ -1329,6 +1340,98 @@ export function initControlDB(sequelize: Sequelize) {
     as: "permission",
   });
 
+  /*** PostDetails <-> PostSchedule */
+  PostDetails.hasOne(PostSchedule, {
+    foreignKey: "postDetailId",
+    as: "schedule",
+  });
+  PostSchedule.belongsTo(PostDetails, {
+    foreignKey: "postDetailId",
+    as: "postDetail",
+  });
+
+  /*** PostDetails <-> MetaSocialAccount */
+  MetaSocialAccount.hasMany(PostDetails, {
+    foreignKey: "socialAccountId",
+    as: "posts",
+  });
+  PostDetails.belongsTo(MetaSocialAccount, {
+    foreignKey: "socialAccountId",
+    as: "socialAccount",
+  });
+  
+  /*** Company <-> MetaSocialAccount */
+  Company.hasMany(MetaSocialAccount, {
+    foreignKey: "companyId",
+    as: "metaSocialAccounts",
+  });
+  MetaSocialAccount.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Clients <-> MetaSocialAccount */
+  Clients.hasMany(MetaSocialAccount, {
+    foreignKey: "assignedClientId",
+    as: "metaSocialAccounts",
+  });
+
+  MetaSocialAccount.belongsTo(Clients, {
+    foreignKey: "assignedClientId",
+    as: "client",
+  });
+
+  /*** SocialToken <-> MetaSocialAccount (User Access Token) */
+  SocialToken.hasMany(MetaSocialAccount, {
+    foreignKey: "userAccessTokenId",
+    as: "userMetaSocialAccounts",
+  });
+
+  MetaSocialAccount.belongsTo(SocialToken, {
+    foreignKey: "userAccessTokenId",
+    as: "userAccessTokenData",
+  });
+// ============ POST SCHEDULING RELATIONS ============
+  /*** Company <-> PostDetails */
+  Company.hasMany(PostDetails, {
+    foreignKey: "companyId",
+    as: "postDetails",
+  });
+  PostDetails.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** User <-> PostDetails (createdBy relation) */
+  User.hasMany(PostDetails, {
+    foreignKey: "createdBy",
+    as: "scheduledPosts",
+  });
+  PostDetails.belongsTo(User, {
+    foreignKey: "createdBy",
+    as: "creator",
+  });
+
+  /*** PostMediaFiles <-> PostDetails */
+  PostMediaFiles.hasMany(PostDetails, {
+    foreignKey: "mediaUrlId",
+    as: "posts",
+  });
+  PostDetails.belongsTo(PostMediaFiles, {
+    foreignKey: "mediaUrlId",
+    as: "mediaFiles",
+  });
+
+
+  // /*** Clients <-> PostDetails */
+  // Clients.hasMany(PostDetails, {
+  //   foreignKey: "assignedClientId",
+  //   as: "postDetails",
+  // });
+  // PostDetails.belongsTo(Clients, {
+  //   foreignKey: "assignedClientId",
+  //   as: "assignedClient",
+  // });
   console.log("✅ ZarklyX RBAC associations initialized");
 
   // Role <-> SubRole

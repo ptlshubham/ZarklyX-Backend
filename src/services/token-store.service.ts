@@ -100,3 +100,10 @@ export async function deleteTokensByCompanyIdAndProvider(companyId: string, prov
   });
   return deletedCount;
 }
+
+export async function getConnectedSocialTokenByCompanyId(companyId: string, provider : string) {
+  const drives = await SocialToken.findAll({
+    where: { companyId: companyId, provider: provider }
+  });
+  return drives;
+}
