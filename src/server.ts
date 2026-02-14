@@ -48,6 +48,8 @@ import quoteRouter from './routes/api-webapp/accounting/quote/quote-api';
 import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-note-api';
 import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
 import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
+import expenseItemRouter from './routes/api-webapp/accounting/expenses/expenses-item/expense-item-api';
+import expenseRouter from './routes/api-webapp/accounting/expenses/expenses-api';
 import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-api';
 
 // Import cron jobs
@@ -160,6 +162,27 @@ app.use("/accounting/purchaseOrder",purchaseOrderRouter);
 app.use("/itManagement/itAssetsManagement", itAssetsManagementRoutes);
 app.use("/accounting/payments",paymentsRouter);
 app.use("/accounting/debit-note",debitNoteRouter);
+app.use("/accounting/expenseItem",expenseItemRouter);
+app.use("accounting/expense",expenseRouter);
+app.use("/superAdmin/modules",modulesRouter);
+app.use("/superAdmin/permissions",permissionsRouter);
+app.use("/superAdmin/subscription-plan",subscriptionPlanRouter);
+app.use("/superAdmin/subscription-plan-module",subscriptionPlanModuleRouter);
+app.use("/superAdmin/subscription-plan-permission",subscriptionPlanPermissionRouter);
+app.use("/company-subscription",companySubscriptionRouter);
+app.use("/company-module",companyModuleRouter);
+app.use("/company-permission",companyPermissionRouter);
+app.use("/role-permissions",RolePermissionsRouter);
+app.use("/user-overrides",UserPermissionOverridesRouter);
+app.use("/rbac",RbacRouter);
+app.use("/superAdmin/zarklyx/auth",zarklyXAuthRouter),
+app.use("/superAdmin/zarklyx/user",zarklyXUsersRouter),
+app.use("/superAdmin/zarklyx/roles",zarklyXRolesRouter),
+app.use("/superAdmin/zarklyx/permissions",zarklyXPermissionsRouter),
+app.use("/superAdmin/zarklyx/role-permissions",zarklyXRolePermissionsRouter),
+app.use("/superAdmin/zarklyx/overrides",zarklyXOverridesRouter),
+app.use("/superAdmin/zarklyx/2fa",zarklyX2FARouter),
+app.use("/clients/client-assignment",clientUserAssignmentRouter);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it

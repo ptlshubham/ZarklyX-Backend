@@ -40,6 +40,7 @@ export default (app: Application) => {
     app.use("/influencerCategory", require("./api-webapp/influencer/category/influencerCategory-api"));
     app.use("/influencerIndustry", require("./api-webapp/influencer/industry/industry-api"));
     app.use("/influencerPlatform", require("./api-webapp/influencer/platform/platform-api"));
+    app.use("/accounting/dashboard",require("./api-webapp/accounting/accounting-dashboard/accounting-dashboard-api"));
     app.use("/accounting/item-Category",require("./api-webapp/accounting/item-Category/item-Category-api"));
     app.use("/accounting/unit",require("./api-webapp/accounting/unit/unit-api"));
     app.use("/accounting/item",require("./api-webapp/accounting/item/item-api"));
@@ -53,7 +54,10 @@ export default (app: Application) => {
     app.use("/accounting/purchase-bill",require("./api-webapp/accounting/purchase-Bill/purchase-bill-api"));
     app.use("accounting/purchaseOrder",require("./api-webapp/accounting/purchaseOrder/purchase-order-api"));
     app.use("/accounting/payments",require("./api-webapp/accounting/payments/payments-api"));
+    app.use("/accounting/client-ledger",require("./api-webapp/accounting/client-ledger/client-ledger-api"));
     app.use("/accounting/debit-note",require("./api-webapp/accounting/debtit-Note/debit-note-api"));
+    app.use("/accounting/expenseItem",require("./api-webapp/accounting/expenses/expenses-item/expense-item-api"));
+    app.use("/accounting/expense",require("./api-webapp/accounting/expenses/expenses-api"));
     app.use("/superAdmin/modules",require("./api-webapp/superAdmin/modules/module-api"));
     app.use("/superAdmin/permissions",require("./api-webapp/superAdmin/permissions/permissions-api"));
     app.use("/superAdmin/subscription-plan",require("./api-webapp/superAdmin/subscription-plan/subscription-plan-api"));

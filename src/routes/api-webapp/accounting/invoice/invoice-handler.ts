@@ -10,6 +10,7 @@ import { PaymentsDocuments } from "../payments/payments-documents-model";
 import { PaymentTerms, TaxSelection } from "./invoice-model";
 import { sendEmail } from "../../../../services/mailService";
 import crypto from 'crypto';
+import { addInvoiceLedger, deleteLedgerByReference } from "../client-ledger/client-ledger-handler";
 
 export type InvoiceStatus =
   | "Draft"
@@ -535,6 +536,17 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
     { transaction: t, validate: true }
   );
 
+  // Add ledger entry for invoice
+  await addInvoiceLedger(
+    invoice.clientId,
+    invoice.companyId,
+    invoice.id,
+    invoice.invoiceNo,
+    invoice.invoiceDate,
+    invoice.total,
+    t
+  );
+
   // Calculate base amounts for TDS/TCS (should match the calculation logic)
   const taxableBase = calculated.subTotal - calculated.finalDiscount;
 
@@ -892,6 +904,9 @@ export const deleteInvoice = async (
       transaction: t,
     }
   );
+
+  // Delete ledger entry for this invoice
+  await deleteLedgerByReference("invoice", id, t);
 
   // Soft delete invoice itself
   await Invoice.update(

@@ -7,6 +7,7 @@ import { Clients } from "../../agency/clients/clients-model";
 import { Vendor } from "../vendor/vendor-model";
 import { PurchaseBill } from "../purchase-Bill/purchase-bill-model";
 import { Invoice } from "../invoice/invoice-model";
+import { addDebitNoteLedger, deleteLedgerByReference } from "../client-ledger/client-ledger-handler";
 
 // Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
 const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
@@ -374,6 +375,19 @@ export const createDebitNote = async (body: CreateDebitNoteInput, t: Transaction
     { transaction: t }
   );
 
+  // Add ledger entry for client-based debit note only
+  if (debitNote.clientId) {
+    await addDebitNoteLedger(
+      debitNote.clientId,
+      debitNote.companyId,
+      debitNote.id,
+      debitNote.debitNo,
+      debitNote.debitDate,
+      debitNote.total,
+      t
+    );
+  }
+
   return {
     debitNote,
     debitNoteItems: createdDebitNoteItems,
@@ -636,6 +650,11 @@ export const deleteDebitNote = async (
       transaction: t,
     }
   );
+
+  // Delete ledger entry for client-based debit note only
+  if (debitNote.clientId) {
+    await deleteLedgerByReference("debit_note", id, t);
+  }
 
   // Soft delete debit note
   await DebitNote.update(

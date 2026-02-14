@@ -7,6 +7,7 @@ import { Clients } from "../../agency/clients/clients-model";
 import { sendEmail } from "../../../../services/mailService";
 import crypto from "crypto";
 import { Invoice } from "../invoice/invoice-model";
+import { addCreditNoteLedger, deleteLedgerByReference } from "../client-ledger/client-ledger-handler";
 
 // Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
 const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
@@ -346,6 +347,17 @@ export const createCreditNote = async (body: CreateCreditNoteInput, t: Transacti
     { transaction: t }
   );
 
+  // Add ledger entry for credit note
+  await addCreditNoteLedger(
+    creditNote.clientId,
+    creditNote.companyId,
+    creditNote.id,
+    creditNote.creditNo,
+    creditNote.creditDate,
+    creditNote.total,
+    t
+  );
+
   // sending email to the client about credit note created (non-blocking)
   try {
     const client = await Clients.findOne({
@@ -590,6 +602,9 @@ export const deleteCreditNote = async (
       transaction: t,
     }
   );
+
+  // Delete ledger entry for this credit note
+  await deleteLedgerByReference("credit_note", id, t);
 
   // Soft delete credit note
   await CreditNote.update(

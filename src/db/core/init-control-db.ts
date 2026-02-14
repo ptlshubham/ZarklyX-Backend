@@ -54,6 +54,7 @@ import { PurchaseOrderItem } from "../../routes/api-webapp/accounting/purchaseOr
 import { Payments } from "../../routes/api-webapp/accounting/payments/payments-model";
 import { PaymentsDocuments } from "../../routes/api-webapp/accounting/payments/payments-documents-model";
 import { AccountingDocument } from "../../routes/api-webapp/accounting/accounting-document-model";
+import { ClientLedger } from "../../routes/api-webapp/accounting/client-ledger/client-ledger-model";
 import { Modules, initModulesModel } from "../../routes/api-webapp/superAdmin/modules/modules-model";
 import { Permissions, initPermissionsModel } from "../../routes/api-webapp/superAdmin/permissions/permissions-model";
 import { SubscriptionPlan, initSubscriptionPlanModel } from "../../routes/api-webapp/superAdmin/subscription-plan/subscription-plan-model";
@@ -70,6 +71,9 @@ import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permi
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
 import { ClientUserAssignment, initClientUserAssignmentModel } from "../../routes/api-webapp/agency/clients/client-assignment/client-assignment-model";
+import { Expenses } from "../../routes/api-webapp/accounting/expenses/expenses-model";
+import { ExpenseLineItem } from "../../routes/api-webapp/accounting/expenses/expense-line-item-model";
+import { ExpenseItem } from "../../routes/api-webapp/accounting/expenses/expenses-item/expense-item-model";
 
 export {
   User,
@@ -111,6 +115,7 @@ export {
   Payments,
   PaymentsDocuments,
   AccountingDocument,
+  ClientLedger,
   Modules,
   Permissions,
   SubscriptionPlan,
@@ -130,7 +135,10 @@ export {
   ItAssetsManagement,
   ItTicketsAttachments,
   ItAssetsAttachments,
-  ItTicketsTimeline
+  ItTicketsTimeline,
+  Expenses,
+  ExpenseLineItem,
+  ExpenseItem,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -187,6 +195,7 @@ export function initControlDB(sequelize: Sequelize) {
   Payments.initModel(sequelize);
   PaymentsDocuments.initModel(sequelize);
   AccountingDocument.initModel(sequelize);
+  ClientLedger.initModel(sequelize);
   initModulesModel(sequelize);
   initPermissionsModel(sequelize);
   initSubscriptionPlanModel(sequelize);
@@ -203,6 +212,9 @@ export function initControlDB(sequelize: Sequelize) {
   ZarklyXRolePermission.initModel(sequelize);
   ZarklyXUserPermissionOverride.initModel(sequelize);
   initClientUserAssignmentModel(sequelize);
+  Expenses.initModel(sequelize);
+  ExpenseLineItem.initModel(sequelize);
+  ExpenseItem.initModel(sequelize);
 
   // Relations and associations
   /***user <-> company */
@@ -826,6 +838,30 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
+  /*** ClientLedger <-> Company */
+  Company.hasMany(ClientLedger, {
+    foreignKey: "companyId",
+    as: "clientLedgers",
+    constraints: false,
+  });
+  ClientLedger.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /*** ClientLedger <-> Clients */
+  Clients.hasMany(ClientLedger, {
+    foreignKey: "clientId",
+    as: "ledgerEntries",
+    constraints: false,
+  });
+  ClientLedger.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
     /*** DebitNote <-> Company */
     Company.hasMany(DebitNote, {
       foreignKey: "companyId",
@@ -1322,6 +1358,90 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "clientId" 
   });
 
+  /*** Expenses <-> Company */
+  Company.hasMany(Expenses, {
+    foreignKey: "companyId",
+    as: "expenses",
+  });
+  Expenses.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Expenses <-> Vendor */
+  Vendor.hasMany(Expenses, {
+    foreignKey: "vendorId",
+    as: "expenses",
+    constraints: false,
+  });
+  Expenses.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
+
+  /*** Expenses <-> Clients */
+  Clients.hasMany(Expenses, {
+    foreignKey: "clientId",
+    as: "expenses",
+    constraints: false,
+  });
+  Expenses.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /*** ExpenseItem <-> Company */
+  Company.hasMany(ExpenseItem, {
+    foreignKey: "companyId",
+    as: "expenseItems",
+  });
+  ExpenseItem.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /*** Expenses <-> ExpenseLineItem */
+  Expenses.hasMany(ExpenseLineItem, {
+    foreignKey: "expenseId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(Expenses, {
+    foreignKey: "expenseId",
+    as: "expense",
+  });
+
+  /*** ExpenseItem <-> ExpenseLineItem */
+  ExpenseItem.hasMany(ExpenseLineItem, {
+    foreignKey: "expenseItemId",
+    as: "lineItems",
+  });
+  ExpenseLineItem.belongsTo(ExpenseItem, {
+    foreignKey: "expenseItemId",
+    as: "expenseItem",
+  });
+
+  /*** Unit <-> ExpenseLineItem */
+  Unit.hasMany(ExpenseLineItem, {
+    foreignKey: "unitId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  });
+
+  /*** Company <-> ExpenseLineItem */
+  Company.hasMany(ExpenseLineItem, {
+    foreignKey: "companyId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
   console.log("✅ ZarklyX RBAC associations initialized");
 
   // Role <-> SubRole
@@ -1391,5 +1511,8 @@ export function initControlDB(sequelize: Sequelize) {
     RolePermissions,
     UserPermissionOverrides,
     ClientUserAssignment,
+    Expenses,
+    ExpenseLineItem,
+    ExpenseItem,
   };
 }

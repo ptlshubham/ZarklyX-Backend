@@ -6,6 +6,7 @@ import { PurchaseOrder } from "../purchaseOrder/purchase-order-model";
 import { Clients } from "../../agency/clients/clients-model";
 import { Vendor } from "../vendor/vendor-model";
 import { PaymentsDocuments, DocumentType } from "./payments-documents-model";
+import { addPaymentLedger, deleteLedgerByReference } from "../client-ledger/client-ledger-handler";
 
 export interface DocumentPayment {
   documentId: string;
@@ -274,6 +275,21 @@ export const createPayment = async (body: CreatePaymentInput, t: Transaction) =>
         isDeleted: false,
       },
       { transaction: t, validate: true }
+    );
+  }
+
+  // Add ledger entry for payment received (client payments only)
+  if (
+    (paymentType === "Payment Received" || paymentType === "Advance Payment Received") &&
+    clientId
+  ) {
+    await addPaymentLedger(
+      clientId,
+      companyId,
+      payment.id,
+      payment.paymentDate,
+      payment.paymentAmount,
+      t
     );
   }
 
@@ -656,6 +672,15 @@ export const deletePayment = async (
     where: { paymentId: id },
     transaction: t,
   });
+
+  // Delete ledger entry for payment received (client payments only)
+  if (
+    (payment.paymentType === "Payment Received" ||
+      payment.paymentType === "Advance Payment Received") &&
+    payment.clientId
+  ) {
+    await deleteLedgerByReference("payment", id, t);
+  }
 
   // Soft delete payment
   const [affectedRows] = await Payments.update(
