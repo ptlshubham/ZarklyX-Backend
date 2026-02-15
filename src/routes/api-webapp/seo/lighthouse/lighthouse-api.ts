@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
-import { analyzeLighthouseWithAI } from './lightHouse-analyze-handler';
-import { saveSeoAnalysis } from '../seo-middleware';
+import { analyzeLighthouseWithAI, saveLighthouseAnalysis } from './lightHouse-analyze-handler';
 
 const router = express.Router();
 
@@ -9,22 +8,23 @@ router.post('/analyze-lighthouse', async (req: Request, res: Response): Promise<
     const { url } = req.body;
     
     if (!url) {
-      return res.status(400).json({
-        success: false,
-        error: 'URL is required'
+      return res.status(400).json({ 
+        success: false, 
+        error: 'URL is required' 
       });
     }
 
     const result = await analyzeLighthouseWithAI(url);
     
-    // Save to database
-    await saveSeoAnalysis(url, 'lighthouse', result);
+    // Save to database for historical tracking
+    await saveLighthouseAnalysis(result);
     
     return res.json(result);
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Lighthouse analysis failed'
+    console.error('Lighthouse analysis error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to analyze lighthouse data' 
     });
   }
 });

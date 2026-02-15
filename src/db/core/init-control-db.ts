@@ -71,7 +71,24 @@ import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permi
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
 import { seo } from "../../routes/api-webapp/seo/seo-model";
+import { LighthouseAnalysis } from "../../routes/api-webapp/seo/lighthouse/lightHouse-model";
+import { SecurityAnalysis } from "../../routes/api-webapp/seo/security/security-model";
+import { TechJsAnalysis } from "../../routes/api-webapp/seo/tech-js/tech-js-model";
+import { PaginationAnalysis } from "../../routes/api-webapp/seo/pagination/pagination-model";
 import { PayrollTransaction } from "../../routes/api-webapp/payroll/payroll-transaction/payroll-transactions-model";
+import {
+  SeoAuditSession,
+  SeoModuleScore,
+  SeoIssue,
+  SeoPage,
+  SeoRawData,
+  initSeoAuditSession,
+  initSeoModuleScore,
+  initSeoIssue,
+  initSeoPage,
+  initSeoRawData,
+  setupRelationships as setupSeoNormalizedRelationships
+} from "../models/seo-normalized.models";
 
 export {
   User,
@@ -87,7 +104,16 @@ export {
   SocialToken,
   Employee,
   seo,
+  LighthouseAnalysis,
+  SecurityAnalysis,
+  TechJsAnalysis,
+  PaginationAnalysis,
   PayrollTransaction,
+  SeoAuditSession,
+  SeoModuleScore,
+  SeoIssue,
+  SeoPage,
+  SeoRawData,
   ItTickets,
   // GoogleToken
   InfluencerCategory,
@@ -166,6 +192,10 @@ export function initControlDB(sequelize: Sequelize) {
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
   seo.initModel(sequelize);
+  LighthouseAnalysis.initModel(sequelize);
+  SecurityAnalysis.initModel(sequelize);
+  TechJsAnalysis.initModel(sequelize);
+  PaginationAnalysis.initModel(sequelize);
   PayrollTransaction.initModel(sequelize);
   // GoogleToken.initModel(sequelize); 
   //  initCategoryModel(sequelize);
@@ -213,6 +243,13 @@ export function initControlDB(sequelize: Sequelize) {
   ZarklyXUser.initModel(sequelize);
   ZarklyXRolePermission.initModel(sequelize);
   ZarklyXUserPermissionOverride.initModel(sequelize);
+
+  // Initialize normalized SEO models
+  initSeoAuditSession(sequelize);
+  initSeoModuleScore(sequelize);
+  initSeoIssue(sequelize);
+  initSeoPage(sequelize);
+  initSeoRawData(sequelize);
 
 
   // Relations and associations
@@ -1355,6 +1392,10 @@ export function initControlDB(sequelize: Sequelize) {
 
   console.log("✅ ZarklyX RBAC associations initialized");
 
+  // Setup normalized SEO table relationships
+  setupSeoNormalizedRelationships();
+  console.log("✅ Normalized SEO associations initialized");
+
   // Role <-> SubRole
   // Role.hasMany(SubRole, { foreignKey: "roleId", as: "subRoles" });
   // SubRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
@@ -1423,6 +1464,11 @@ export function initControlDB(sequelize: Sequelize) {
     RolePermissions,
     UserPermissionOverrides,
     seo,
-    PayrollTransaction
+    PayrollTransaction,
+    SeoAuditSession,
+    SeoModuleScore,
+    SeoIssue,
+    SeoPage,
+    SeoRawData
   };
 }

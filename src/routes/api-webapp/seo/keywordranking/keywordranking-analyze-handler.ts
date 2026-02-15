@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { httpClient } from '../utils/http-client';
 import * as cheerio from 'cheerio';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { generateUniversalSeoIssues } from '../../../../services/universal-seo-issues';
@@ -45,7 +45,7 @@ function generatePhrases(words: string[], maxLength = 3): string[] {
 }
 
 export async function fetchKeywords(url: string) {
-  const { data: html } = await axios.get(url, {
+  const html = await httpClient.fetchHtml(url, {
     headers: { 'User-Agent': 'SEO-BOT' }
   });
 
@@ -96,7 +96,7 @@ async function fetchSerp(keyword: string, page: number): Promise<string> {
 
   const url = `https://duckduckgo.com/lite/?q=${encodeURIComponent(keyword)}&s=${offset}`;
 
-  const res = await axios.get(url, {
+  const res = await httpClient.get(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       'Accept-Language': 'en-US,en;q=0.9',

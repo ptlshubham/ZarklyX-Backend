@@ -1,8 +1,10 @@
 
 import * as cheerio from 'cheerio';
 import { randomUUID } from 'crypto';
-import axios from 'axios';
+import { httpClient } from '../utils/http-client';
 import { generateUniversalSeoIssues } from '../../../../services/universal-seo-issues';
+import { TechJsAnalysis } from './tech-js-model';
+import { AnalysisSaver } from '../utils/analysis-base';
 
 /* ============================================================
    TYPES
@@ -1073,7 +1075,7 @@ export async function compareJSRendering(url: string, jsContent: string): Promis
 }> {
   try {
     // Simulate non-JS content by fetching with basic user agent
-    const response = await axios.get(url, {
+    const response = await httpClient.get(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
       },
@@ -1147,15 +1149,126 @@ export async function detectWebsiteTechStackWithAI(
     };
     
     try {
+      // Generate AI-powered insights using Gemini
       const geminiIssues = await generateUniversalSeoIssues(analysisData, 'tech-frameworks');
       return {
         ...result,
         issues: geminiIssues
       };
     } catch (error) {
-      return result;
+      console.error('Failed to generate AI insights:', error);
+      return {
+        ...result,
+        issues: []
+      };
     }
   }
   
   return result;
+}
+
+/**
+ * Tech-JS analysis saver with framework detection
+ */
+class TechJsSaver extends AnalysisSaver {
+  /**
+   * Extract detected frameworks from analysis data
+   */
+  private extractFrameworks(frameworks: any): string[] {
+    const detected: string[] = [];
+    const frameworkMap = [
+      { key: 'react', name: 'React' },
+      { key: 'angular', name: 'Angular' },
+      { key: 'vue', name: 'Vue' },
+      { key: 'jquery', name: 'jQuery' },
+      { key: 'nextjs', name: 'Next.js' },
+      { key: 'nuxt', name: 'Nuxt' },
+      { key: 'svelte', name: 'Svelte' },
+    ];
+    
+    for (const { key, name } of frameworkMap) {
+      if (frameworks[key]) detected.push(name);
+    }
+    
+    return detected;
+  }
+
+  async save(url: string, analysisResult: any): Promise<void> {
+    await this.saveWithErrorHandling('Tech-JS', url, async () => {
+      const data = analysisResult.data;
+      if (!data) {
+        console.warn('⚠️ No data to save for Tech-JS analysis');
+        return;
+      }
+
+      // Extract framework information efficiently
+      const frameworks = data.frontend?.frameworks || {};
+      const frameworksDetected = this.extractFrameworks(frameworks);
+      const primaryFramework = frameworksDetected[0] || null;
+      
+      // Extract metrics for cleaner code
+      const jsMetrics = data.jsDependencyMetrics || {};
+      const jsAnalysis = data.jsDependencyAnalysis || {};
+      const rendering = data.renderingBehavior || {};
+      const seoImpact = data.seoVisibilityImpact || {};
+
+      await TechJsAnalysis.create({
+        url,
+        
+        // Framework detection
+        ...(primaryFramework && { primaryFramework }),
+        frameworksDetected: this.safeStringify(frameworksDetected),
+        totalFrameworks: frameworksDetected.length,
+        
+        // JS Metrics
+        totalJsSizeKB: jsAnalysis.totalJsSize?.valueKB || 0,
+        renderBlockingScriptsCount: jsMetrics.renderBlockingScripts?.count || 0,
+        renderBlockingSizeKB: jsMetrics.renderBlockingScripts?.totalSizeKB || 0,
+        thirdPartyScriptsCount: jsAnalysis.thirdPartyScripts?.count || 0,
+        thirdPartySizeKB: jsAnalysis.thirdPartyScripts?.totalSizeKB || 0,
+        unusedJsPercentage: jsAnalysis.unusedJs?.estimatedPercentage || 0,
+        estimatedJsExecutionMs: jsMetrics.jsExecutionTime?.estimatedMs || 0,
+        
+        // Rendering behavior
+        isClientSideRendering: jsMetrics.clientSideRendering?.detected || false,
+        isServerSideRendering: rendering.serverSideRendering?.detected || false,
+        hasHydration: data.frontend?.rendering === 'ssr-hybrid',
+        estimatedHydrationMs: rendering.hydrationDelay?.estimatedMs || null,
+        jsRequiredForContent: rendering.javascriptRequiredForContent?.required || false,
+        contentVisiblePercentage: rendering.javascriptRequiredForContent?.percentage || 100,
+        
+        // Libraries - specific framework flags
+        librariesDetected: this.safeStringify(frameworksDetected),
+        totalLibraries: frameworksDetected.length,
+        hasJQuery: frameworks.jquery || false,
+        hasReact: frameworks.react || false,
+        hasVue: frameworks.vue || false,
+        hasAngular: frameworks.angular || false,
+        hasNextJs: frameworks.nextjs || false,
+        
+        // SEO Impact
+        seoImpactScore: seoImpact.contentVisibleWithoutJs?.percentage || 0,
+        crawlabilityStatus: seoImpact.contentVisibleWithoutJs?.status || 'unknown',
+        indexabilityStatus: seoImpact.googleBotRenderable?.status || 'unknown',
+        performanceImpact: jsMetrics.renderBlockingScripts?.status || 'unknown',
+        
+        // Dependency Score
+        dependencyScore: jsMetrics.dependencyScore?.value || 0,
+        dependencyStatus: jsMetrics.dependencyScore?.status || 'low',
+        
+        // Store complete data as JSON - safely
+        fullReport: this.safeStringify(analysisResult),
+        aiIssues: this.safeStringify(analysisResult.issues),
+      });
+    });
+  }
+}
+
+const techJsSaver = new TechJsSaver();
+
+/**
+ * Save Tech-JS analysis results to database for historical tracking
+ */
+export async function saveTechJsAnalysis(url: string, analysisResult: any): Promise<void> {
+  await techJsSaver.save(url, analysisResult);
 }

@@ -100,11 +100,12 @@ async function createGA4Client(refreshToken: string): Promise<BetaAnalyticsDataC
 
 async function analyzeOverviewMetrics(
   client: BetaAnalyticsDataClient,
+  propertyId: string,
   startDate: string,
   endDate: string
 ): Promise<any> {
   const [response] = await client.runReport({
-    property: `properties/498347631`,
+    property: `properties/${propertyId}`,
     dateRanges: [{ startDate, endDate }],
     metrics: [
       { name: 'totalUsers' },
@@ -140,11 +141,12 @@ async function analyzeOverviewMetrics(
 
 async function analyzeTopPages(
   client: BetaAnalyticsDataClient,
+  propertyId: string,
   startDate: string,
   endDate: string
 ): Promise<PageMetric[]> {
   const [response] = await client.runReport({
-    property: `properties/498347631`,
+    property: `properties/${propertyId}`,
     dateRanges: [{ startDate, endDate }],
     dimensions: [{ name: 'fullPageUrl' }],
     metrics: [
@@ -164,11 +166,12 @@ async function analyzeTopPages(
 
 async function analyzeTopSources(
   client: BetaAnalyticsDataClient,
+  propertyId: string,
   startDate: string,
   endDate: string
 ): Promise<SourceMetric[]> {
   const [response] = await client.runReport({
-    property: `properties/498347631`,
+    property: `properties/${propertyId}`,
     dateRanges: [{ startDate, endDate }],
     dimensions: [{ name: 'source' }, { name: 'medium' }],
     metrics: [
@@ -187,11 +190,12 @@ async function analyzeTopSources(
 
 async function analyzeTopCountries(
   client: BetaAnalyticsDataClient,
+  propertyId: string,
   startDate: string,
   endDate: string
 ): Promise<CountryMetric[]> {
   const [response] = await client.runReport({
-    property: `properties/498347631`,
+    property: `properties/${propertyId}`,
     dateRanges: [{ startDate, endDate }],
     dimensions: [{ name: 'country' }],
     metrics: [
@@ -209,11 +213,12 @@ async function analyzeTopCountries(
 
 async function analyzeTopDevices(
   client: BetaAnalyticsDataClient,
+  propertyId: string,
   startDate: string,
   endDate: string
 ): Promise<DeviceMetric[]> {
   const [response] = await client.runReport({
-    property: `properties/498347631`,
+    property: `properties/${propertyId}`,
     dateRanges: [{ startDate, endDate }],
     dimensions: [{ name: 'deviceCategory' }],
     metrics: [
@@ -276,22 +281,22 @@ function generateGAIssues(report: GAReport): GAIssue[] {
 }
 
 export async function analyzeGoogleAnalyticsHandler(
-  websiteUrl: string,
+  propertyId: string,
   accountEmail: string,
   options: GAAnalysisOptions = {}
 ): Promise<GAAnalysisResult> {
   const startTime = Date.now();
 
   try {
-    if (!websiteUrl) {
-      throw new Error('Website URL is required');
+    if (!propertyId) {
+      throw new Error('Property ID is required');
     }
 
     if (!accountEmail) {
       throw new Error('Account email is required');
     }
 
-    console.log(`[${new Date().toISOString()}] GA analysis for website: ${websiteUrl}`);
+    console.log(`[${new Date().toISOString()}] GA analysis for property: ${propertyId}`);
 
     // Get stored tokens
     const tokenRecord = await getToken('google', accountEmail);
@@ -307,22 +312,22 @@ export async function analyzeGoogleAnalyticsHandler(
     const startDate = options.startDate || formatDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
 
     // Analyze overview metrics
-    const overview = await analyzeOverviewMetrics(client, startDate, endDate);
+    const overview = await analyzeOverviewMetrics(client, propertyId, startDate, endDate);
 
     // Analyze top pages
-    const topPages = await analyzeTopPages(client, startDate, endDate);
+    const topPages = await analyzeTopPages(client, propertyId, startDate, endDate);
 
     // Analyze top sources
-    const topSources = await analyzeTopSources(client, startDate, endDate);
+    const topSources = await analyzeTopSources(client, propertyId, startDate, endDate);
 
     // Analyze top countries
-    const topCountries = await analyzeTopCountries(client, startDate, endDate);
+    const topCountries = await analyzeTopCountries(client, propertyId, startDate, endDate);
 
     // Analyze top devices
-    const topDevices = await analyzeTopDevices(client, startDate, endDate);
+    const topDevices = await analyzeTopDevices(client, propertyId, startDate, endDate);
 
     const report: GAReport = {
-      websiteUrl,
+      websiteUrl: `Property ID: ${propertyId}`,
       dateRange: { startDate, endDate },
       overview,
       topPages,
@@ -341,7 +346,7 @@ export async function analyzeGoogleAnalyticsHandler(
 
     return {
       success: true,
-      websiteUrl,
+      websiteUrl: `Property ID: ${propertyId}`,
       timestamp: new Date().toISOString(),
       processingTime: `${processingTime}ms`,
       data: report
@@ -353,11 +358,66 @@ export async function analyzeGoogleAnalyticsHandler(
 
     return {
       success: false,
-      websiteUrl,
+      websiteUrl: `Property ID: ${propertyId}`,
       timestamp: new Date().toISOString(),
       processingTime: `${processingTime}ms`,
       error: error.message || 'Google Analytics analysis failed'
     };
+  }
+}
+
+export async function listGAProperties(accountEmail: string): Promise<any[]> {
+  try {
+    const tokenRecord = await getToken('google', accountEmail);
+    if (!tokenRecord || !tokenRecord.refreshToken) {
+      throw new Error('No valid Google tokens found');
+    }
+
+    const auth = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+
+    auth.setCredentials({
+      refresh_token: tokenRecord.refreshToken,
+    });
+
+    const analyticsAdmin = google.analyticsadmin({ version: 'v1beta', auth });
+
+    // List accounts first
+    const accountsResponse = await analyticsAdmin.accounts.list();
+    const accounts = accountsResponse.data.accounts || [];
+
+    if (accounts.length === 0) {
+      return [];
+    }
+
+    // Get properties for each account
+    const allProperties: any[] = [];
+    for (const account of accounts) {
+      try {
+        const propertiesResponse = await analyticsAdmin.properties.list({
+          filter: `parent:${account.name}`
+        });
+        const properties = propertiesResponse.data.properties || [];
+        allProperties.push(...properties.map(prop => ({
+          propertyId: prop.name?.split('/')[1],
+          displayName: prop.displayName,
+          propertyType: prop.propertyType,
+          account: account.displayName,
+          createTime: prop.createTime,
+          timeZone: prop.timeZone
+        })));
+      } catch (error) {
+        console.error(`Error fetching properties for account ${account.name}:`, error);
+      }
+    }
+
+    return allProperties;
+  } catch (error: any) {
+    console.error('Error listing GA properties:', error);
+    throw new Error(`Failed to list properties: ${error.message}`);
   }
 }
 

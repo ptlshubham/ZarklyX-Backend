@@ -34,9 +34,26 @@ export default (app: Application) => {
     app.use("/influencer", require("./api-webapp/influencer/influencer-api"));
     app.use("/itManagement/itTickets", require("./api-webapp/itManagement/itTickets/itTickets-api"));
     app.use("/itManagement/itAssetsManagement", require("./api-webapp/it-Management/it-Assets-Management/it-Assets-Management-api"));
-    // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
-    app.use("/seo", require("./api-webapp/seo/api/index"))
-    // app.use("/clients", require("./api-webapp/agency/clients/clients-login-api"));
+    
+    // SEO Analysis Routes - All endpoints mounted directly
+    app.use("/seo/lighthouse", require("./api-webapp/seo/lighthouse/lighthouse-api"));
+    app.use("/seo/keyword-ranking", require("./api-webapp/seo/keywordranking/keyword-ranking-api"));
+    app.use("/seo/responsive", require("./api-webapp/seo/responsive/responsive-api"));
+    app.use("/seo/security", require("./api-webapp/seo/security/security-api"));
+    app.use("/seo/site", require("./api-webapp/seo/full-web-analyzer/site-api"));
+    app.use("/seo/tech-js", require("./api-webapp/seo/tech-js/tech-js-api"));
+    app.use("/seo/pagination", require("./api-webapp/seo/pagination/pagination-api"));
+    app.use("/seo/internal-seo", require("./api-webapp/seo/internalseo/internal-seo-api"));
+    app.use("/seo/google-search-console", require("./api-webapp/seo/google-search-console/google-search-console-api"));
+    app.use("/seo/google-analytics", require("./api-webapp/seo/google-analytics/google-analytics-api"));
+    app.use("/seo/google-services", require("./api-webapp/seo/google-service/google-services"));
+    app.use("/seo/seo-data", require("./api-webapp/seo/seo-data/seo-data-api"));
+    app.use("/seo/all-issues", require("./api-webapp/seo/all-issues/all-issues-api"));
+    app.use("/seo/dashboard", require("./api-webapp/seo/dashboard/dashboard-api"));
+    app.use("/seo/backlinks", require("./api-webapp/seo/backlinks/backlinks-api"));
+    
+    // Job Queue Management (Phase 2)
+    app.use("/seo/queue", require("./api-webapp/seo/queue/queue-api"));
 
     app.use("/influencerCategory", require("./api-webapp/influencer/category/influencerCategory-api"));
     app.use("/influencerIndustry", require("./api-webapp/influencer/industry/industry-api"));

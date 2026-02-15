@@ -4,6 +4,9 @@ import * as net from 'net';
 import * as tls from 'tls';
 import * as https from 'https';
 import { generateUniversalSeoIssues } from '../../../../services/universal-seo-issues';
+import { SecurityAnalysis } from './security-model';
+import browserPool from '../../../../services/browser-pool.service';
+import { AnalysisSaver } from '../utils/analysis-base';
 
 interface SecurityHeaders {
   [key: string]: string | null;
@@ -55,13 +58,8 @@ function createAnalyzerContext(url: string): AnalyzerContext {
 }
 
 async function initializeBrowser(ctx: AnalyzerContext): Promise<void> {
-  ctx.browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-    ]
-  });
+  // Use browser pool instead of creating new browser
+  ctx.browser = await browserPool.acquire();
   ctx.page = await ctx.browser.newPage();
 
   // Intercept and collect headers
@@ -617,11 +615,96 @@ async function getCertificateInfo(hostname: string, port: number): Promise<any> 
 }
 
 async function closeBrowser(ctx: AnalyzerContext): Promise<void> {
-  if (ctx.browser) {
-    await ctx.browser.close();
-    ctx.browser = null;
+  if (ctx.page) {
+    await ctx.page.close();
     ctx.page = null;
   }
+  if (ctx.browser) {
+    // Return browser to pool instead of closing
+    await browserPool.release(ctx.browser);
+    ctx.browser = null;
+  }
+}
+
+/**
+ * Security analysis saver with optimized error handling
+ */
+class SecuritySaver extends AnalysisSaver {
+  async save(responseData: any): Promise<void> {
+    await this.saveWithErrorHandling('Security', responseData.url, async () => {
+      // Extract certificate information
+      const certCheck = responseData.categories?.certificates?.checks?.find((c: any) => c.name === 'cert_validity');
+      const tlsCheck = responseData.categories?.networkSecurity?.checks?.find((c: any) => c.name === 'network_tls_version');
+      const hstsCheck = responseData.categories?.networkSecurity?.checks?.find((c: any) => c.name === 'network_hsts');
+      
+      // Calculate category scores efficiently
+      const calcCategoryScore = (checks: any[]) => 
+        this.calculateScore(
+          checks.filter((c: any) => c.status === 'PASS').length,
+          checks.length
+        );
+
+      await SecurityAnalysis.create({
+        url: responseData.url,
+        
+        // Summary scores
+        securityScore: responseData.summary.score,
+        securityGrade: responseData.summary.grade,
+        totalChecks: responseData.summary.totalChecks,
+        passedChecks: responseData.summary.passed,
+        failedChecks: responseData.summary.failed,
+        warningChecks: responseData.summary.warnings,
+        
+        // HTTPS and SSL
+        hasHTTPS: responseData.insights?.hasHTTPS || false,
+        hasHSTS: responseData.insights?.hasHSTS || false,
+        hstsMaxAge: hstsCheck?.details?.maxAge || null,
+        certificateValid: responseData.insights?.certificateValid || false,
+        certificateExpiryDays: certCheck?.details?.daysUntilExpiry || null,
+        certificateIssuer: certCheck?.details?.issuer || null,
+        
+        // Security headers
+        hasCSP: responseData.insights?.hasCSP || false,
+        hasXFrameOptions: responseData.categories?.applicationSecurity?.checks?.some((c: any) => 
+          c.name === 'app_x_frame_options' && c.status === 'PASS') || false,
+        hasXContentTypeOptions: responseData.categories?.applicationSecurity?.checks?.some((c: any) => 
+          c.name === 'app_x_content_type_options' && c.status === 'PASS') || false,
+        hasReferrerPolicy: responseData.categories?.applicationSecurity?.checks?.some((c: any) => 
+          c.name === 'app_referrer_policy' && c.status === 'PASS') || false,
+        
+        // Vulnerabilities
+        hasMixedContent: responseData.insights?.hasMixedContent || false,
+        mixedContentCount: responseData.categories?.networkSecurity?.checks
+          ?.find((c: any) => c.name === 'network_mixed_content')?.details?.count || 0,
+        knownVulnerabilities: (responseData.issues?.critical?.count || 0) + (responseData.issues?.high?.count || 0),
+        xssRisk: responseData.categories?.vulnerabilities?.checks?.some((c: any) => 
+          c.name.includes('xss') && c.status === 'FAIL') || false,
+        
+        // TLS
+        tlsVersion: tlsCheck?.details?.version || null,
+        tlsSecure: tlsCheck?.status === 'PASS',
+        
+        // Category scores
+        networkSecurityScore: calcCategoryScore(responseData.categories?.networkSecurity?.checks || []),
+        applicationSecurityScore: calcCategoryScore(responseData.categories?.applicationSecurity?.checks || []),
+        serverSecurityScore: calcCategoryScore(responseData.categories?.serverSecurity?.checks || []),
+        vulnerabilityScore: calcCategoryScore(responseData.categories?.vulnerabilities?.checks || []),
+        
+        // Store complete data as JSON - safely
+        fullReport: this.safeStringify(responseData),
+        aiIssues: this.safeStringify(responseData.seoIssues),
+      });
+    });
+  }
+}
+
+const securitySaver = new SecuritySaver();
+
+/**
+ * Save Security analysis results to database for historical tracking
+ */
+async function saveSecurityAnalysis(responseData: any): Promise<void> {
+  await securitySaver.save(responseData);
 }
 
 export async function analyzeSecurityHandler(req: any, res: any) {
@@ -757,8 +840,8 @@ export async function analyzeSecurityHandler(req: any, res: any) {
     // Generate AI issues
     const geminiIssues = await generateUniversalSeoIssues({ ...report, url }, 'security');
 
-    // Send comprehensive response
-    res.json({ 
+    // Construct response object
+    const responseData = { 
       success: true,
       url: url,
       timestamp: new Date().toISOString(),
@@ -866,7 +949,13 @@ export async function analyzeSecurityHandler(req: any, res: any) {
 
       // AI-powered issues
       seoIssues: geminiIssues
-    });
+    };
+
+    // Save to database for historical tracking
+    await saveSecurityAnalysis(responseData);
+
+    // Send response to client
+    res.json(responseData);
 
   } catch (error: any) {
     const processingTime = Date.now() - startTime;

@@ -6,16 +6,11 @@ import {
 } from './google-analytics-handler';
 import { saveSeoAnalysis } from '../seo-middleware';
 import { saveOrUpdateToken } from '../../../../services/token-store.service';
+import { extractAccountEmail, createErrorResponse, createSuccessResponse } from '../utils';
 import jwt from 'jsonwebtoken';
-import axios from 'axios';
+import { httpClient } from '../utils/http-client';
 
 const router = Router();
-
-// Helper: extract tokens from headers/query/body
-function extractTokens(req: Request) {
-  const accountEmail = ((req.headers['x-account-email'] as string) || (req.query.accountEmail as string) || (req.body?.accountEmail as string) || '').trim();
-  return { accountEmail };
-}
 
 // GET /google-analytics/auth-url
 router.get('/auth-url', async (req: Request, res: Response): Promise<any> => {
@@ -107,7 +102,7 @@ router.get('/callback', async (req: Request, res: Response): Promise<any> => {
 
     // Fallback: get user info from access token
     if (!accountEmail && tokens.access_token) {
-      const userinfo = await axios.get(
+      const userinfo = await httpClient.get(
         'https://openidconnect.googleapis.com/v1/userinfo',
         { headers: { Authorization: `Bearer ${tokens.access_token}` } }
       );
@@ -234,6 +229,29 @@ router.post('/analyze-property', async (req: Request, res: Response): Promise<an
       success: false,
       error: error.message || 'Google Analytics analysis failed',
       timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// GET /google-analytics/properties
+router.get('/properties', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const accountEmail = extractAccountEmail(req);
+    
+    if (!accountEmail) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Account email is required. Use x-account-email header or accountEmail query parameter' 
+      });
+    }
+
+    const { listGAProperties } = await import('./google-analytics-handler');
+    const properties = await listGAProperties(accountEmail);
+    return res.json({ success: true, properties, accountEmail });
+  } catch (error: any) {
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to fetch properties' 
     });
   }
 });

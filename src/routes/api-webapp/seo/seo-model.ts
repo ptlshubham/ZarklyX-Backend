@@ -13,6 +13,8 @@ export class seo extends Model<
 > {
   declare id: CreationOptional<string>;
   declare url: string;
+  declare analysisType: string; // Type of analysis: lighthouse, keyword-ranking, responsive, etc.
+  declare analysisData: CreationOptional<string>; // JSON string of analysis results
   declare isDeleted:CreationOptional<boolean>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
@@ -28,12 +30,18 @@ export class seo extends Model<
           unique: true,
         },
         url: {
-          type: DataTypes.STRING(255),
+          type: DataTypes.STRING(500),
           allowNull: false,
-          unique: {
-            name: "unique_influencer_category_name",
-            msg: "Influencer category name must be unique",
-          },
+        },
+        analysisType: {
+          type: DataTypes.STRING(50),
+          allowNull: false,
+          comment: "Type of SEO analysis: lighthouse, keyword-ranking, responsive, etc."
+        },
+        analysisData: {
+          type: DataTypes.TEXT('long'), // Store JSON data
+          allowNull: true,
+          comment: "JSON string containing analysis results"
         },
         isDeleted: {
           type: DataTypes.BOOLEAN,

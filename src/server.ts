@@ -49,7 +49,6 @@ import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-
 import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
 import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
 import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-api';
-import seoAnalyzer from './routes/api-webapp/seo/index'
 import payrollTransaction from './routes/api-webapp/payroll/payroll-transaction/payroll-transaction-api'
 // Import cron jobs
 // import './cron/warranty-reminder.cron';
@@ -76,6 +75,25 @@ import zarklyXOverridesRouter from "./routes/api-webapp/superAdmin/rbac/user-per
 import zarklyX2FARouter from "./routes/api-webapp/superAdmin/authentication/2fa/zarklyX-2fa-api";
 import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-api';
 
+// SEO Analysis Routes
+import lighthouseRouter from './routes/api-webapp/seo/lighthouse/lighthouse-api';
+import keywordRankingRouter from './routes/api-webapp/seo/keywordranking/keyword-ranking-api';
+import responsiveRouter from './routes/api-webapp/seo/responsive/responsive-api';
+import securityRouter from './routes/api-webapp/seo/security/security-api';
+import siteRouter from './routes/api-webapp/seo/full-web-analyzer/site-api';
+import techJsRouter from './routes/api-webapp/seo/tech-js/tech-js-api';
+import paginationRouter from './routes/api-webapp/seo/pagination/pagination-api';
+import internalSeoRouter from './routes/api-webapp/seo/internalseo/internal-seo-api';
+import googleSearchConsoleRouter from './routes/api-webapp/seo/google-search-console/google-search-console-api';
+import googleAnalyticsRouter from './routes/api-webapp/seo/google-analytics/google-analytics-api';
+import googleServicesRouter from './routes/api-webapp/seo/google-service/google-services';
+import seoDataRouter from './routes/api-webapp/seo/seo-data/seo-data-api';
+import allIssuesRouter from './routes/api-webapp/seo/all-issues/all-issues-api';
+import dashboardRouter from './routes/api-webapp/seo/dashboard/dashboard-api';
+import backlinksRouter from './routes/api-webapp/seo/backlinks/backlinks-api';
+import seoAccessibilityRouter from './routes/api-webapp/seo/accessibility/accessibility-api';
+import queueRouter from './routes/api-webapp/seo/queue/queue-api';
+import comprehensiveRouter from './routes/api-webapp/seo/comprehensive/comprehensive-seo-api';
 
 import path from "path";
 const app = express();
@@ -171,8 +189,28 @@ app.use("/company-permission", companyPermissionRouter);
 app.use("/role-permissions", RolePermissionsRouter);
 app.use("/user-overrides", UserPermissionOverridesRouter);
 app.use("/rbac", RbacRouter);
-app.use("/seo", seoAnalyzer);
 app.use("/payroll", payrollTransaction);
+
+// SEO Analysis Routes - All endpoints mounted with /seo prefix
+app.use("/seo/lighthouse", lighthouseRouter);
+app.use("/seo/keyword-ranking", keywordRankingRouter);
+app.use("/seo/responsive", responsiveRouter);
+app.use("/seo/security", securityRouter);
+app.use("/seo/site", siteRouter);
+app.use("/seo/tech-js", techJsRouter);
+app.use("/seo/pagination", paginationRouter);
+app.use("/seo/internal-seo", internalSeoRouter);
+app.use("/seo/google-search-console", googleSearchConsoleRouter);
+app.use("/seo/google-analytics", googleAnalyticsRouter);
+app.use("/seo/google-services", googleServicesRouter);
+app.use("/seo/seo-data", seoDataRouter);
+app.use("/seo/all-issues", allIssuesRouter);
+app.use("/seo/dashboard", dashboardRouter);
+app.use("/seo/backlinks", backlinksRouter);
+app.use("/seo/accessibility",seoAccessibilityRouter);
+app.use("/seo/queue", queueRouter);
+app.use("/seo/comprehensive", comprehensiveRouter);
+
 app.use("/superAdmin/zarklyx/auth", zarklyXAuthRouter);
 app.use("/superAdmin/zarklyx/user", zarklyXUsersRouter);
 app.use("/superAdmin/zarklyx/roles", zarklyXRolesRouter);
@@ -235,6 +273,18 @@ const server = http.createServer(app);
     await initializeSocket(server);
   } catch (err) {
     console.error("Socket.io initialization error:", err);
+  }
+})();
+
+// Initialize Job Queue System (Phase 2)
+(async () => {
+  try {
+    const { initializeJobQueue } = require('./routes/api-webapp/seo/workers/seo-workers');
+    await initializeJobQueue();
+    console.log('✅ Job queue and workers initialized');
+  } catch (err) {
+    console.warn("Job queue initialization warning:", err);
+    console.warn("⚠️ SEO job queue will not be available");
   }
 })();
 

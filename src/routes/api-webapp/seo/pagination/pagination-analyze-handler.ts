@@ -2,6 +2,9 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import * as cheerio from 'cheerio';
 import { generateUniversalSeoIssues } from '../../../../services/universal-seo-issues';
+import { PaginationAnalysis } from './pagination-model';
+import browserPool from '../../../../services/browser-pool.service';
+import { AnalysisSaver } from '../utils/analysis-base';
 
 /* ===================== CONSTANTS ===================== */
 
@@ -1015,27 +1018,28 @@ async function analyzePaginationPage(
 export async function analyzeSitePagination(
   urls: string[]
 ): Promise<SiteWidePaginationAnalysis> {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await browserPool.acquire();
 
-  const pages: PaginationPageAnalysis[] = [];
+  try {
+    const pages: PaginationPageAnalysis[] = [];
 
-  // Analyze each URL in parallel with limited concurrency
-  const concurrencyLimit = 5;
-  for (let i = 0; i < urls.length; i += concurrencyLimit) {
-    const batch = urls.slice(i, i + concurrencyLimit);
-    const batchPromises = batch.map(url => analyzePaginationPage(browser, url));
-    const batchResults = await Promise.all(batchPromises);
-    pages.push(...batchResults);
-    
-    console.log(`Analyzed ${Math.min(i + concurrencyLimit, urls.length)} of ${urls.length} URLs`);
-  }
+    // Analyze each URL in parallel with limited concurrency
+    const concurrencyLimit = 5;
+    for (let i = 0; i < urls.length; i += concurrencyLimit) {
+      const batch = urls.slice(i, i + concurrencyLimit);
+      const batchPromises = batch.map(url => analyzePaginationPage(browser, url));
+      const batchResults = await Promise.all(batchPromises);
+      pages.push(...batchResults);
+      
+      console.log(`Analyzed ${Math.min(i + concurrencyLimit, urls.length)} of ${urls.length} URLs`);
+    }
 
-  await browser.close();
+    await browserPool.release(browser);
 
-  const paginatedPages = pages.filter(p => p.pagination.isPaginationPresent);
-  const depths = paginatedPages.map(p => p.pagination.paginationDepth);
+    const paginatedPages = pages.filter(p => p.pagination.isPaginationPresent);
+    const depths = paginatedPages.map(p => p.pagination.paginationDepth);
 
-  return {
+    return {
     summary: {
       totalPagesAnalyzed: pages.length,
       paginatedPages: paginatedPages.length,
@@ -1091,6 +1095,10 @@ export async function analyzeSitePagination(
     },
     pages
   };
+  } catch (error) {
+    await browserPool.release(browser);
+    throw error;
+  }
 }
 
 /* ===================== HANDLER FUNCTIONS ===================== */
@@ -1116,46 +1124,49 @@ export async function analyzePaginationHandler(
 
     console.log(`[${new Date().toISOString()}] Starting pagination analysis for: ${url}`);
 
-    const browser = await puppeteer.launch({ 
-      headless: options.headless !== undefined ? options.headless : true 
-    });
+    const browser = await browserPool.acquire();
 
-    console.log(`[${new Date().toISOString()}] Fetching sitemap URLs...`);
-    const sitemapUrls = await fetchSitemapUrls(browser, url, sitemapUrl);
-    
-    if (sitemapUrls.length === 0) {
-      throw new Error('No URLs found in sitemap or failed to fetch sitemap');
-    }
+    try {
+      console.log(`[${new Date().toISOString()}] Fetching sitemap URLs...`);
+      const sitemapUrls = await fetchSitemapUrls(browser, url, sitemapUrl);
+      
+      if (sitemapUrls.length === 0) {
+        await browserPool.release(browser);
+        throw new Error('No URLs found in sitemap or failed to fetch sitemap');
+      }
 
-    const urlsToAnalyze = sitemapUrls.slice(0, maxUrls);
-    console.log(`[${new Date().toISOString()}] Found ${sitemapUrls.length} URLs in sitemap, analyzing ${urlsToAnalyze.length} URLs`);
+      const urlsToAnalyze = sitemapUrls.slice(0, maxUrls);
+      console.log(`[${new Date().toISOString()}] Found ${sitemapUrls.length} URLs in sitemap, analyzing ${urlsToAnalyze.length} URLs`);
 
-    await browser.close();
+      await browserPool.release(browser);
 
-    const result = await analyzeSitePagination(urlsToAnalyze);
-    
-    const analysisWithUrl = {
-      ...result,
-      url: url
-    };
-    
-    const geminiIssues = await generateUniversalSeoIssues(analysisWithUrl, 'pagination');
+      const result = await analyzeSitePagination(urlsToAnalyze);
+      
+      const analysisWithUrl = {
+        ...result,
+        url: url
+      };
+      
+      const geminiIssues = await generateUniversalSeoIssues(analysisWithUrl, 'pagination');
     
     const processingTime = Date.now() - startTime;
 
     console.log(`[${new Date().toISOString()}] Analysis complete in ${processingTime}ms`);
     console.log(`[${new Date().toISOString()}] Analyzed ${result.summary.totalPagesAnalyzed} pages, found ${result.summary.paginatedPages} with pagination`);
 
-    return {
-      success: true,
-      url,
-      timestamp: new Date().toISOString(),
-      processingTime: `${processingTime}ms`,
-      data: {
-        ...result,
-        issues: geminiIssues
-      }
-    };
+      return {
+        success: true,
+        url,
+        timestamp: new Date().toISOString(),
+        processingTime: `${processingTime}ms`,
+        data: {
+          ...result,
+          issues: geminiIssues
+        }
+      };
+    } catch (browserError) {
+      throw browserError;
+    }
 
   } catch (error: any) {
     const processingTime = Date.now() - startTime;
@@ -1178,28 +1189,31 @@ export async function analyzePaginationForPages(
   urls: string[],
   options: { timeout?: number; headless?: any } = {}
 ): Promise<PaginationPageAnalysis[]> {
-  const browser = await puppeteer.launch({ 
-    headless: options.headless !== undefined ? options.headless : true 
-  });
+  const browser = await browserPool.acquire();
 
-  const results: PaginationPageAnalysis[] = [];
-  
-  for (const url of urls) {
-    try {
-      const result = await analyzePaginationPage(browser, url);
-      results.push(result);
-    } catch (error) {
-      console.error(`Failed to analyze ${url}:`, error);
+  try {
+    const results: PaginationPageAnalysis[] = [];
+    
+    for (const url of urls) {
+      try {
+        const result = await analyzePaginationPage(browser, url);
+        results.push(result);
+      } catch (error) {
+        console.error(`Failed to analyze ${url}:`, error);
+      }
     }
-  }
 
-  await browser.close();
-  return results;
+    await browserPool.release(browser);
+    return results;
+  } catch (error) {
+    await browserPool.release(browser);
+    throw error;
+  }
 }
 
 // Function to check if a specific page has pagination
 export async function checkPageForPagination(url: string): Promise<PaginationDetection> {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await browserPool.acquire();
   const page = await browser.newPage();
 
   try {
@@ -1209,60 +1223,130 @@ export async function checkPageForPagination(url: string): Promise<PaginationDet
     
     const pagination = detectPagination($, url);
     
-    await browser.close();
+    await page.close();
+    await browserPool.release(browser);
     return pagination;
   } catch (error) {
-    await browser.close();
+    await page.close();
+    await browserPool.release(browser);
     throw error;
   }
 }
 
 /* ===================== HANDLER FUNCTIONS ===================== */
 
-// export async function analyzePaginationHandler(
-//   url: string, 
-//   options: PaginationAnalysisOptions = {}
-// ): Promise<AnalysisResult<SiteWidePaginationAnalysis>> {
-//   const startTime = Date.now();
-  
-//   try {
-//     const { maxPages = 10, followPagination = true } = options;
-
-//     if (!url) {
-//       throw new Error('URL is required');
-//     }
-
-//     try {
-//       new URL(url);
-//     } catch {
-//       throw new Error('Invalid URL format. Must include protocol (http:// or https://)');
-//     }
-
-//     console.log(`[${new Date().toISOString()}] Pagination analysis for: ${url}`);
-
-//     const result = await analyzeSitePagination([url]);
-//     const processingTime = Date.now() - startTime;
-
-//     console.log(`[${new Date().toISOString()}] Analysis complete in ${processingTime}ms`);
-
-//     return {
-//       success: true,
-//       url,
-//       timestamp: new Date().toISOString(),
-//       processingTime: `${processingTime}ms`,
-//       data: result
-//     };
-
-//   } catch (error: any) {
-//     const processingTime = Date.now() - startTime;
-//     console.error(`[${new Date().toISOString()}] Error after ${processingTime}ms:`, error.message);
-    
-//     return {
-//       success: false,
-//       error: error.message || 'Pagination analysis failed',
-//       processingTime: `${processingTime}ms`,
-//       timestamp: new Date().toISOString()
+// Main handler function - analyzeSitePagination() is used directly by routes
 //     };
 //   }
 // }
+
+/**
+ * Pagination analysis saver with page aggregation
+ */
+class PaginationSaver extends AnalysisSaver {
+  /**
+   * Count pages with specific SEO issues
+   */
+  private countPagesWithIssue(pages: any[], issueKey: string): number {
+    return pages.filter((p: any) => p.seoIssues?.[issueKey]).length;
+  }
+
+  /**
+   * Calculate average and max load times from pages
+   */
+  private calculateLoadTimes(pages: any[]): { avg: number; max: number } {
+    const loadTimes = pages.map((p: any) => p.performance?.loadTime || 0);
+    if (loadTimes.length === 0) return { avg: 0, max: 0 };
+    
+    const sum = loadTimes.reduce((a: number, b: number) => a + b, 0);
+    return {
+      avg: Math.round(sum / loadTimes.length),
+      max: Math.max(...loadTimes)
+    };
+  }
+
+  /**
+   * Create simplified page summary for storage
+   */
+  private createPageSummary(pages: any[]): any[] {
+    return pages.map((p: any) => ({
+      url: p.url,
+      hasPagination: p.paginationDetection?.hasPagination,
+      type: p.paginationDetection?.type
+    }));
+  }
+
+  async save(analysisResult: any): Promise<void> {
+    await this.saveWithErrorHandling('Pagination', analysisResult.url, async () => {
+      const data = analysisResult.data;
+      if (!data || !analysisResult.success) {
+        console.warn('⚠️ No data to save for Pagination analysis');
+        return;
+      }
+
+      const summary = data.summary || {};
+      const patterns = data.paginationPatterns || {};
+      const pages = data.pages || [];
+      
+      // Calculate issue counts efficiently
+      const pagesWithDuplicates = this.countPagesWithIssue(pages, 'duplicateContent');
+      const pagesWithOrphans = this.countPagesWithIssue(pages, 'orphanedPages');
+      const pagesWithBrokenLinks = this.countPagesWithIssue(pages, 'brokenPaginationLinks');
+      
+      // Calculate performance metrics
+      const { avg: avgLoadTime, max: slowestLoadTime } = this.calculateLoadTimes(pages);
+
+      // Extract pagination details from first paginated page
+      const firstPaginatedPage = pages.find((p: any) => p.paginationDetection?.hasPagination);
+      const paginationInfo = firstPaginatedPage?.paginationDetection || {};
+      const implementation = firstPaginatedPage?.implementationQuality || {};
+
+      await PaginationAnalysis.create({
+        url: analysisResult.url,
+        
+        // Detection
+        hasPagination: summary.paginatedPages > 0,
+        paginationType: patterns.mostCommonType || null,
+        totalPagesFound: summary.totalPagesAnalyzed,
+        maxDepthReached: summary.highestPaginationDepth || 0,
+        
+        // Implementation quality
+        hasRelNext: implementation.relNextPrev?.hasRelNext || false,
+        hasRelPrev: implementation.relNextPrev?.hasRelPrev || false,
+        hasCanonical: implementation.canonicalUsage?.hasCanonical || false,
+        hasViewallPage: false,
+        implementationScore: implementation.score || 0,
+        
+        // SEO Issues
+        hasDuplicateContent: pagesWithDuplicates > 0,
+        hasOrphanedPages: pagesWithOrphans > 0,
+        orphanedPagesCount: pagesWithOrphans,
+        hasBrokenPaginationLinks: pagesWithBrokenLinks > 0,
+        brokenLinksCount: pagesWithBrokenLinks,
+        
+        // Structure
+        ...(paginationInfo.pattern && { paginationPattern: paginationInfo.pattern }),
+        ...(paginationInfo.selectors && { paginationSelector: paginationInfo.selectors.join(', ') }),
+        
+        // Performance
+        avgLoadTimeMs: avgLoadTime,
+        slowestPageLoadMs: slowestLoadTime,
+        
+        // Store complete data as JSON - safely
+        fullReport: this.safeStringify(analysisResult),
+        pagesAnalyzed: this.safeStringify(this.createPageSummary(pages)),
+        aiIssues: this.safeStringify(data.issues),
+      });
+    });
+  }
+}
+
+const paginationSaver = new PaginationSaver();
+
+/**
+ * Save Pagination analysis results to database for historical tracking
+ */
+export async function savePaginationAnalysis(analysisResult: any): Promise<void> {
+  await paginationSaver.save(analysisResult);
+}
 

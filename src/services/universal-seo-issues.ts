@@ -80,7 +80,88 @@ export async function generateUniversalSeoIssues(seoJson: object, analysisType: 
       });
       
       const sanitizedData = sanitizeDataForGemini(seoJson);
-      const prompt = `Analyze SEO data and return ONLY issues in this exact JSON format:
+      
+      let prompt: string;
+      
+      // Different prompts for different analysis types
+      if (analysisType === 'tech-frameworks' || analysisType === 'tech-js') {
+        prompt = `You are an expert web performance and SEO analyst. Analyze the JavaScript framework and dependency data below and generate actionable insights.
+
+**Return ONLY a JSON array** in this exact format:
+[
+  {
+    "severity": "critical" | "warning" | "suggestion",
+    "category": "SEO Visibility" | "Performance" | "SEO & Performance" | "Performance & Privacy" | "SEO",
+    "title": "Short descriptive title (5-8 words)",
+    "description": "Detailed description of the issue or observation (20-40 words)",
+    "impact": "Specific impact on SEO, performance, or user experience (20-40 words)",
+    "recommendation": "Actionable steps to fix or optimize (30-50 words)"
+  }
+]
+
+**Severity Guidelines:**
+- "critical": Issues that severely impact SEO visibility, rendering, or performance (status: critical, scores < 40, <50% content visibility)
+- "warning": Issues that moderately impact performance or SEO (status: warning, scores 40-70, CSR without SSR)
+- "suggestion": Optimization opportunities that could improve performance (status: good but with room for improvement)
+
+**Focus Areas:**
+1. **SEO Visibility**: Content visibility without JS, Googlebot renderability, client-side vs server-side rendering
+2. **Performance**: Render-blocking scripts, JS execution time, bundle sizes, DOM Content Loaded time
+3. **Dependencies**: Third-party scripts, unused JavaScript, critical file count, dependency score
+
+**Important:**
+- Base insights on the actual metric values and status fields in the data
+- If contentVisibleWithoutJs status is "critical", this is HIGH PRIORITY
+- If googleBotRenderable status is "critical", this is HIGH PRIORITY
+- If serverSideRendering is false with CSR detected, recommend SSR implementation
+- Mention specific frameworks detected (React, Angular, Vue, etc.) in recommendations
+- Include specific numbers from the data (percentages, counts, sizes, times)
+- Return empty array [] if all metrics are "good" and no issues found
+
+**Data to analyze:**
+${JSON.stringify(sanitizedData, null, 2)}`;
+      } else if (analysisType === 'accessibility') {
+        prompt = `You are an expert web accessibility and mobile usability analyst. Analyze the accessibility audit data below and generate actionable insights.
+
+**Return ONLY a JSON array** in this exact format:
+[
+  {
+    "severity": "critical" | "warning" | "suggestion",
+    "category": "Accessibility" | "Mobile Usability" | "Touch Targets" | "Viewport" | "Responsive Design",
+    "title": "Short descriptive title (5-8 words)",
+    "description": "Detailed description of the issue or observation (20-40 words)",
+    "impact": "Specific impact on accessibility, usability, or user experience (20-40 words)",
+    "recommendation": "Actionable steps to fix or improve (30-50 words)"
+  }
+]
+
+**Severity Guidelines:**
+- "critical": Severe accessibility issues (scores < 50, missing viewport, no touch target optimization, WCAG failures)
+- "warning": Moderate issues affecting usability (scores 50-80, suboptimal touch targets, limited responsiveness)
+- "suggestion": Minor improvements and optimizations (scores > 80 but room for improvement)
+
+**Focus Areas:**
+1. **Accessibility Score**: WCAG compliance, aria labels, color contrast, keyboard navigation
+2. **Mobile Usability**: Viewport configuration, content width, font sizes
+3. **Touch Targets**: Target sizes, spacing between interactive elements
+4. **Responsive Design**: Layout adaptation, image scaling, media queries
+5. **Interaction**: Visual feedback, zoom capabilities, orientation support
+
+**Important:**
+- Base insights on actual audit scores and detected issues
+- If accessibility score < 70, this is HIGH PRIORITY
+- If mobile usability < 60, this is HIGH PRIORITY
+- If touch target score < 70, this is HIGH PRIORITY
+- Include specific numbers and percentages from audits
+- Reference WCAG guidelines when relevant
+- Provide specific recommendations with examples
+- Return empty array [] if all scores are excellent (> 90) and no issues found
+
+**Data to analyze:**
+${JSON.stringify(sanitizedData, null, 2)}`;
+      } else {
+        // Default prompt for general SEO analysis
+        prompt = `Analyze SEO data and return ONLY issues in this exact JSON format:
 [
   {
     "category": "Structure | URLs | Indexing | Protocol | Accessibility | Organization | Performance | Content | Security | Mobile | Technical",
@@ -94,6 +175,7 @@ export async function generateUniversalSeoIssues(seoJson: object, analysisType: 
 
 Return empty array [] if no issues found.
 Data: ${JSON.stringify(sanitizedData).substring(0, 3000)}`;
+      }
       
       const result = await model.generateContent(prompt);
       const parsed = safeJsonParse(result.response.text());
