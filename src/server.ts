@@ -75,10 +75,10 @@ import zarklyXOverridesRouter from "./routes/api-webapp/superAdmin/rbac/user-per
 import zarklyX2FARouter from "./routes/api-webapp/superAdmin/authentication/2fa/zarklyX-2fa-api";
 import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-api';
 
-import warehouseRoutes from './routes/api-webapp/inventory management/warehouse/warehouse-api';
-import stockTransactionRoutes from './routes/api-webapp/inventory management/stock/stock-transaction/stock-transaction-api';
-import stockBalanceRoutes from './routes/api-webapp/inventory management/stock/stock-balance/stock-balance-api';
-import systemLogRoutes from './routes/api-webapp/system log/system-log-api';
+import warehouseRoutes from './routes/api-webapp/inventory-management/warehouse/warehouse-api';
+import stockTransactionRoutes from './routes/api-webapp/inventory-management/stock/stock-transaction/stock-transaction-api';
+import stockBalanceRoutes from './routes/api-webapp/inventory-management/stock/stock-balance/stock-balance-api';
+import systemLogRoutes from './routes/api-webapp/system-log/system-log-api';
 import todoRoutes from './routes/api-webapp/todo/todo-api';
 
 import path from "path";

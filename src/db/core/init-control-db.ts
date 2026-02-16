@@ -71,6 +71,12 @@ import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permi
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
 
+import { Warehouse } from "../../routes/api-webapp/inventory-management/warehouse/warehouse-model";
+import { StockTransaction } from "../../routes/api-webapp/inventory-management/stock/stock-transaction/stock-transaction-model";
+import { StockBalance } from "../../routes/api-webapp/inventory-management/stock/stock-balance/stock-balance-model";
+import { SystemLog } from "../../routes/api-webapp/system-log/system-log-model";
+import { Todo } from "../../routes/api-webapp/todo/todo-model";
+
 export {
   User,
   Company,
@@ -131,7 +137,13 @@ export {
   ItAssetsManagement,
   ItTicketsAttachments,
   ItAssetsAttachments,
-  ItTicketsTimeline
+  ItTicketsTimeline,
+  Warehouse,
+  StockTransaction,
+  StockBalance,
+  SystemLog,
+  Todo,
+
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -205,6 +217,13 @@ export function initControlDB(sequelize: Sequelize) {
   ZarklyXUser.initModel(sequelize);
   ZarklyXRolePermission.initModel(sequelize);
   ZarklyXUserPermissionOverride.initModel(sequelize);
+
+  Warehouse.initModel(sequelize);
+  StockTransaction.initModel(sequelize);
+  StockBalance.initModel(sequelize);
+  SystemLog.initModel(sequelize);
+  Todo.initModel(sequelize);
+
 
 
   // Relations and associations
@@ -1329,6 +1348,120 @@ export function initControlDB(sequelize: Sequelize) {
     as: "permission",
   });
 
+  //Compony <-> Warehouse
+  Company.hasMany(Warehouse, {
+    foreignKey: "companyId",
+    as: "warehouses",
+  });
+  Warehouse.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+
+  //company <-> StockTransaction
+  Company.hasMany(StockTransaction, {
+    foreignKey: "companyId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  //Warehouse <-> StockTransaction
+  Warehouse.hasMany(StockTransaction, {
+    foreignKey: "warehouseId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Warehouse, {
+    foreignKey: "warehouseId",
+    as: "warehouse",
+  });
+  //Item <-> StockTransaction
+  Item.hasMany(StockTransaction, {
+    foreignKey: "itemId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+  //vendor <-> stockTransaction
+  Vendor.hasMany(StockTransaction, {
+    foreignKey: "vendorId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+  });
+
+  //Company <-> StockBalance
+  Company.hasMany(StockBalance, {
+    foreignKey: "companyId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  //Warehouse <-> StockBalance
+  Warehouse.hasMany(StockBalance, {
+    foreignKey: "warehouseId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Warehouse, {
+    foreignKey: "warehouseId",
+    as: "warehouse",
+  });
+  //Item <-> StockBalance
+  Item.hasMany(StockBalance, {
+    foreignKey: "itemId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+
+  // SystemLog <-> User
+  User.hasMany(SystemLog, {
+    foreignKey: "userId",
+    as: "systemLogs",
+  });
+  SystemLog.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
+  // SystemLog <-> Company
+  Company.hasMany(SystemLog, {
+    foreignKey: "companyId",
+    as: "systemLogs",
+  });
+  SystemLog.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  // Todo <-> Company
+  Company.hasMany(Todo, {
+    foreignKey: "companyId",
+    as: "todos",
+  });
+  Todo.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  // Todo <-> User
+  User.hasMany(Todo, {
+    foreignKey: "userId",
+    as: "todos",
+  });
+  Todo.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
+
   console.log("✅ ZarklyX RBAC associations initialized");
 
   // Role <-> SubRole
@@ -1397,5 +1530,10 @@ export function initControlDB(sequelize: Sequelize) {
     Role,
     RolePermissions,
     UserPermissionOverrides,
+    Warehouse,
+    StockTransaction,
+    StockBalance,
+    SystemLog,
+    Todo
   };
 }

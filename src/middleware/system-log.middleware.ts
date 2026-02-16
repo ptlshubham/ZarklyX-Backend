@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { SystemLog } from "../routes/api-webapp/system log/system-log-model";
+import { SystemLog } from "../routes/api-webapp/system-log/system-log-model";
 
 type SystemLogConfig = {
   module: string;
