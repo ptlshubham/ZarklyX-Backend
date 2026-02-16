@@ -1,6 +1,6 @@
 import { sendEmail } from "./mailService";
 import { Company } from "../routes/api-webapp/company/company-model";
-import { Warehouse } from "../routes/api-webapp/inventory management/warehouse/warehouse-model";
+import { Warehouse } from "../routes/api-webapp/inventory-management/warehouse/warehouse-model";
 import { Item } from "../routes/api-webapp/accounting/item/item-model"
 
 // Get Company email by company id
