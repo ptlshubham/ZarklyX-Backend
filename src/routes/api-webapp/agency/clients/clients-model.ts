@@ -55,6 +55,9 @@ export class Clients extends Model<
     declare accountType: string | null;
     declare currency: string | null;
     declare taxVatId: string | null;
+    
+    // Accounting
+    declare openingBalance: CreationOptional<number>;
 
     // Flags
     declare isVip: boolean;
@@ -282,6 +285,13 @@ export class Clients extends Model<
                     type: DataTypes.STRING(100),
                     allowNull: true,
                     defaultValue: null,
+                },
+                
+                // Accounting
+                openingBalance: {
+                    type: DataTypes.DECIMAL(18, 2),
+                    allowNull: false,
+                    defaultValue: 0,
                 },
 
                 // Flags / extra info

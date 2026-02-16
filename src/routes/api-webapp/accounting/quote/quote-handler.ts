@@ -779,6 +779,80 @@ export const deleteQuote = async (
   };
 };
 
+// Bulk delete quotes
+export const bulkDeleteQuotes = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Fetch quote with lock
+      const quote = await Quote.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!quote) {
+        results.failed.push({ id, reason: "Quote not found" });
+        continue;
+      }
+
+      // Status validation
+      if (quote.status === "Converted") {
+        results.failed.push({
+          id,
+          reason: "Converted quotes cannot be deleted",
+        });
+        continue;
+      }
+
+      // Soft delete quote items
+      await QuoteItem.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { quoteId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete TDS/TCS entries
+      await QuoteTdsTcs.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { quoteId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete quote itself
+      await Quote.update(
+        {
+          isActive: false,
+          isDeleted: true,
+          status: "Cancelled",
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
+};
+
 // Search quotes with filters
 export interface SearchQuoteFilters {
   companyId: string;

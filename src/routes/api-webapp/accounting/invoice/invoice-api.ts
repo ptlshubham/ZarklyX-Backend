@@ -7,7 +7,6 @@ import {
   updateInvoice,
   deleteInvoice,
   searchInvoices,
-  convertInvoiceToPayment,
   getInvoiceByPublicToken,
   getPendingInvoiceAmount,
   bulkDeleteInvoices,
@@ -490,60 +489,48 @@ router.delete("/deleteInvoice/:id",async (req: Request, res: Response): Promise<
   }
 );
 
-// POST /accounting/invoice/convertToPayment/:id?companyId
-router.post("/convertToPayment/:id",async (req: Request, res: Response): Promise<any> => {
+// POST /accounting/invoice/bulkDelete?companyId=
+router.post("/bulkDelete", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-    let companyId = req.query.companyId;
-    let invoiceId  = req.params.id;
-    if (Array.isArray(invoiceId)) invoiceId = invoiceId[0];
-    companyId = companyId as string;
+    const { companyId } = req.query;
+    const { ids } = req.body;
+
     if (!companyId) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         message: "companyId is required",
       });
     }
-    const company = await Company.findByPk(companyId);
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "ids array is required and must not be empty",
+      });
+    }
+
+    const company = await Company.findByPk(companyId as string);
     if (!company) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         message: "company not found",
       });
     }
-    const invoiceData = req.body;
-    if (!companyId) {
-      await t.rollback();
-      return res.status(400).json({ success: false, message: "companyId is required" });
-    }
+    const results = await bulkDeleteInvoices(ids, companyId as string, t);
 
-    // Optionally validate invoiceData fields if needed
-    if (invoiceData && invoiceData.items) {
-      if (!Array.isArray(invoiceData.items) || invoiceData.items.length === 0) {
-        await t.rollback();
-        return res.status(400).json({ success: false, message: "items must be a non-empty array" });
-      }
-      for (const [i, item] of invoiceData.items.entries()) {
-        if (!item.itemId || typeof item.itemId !== "string") {
-          await t.rollback();
-          return res.status(400).json({ success: false, message: `items[${i}].itemId is required and must be a string` });
-        }
-        if (item.quantity === undefined || item.quantity === null || isNaN(item.quantity)) {
-          await t.rollback();
-          return res.status(400).json({ success: false, message: `items[${i}].quantity is required and must be a number` });
-        }
-      }
-    }
-    const result = await convertInvoiceToPayment(invoiceId, companyId, invoiceData, t);
     await t.commit();
-    return res.status(201).json({
+    return res.json({
       success: true,
-      message: "Invoice converted to payment successfully",
-      data: result,
+      message: `Bulk delete completed. ${results.successful.length} deleted, ${results.failed.length} failed.`,
+      data: results,
     });
   } catch (err: any) {
     await t.rollback();
-    return res.status(400).json({ success: false, message: err.message || "Failed to convert purchase order to bill" });
+    console.error("Bulk Delete Invoice Error:", err);
+    return serverError(res, err.message || "Failed to bulk delete invoices");
   }
 });
 

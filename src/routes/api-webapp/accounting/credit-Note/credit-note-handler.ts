@@ -7,6 +7,53 @@ import { Clients } from "../../agency/clients/clients-model";
 import { sendEmail } from "../../../../services/mailService";
 import crypto from "crypto";
 import { Invoice } from "../invoice/invoice-model";
+import { addCreditNoteLedger, deleteLedgerByReference } from "../client-ledger/client-ledger-handler";
+
+// // Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
+// const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
+//   const p = (placeOfSupply ?? '').toString().trim();
+//   const c = (companyState ?? '').toString().trim();
+//   if (!p || !c) return false;
+//   const pLower = p.toLowerCase();
+//   const cLower = c.toLowerCase();
+  
+//   // Direct substring match
+//   if (pLower.includes(cLower) || cLower.includes(pLower)) return true;
+  
+//   // State abbreviation to full name mapping
+//   const stateCodeMap: Record<string, string> = {
+//     AN: 'andaman', AP: 'andhra', AR: 'arunachal', AS: 'assam', BR: 'bihar', CH: 'chandigarh', CT: 'chhattisgarh',
+//     DL: 'delhi', GA: 'goa', GJ: 'gujarat', HP: 'himachal', HR: 'haryana', JH: 'jharkhand', JK: 'jammu',
+//     KA: 'karnataka', KL: 'kerala', LA: 'ladakh', MH: 'maharashtra', ML: 'meghalaya', MN: 'manipur',
+//     MP: 'madhya', MZ: 'mizoram', NL: 'nagaland', OR: 'odisha', PB: 'punjab', PY: 'puducherry',
+//     RJ: 'rajasthan', SK: 'sikkim', TN: 'tamil', TR: 'tripura', TS: 'telangana', UP: 'uttar', UK: 'uttarakhand', WB: 'west'
+//   };
+  
+//   // Extract 2-letter state code from place (handles 'GJ (24)', 'AS (18)', etc.)
+//   const codeMatchPlace = p.match(/^([A-Za-z]{2})\s*\(/);
+//   if (codeMatchPlace) {
+//     const code = codeMatchPlace[1].toUpperCase();
+//     const mapped = stateCodeMap[code];
+//     if (mapped && cLower.includes(mapped)) return true;
+//   }
+  
+//   // Also check if place is just the state code or code-like pattern
+//   const justCodeMatch = p.match(/^([A-Za-z]{2})(\s|$)/i);
+//   if (justCodeMatch) {
+//     const code = justCodeMatch[1].toUpperCase();
+//     const mapped = stateCodeMap[code];
+//     if (mapped && cLower.includes(mapped)) return true;
+//   }
+  
+//   // Try to extract any 2-letter sequence and match against codes
+//   for (const [code, stateName] of Object.entries(stateCodeMap)) {
+//     if (pLower.includes(code.toLowerCase()) || pLower.startsWith(code.toLowerCase())) {
+//       if (cLower.includes(stateName)) return true;
+//     }
+//   }
+  
+//   return false;
+// };
 
 // Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
 const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
@@ -591,6 +638,9 @@ export const deleteCreditNote = async (
     }
   );
 
+  // Delete ledger entry for this credit note
+  await deleteLedgerByReference("credit_note", id, t);
+
   // Soft delete credit note
   await CreditNote.update(
     {
@@ -607,6 +657,61 @@ export const deleteCreditNote = async (
     message: "Credit Note deleted successfully",
     creditNoteId: id,
   };
+};
+
+// Bulk delete credit notes
+export const bulkDeleteCreditNotes = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Fetch credit note with lock
+      const creditNote = await CreditNote.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!creditNote) {
+        results.failed.push({ id, reason: "Credit Note not found" });
+        continue;
+      }
+
+      // Soft delete credit note items
+      await CreditNoteItem.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { creditNoteId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete credit note
+      await CreditNote.update(
+        {
+          isActive: false,
+          isDeleted: true,
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
 };
 
 // Search credit note with filters

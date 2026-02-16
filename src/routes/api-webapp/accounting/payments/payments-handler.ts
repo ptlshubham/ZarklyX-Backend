@@ -6,6 +6,7 @@ import { PurchaseOrder } from "../purchaseOrder/purchase-order-model";
 import { Clients } from "../../agency/clients/clients-model";
 import { Vendor } from "../vendor/vendor-model";
 import { PaymentsDocuments, DocumentType } from "./payments-documents-model";
+import { addPaymentLedger, deleteLedgerByReference } from "../client-ledger/client-ledger-handler";
 
 export interface DocumentPayment {
   documentId: string;
@@ -282,6 +283,21 @@ export const createPayment = async (body: CreatePaymentInput, t: Transaction) =>
         isDeleted: false,
       },
       { transaction: t, validate: true }
+    );
+  }
+
+  // Add ledger entry for payment received (client payments only)
+  if (
+    (paymentType === "Payment Received" || paymentType === "Advance Payment Received") &&
+    clientId
+  ) {
+    await addPaymentLedger(
+      clientId,
+      companyId,
+      payment.id,
+      payment.paymentDate,
+      payment.paymentAmount,
+      t
     );
   }
 
@@ -665,6 +681,15 @@ export const deletePayment = async (
     transaction: t,
   });
 
+  // Delete ledger entry for payment received (client payments only)
+  if (
+    (payment.paymentType === "Payment Received" ||
+      payment.paymentType === "Advance Payment Received") &&
+    payment.clientId
+  ) {
+    await deleteLedgerByReference("payment", id, t);
+  }
+
   // Soft delete payment
   const [affectedRows] = await Payments.update(
     { isActive: false, isDeleted: true },
@@ -672,6 +697,68 @@ export const deletePayment = async (
   );
 
   return affectedRows > 0;
+};
+
+// Bulk delete payments
+export const bulkDeletePayments = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Verify payment exists
+      const payment = await Payments.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+      });
+
+      if (!payment) {
+        results.failed.push({ id, reason: "Payment not found" });
+        continue;
+      }
+
+      // Reverse all document payments
+      const docs = await PaymentsDocuments.findAll({
+        where: { paymentId: id },
+        transaction: t,
+      });
+
+      for (const doc of docs) {
+        await updateDocumentBalance(
+          doc.documentId,
+          doc.documentType,
+          doc.paymentValue,
+          companyId,
+          true,
+          t
+        );
+      }
+
+      // Delete document links
+      await PaymentsDocuments.destroy({
+        where: { paymentId: id },
+        transaction: t,
+      });
+
+      // Soft delete payment
+      await Payments.update(
+        { isActive: false, isDeleted: true },
+        { where: { id, companyId }, transaction: t }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
 };
 
 // Search payments with filters

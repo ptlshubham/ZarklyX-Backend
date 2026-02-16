@@ -40,6 +40,7 @@ export default (app: Application) => {
     app.use("/influencerCategory", require("./api-webapp/influencer/category/influencerCategory-api"));
     app.use("/influencerIndustry", require("./api-webapp/influencer/industry/industry-api"));
     app.use("/influencerPlatform", require("./api-webapp/influencer/platform/platform-api"));
+    app.use("/accounting/dashboard",require("./api-webapp/accounting/accounting-dashboard/accounting-dashboard-api"));
     app.use("/accounting/item-Category",require("./api-webapp/accounting/item-Category/item-Category-api"));
     app.use("/accounting/unit",require("./api-webapp/accounting/unit/unit-api"));
     app.use("/accounting/item",require("./api-webapp/accounting/item/item-api"));
@@ -53,6 +54,7 @@ export default (app: Application) => {
     app.use("/accounting/purchase-bill",require("./api-webapp/accounting/purchase-Bill/purchase-bill-api"));
     app.use("accounting/purchaseOrder",require("./api-webapp/accounting/purchaseOrder/purchase-order-api"));
     app.use("/accounting/payments",require("./api-webapp/accounting/payments/payments-api"));
+    app.use("/accounting/client-ledger",require("./api-webapp/accounting/client-ledger/client-ledger-api"));
     app.use("/accounting/debit-note",require("./api-webapp/accounting/debtit-Note/debit-note-api"));
     app.use("/accounting/expense",require("./api-webapp/accounting/expenses/expenses-api"));
     app.use("/accounting/expense-item",require("./api-webapp/accounting/expenses/expenses-item/expense-item-api"));
@@ -76,6 +78,12 @@ export default (app: Application) => {
     app.use("/superAdmin/zarklyx/role-permissions", require("./api-webapp/superAdmin/zarklyX-role-permissions/zarklyX-role-permissions-api"));
     app.use("/superAdmin/zarklyx/overrides", require("./api-webapp/superAdmin/zarklyX-user-permission-override/zarklyX-user-permission-override-api"));
     app.use("/superAdmin/zarklyx/2fa", require("./api-webapp/superAdmin/zarklyX-2fa/zarklyX-2fa-api"));
-    
+  
+    app.use("/clients/client-assignment",require("./api-webapp/agency/clients/client-assignment/client-assignment-api"));
+    app.use("/inventory/warehouse", require("./api-webapp/inventory-management/warehouse/warehouse-api"));
+    app.use("/stock/transaction", require("./api-webapp/inventory-management/stock/stock-transaction/stock-transaction-api"));
+    app.use("/stock/balance", require("./api-webapp/inventory-management/stock/stock-balance/stock-balance-api"));
+    app.use("/system-log", require("./api-webapp/system-log/system-log-api"));
+    app.use("/todo", require("./api-webapp/todo/todo-api"));
 };
 
