@@ -778,22 +778,38 @@ export const convertPurchaseOrderToBill = async (
   // Copy all items from purchase order
   const poItems = (po as any).purchaseOrderItems || [];
   await PurchaseBillItem.bulkCreate(
-    poItems.map((item: any) => ({
-      purchaseBillId: bill.id,
-      itemId: item.itemId,
-      itemName: item.itemName,
-      description: item.description,
-      hsn: item.hsn,
-      sac: item.sac,
-      unitId: item.unitId,
-      tax: item.tax,
-      cessPercentage: item.cessPercentage,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      discount: item.discount,
-      taxAmount: item.taxAmount,
-      totalAmount: item.totalAmount,
-    })),
+    poItems.map((item: any) => {
+      // compute taxable if not present
+      const taxable = (item.taxable !== undefined && item.taxable !== null)
+        ? item.taxable
+        : (item.taxableAmount !== undefined && item.taxableAmount !== null)
+          ? item.taxableAmount
+          : (() => {
+              const q = Number(item.quantity) || 0;
+              const up = Number(item.unitPrice) || 0;
+              const disc = Number(item.discount) || 0;
+              const base = q * up;
+              return parseFloat((base * (1 - disc / 100)).toFixed(2));
+            })();
+
+      return ({
+        purchaseBillId: bill.id,
+        itemId: item.itemId,
+        itemName: item.itemName,
+        description: item.description,
+        hsn: item.hsn,
+        sac: item.sac,
+        unitId: item.unitId,
+        tax: item.tax,
+        cessPercentage: item.cessPercentage,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: item.discount,
+        taxable: taxable,
+        taxAmount: item.taxAmount,
+        totalAmount: item.totalAmount,
+      });
+    }),
     { transaction: t }
   );
 

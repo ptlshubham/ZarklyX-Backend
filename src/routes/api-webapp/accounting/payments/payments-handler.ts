@@ -103,11 +103,11 @@ const updateDocumentBalance = async (
     // Determine new status
     let newStatus = bill.status;
     if (newBalance <= 0) {
-      newStatus = "paid";
+      newStatus = "Closed";
     } else if (newBalance < (Number(bill.total ?? 0))) {
-      newStatus = "partially paid";
+      newStatus = "Partially Paid";
     } else {
-      newStatus = "unpaid";
+      newStatus = "Open";
     }
 
     await PurchaseBill.update(
@@ -213,18 +213,26 @@ export const createPayment = async (body: CreatePaymentInput, t: Transaction) =>
     }
   }
 
+  // Normalize numeric inputs to avoid string concatenation issues
+  const paymentAmountNum = Number(paymentAmount || 0);
+  const bankChargesNum = bankCharges ? Number(bankCharges) : 0;
+
   // Calculate summary fields
   let amountUsedForPayments = 0;
   for (const doc of documents) {
-    amountUsedForPayments += doc.paymentValue;
+    const paymentVal = Number(doc.paymentValue || 0);
+    amountUsedForPayments += paymentVal;
+
+    // Also normalize the doc.paymentValue so further usage is safe
+    (doc as any).paymentValue = paymentVal;
   }
 
-  const amountInExcess = paymentAmount - amountUsedForPayments;
+  const amountInExcess = paymentAmountNum - amountUsedForPayments;
 
   // Validate total payment values don't exceed payment amount
-  if (amountUsedForPayments > paymentAmount) {
+  if (amountUsedForPayments > paymentAmountNum) {
     throw new Error(
-      `Total payment values (${amountUsedForPayments}) exceed payment amount (${paymentAmount})`
+      `Total payment values (${amountUsedForPayments}) exceed payment amount (${paymentAmountNum})`
     );
   }
 
@@ -233,7 +241,7 @@ export const createPayment = async (body: CreatePaymentInput, t: Transaction) =>
     await updateDocumentBalance(
       doc.documentId,
       doc.documentType,
-      doc.paymentValue,
+      Number(doc.paymentValue || 0),
       companyId,
       false,
       t
@@ -248,13 +256,13 @@ export const createPayment = async (body: CreatePaymentInput, t: Transaction) =>
       clientId: clientId ?? null,
       vendorId: vendorId ?? null,
       paymentNo,
-      paymentAmount: parseFloat(paymentAmount.toFixed(2)),
+      paymentAmount: parseFloat(paymentAmountNum.toFixed(2)),
       paymentDate: paymentDate || new Date(),
       referenceNo: referenceNo || null,
       method,
-      bankCharges: bankCharges ? parseFloat(bankCharges.toFixed(2)) : 0,
+      bankCharges: bankChargesNum ? parseFloat(bankChargesNum.toFixed(2)) : 0,
       memo: memo || null,
-      amountReceived: parseFloat(paymentAmount.toFixed(2)),
+      amountReceived: parseFloat(paymentAmountNum.toFixed(2)),
       amountUsedForPayments: parseFloat(amountUsedForPayments.toFixed(2)),
       amountInExcess: parseFloat(amountInExcess.toFixed(2)),
       isActive: true,
@@ -270,7 +278,7 @@ export const createPayment = async (body: CreatePaymentInput, t: Transaction) =>
         paymentId: payment.id,
         documentId: doc.documentId,
         documentType: doc.documentType,
-        paymentValue: parseFloat(doc.paymentValue.toFixed(2)),
+        paymentValue: parseFloat(Number(doc.paymentValue || 0).toFixed(2)),
         isActive: true,
         isDeleted: false,
       },
@@ -863,7 +871,10 @@ export const getPaymentsForInvoice = async (
     include: [
       {
         model: Payments,
+        as: "payment",
         where: { companyId, isDeleted: false },
+        required: false,
+        attributes: ["id", "paymentNo", "paymentAmount", "paymentDate", "method", "referenceNo", "bankCharges", "memo"]
       },
     ],
   });
@@ -897,9 +908,14 @@ export const getPaymentsForPurchaseBill = async (
     include: [
       {
         model: Payments,
+        as: "payment",
         where: { companyId, isDeleted: false },
+        required: true,
+        attributes: ['id', 'paymentNo', 'paymentAmount', 'paymentDate', 'method', 'referenceNo', 'memo'],
       },
     ],
+    attributes: ['id', 'paymentId', 'documentId', 'paymentValue', 'documentType'],
+    raw: false,
   });
 };
 

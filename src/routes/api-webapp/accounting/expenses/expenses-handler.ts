@@ -269,6 +269,10 @@ export const getExpensesByCompany = async (companyId: string) => {
     where: { companyId, isDeleted: false },
     include: [
       {
+        model: ExpenseLineItem,
+        as: "expenseLineItems",
+      },
+      {
         model: Vendor,
         as: "vendor",
         required: false,

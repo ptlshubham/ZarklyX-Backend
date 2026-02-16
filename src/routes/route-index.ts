@@ -56,8 +56,8 @@ export default (app: Application) => {
     app.use("/accounting/payments",require("./api-webapp/accounting/payments/payments-api"));
     app.use("/accounting/client-ledger",require("./api-webapp/accounting/client-ledger/client-ledger-api"));
     app.use("/accounting/debit-note",require("./api-webapp/accounting/debtit-Note/debit-note-api"));
-    app.use("/accounting/expenseItem",require("./api-webapp/accounting/expenses/expenses-item/expense-item-api"));
     app.use("/accounting/expense",require("./api-webapp/accounting/expenses/expenses-api"));
+    app.use("/accounting/expense-item",require("./api-webapp/accounting/expenses/expenses-item/expense-item-api"));
     app.use("/superAdmin/modules",require("./api-webapp/superAdmin/modules/module-api"));
     app.use("/superAdmin/permissions",require("./api-webapp/superAdmin/permissions/permissions-api"));
     app.use("/superAdmin/subscription-plan",require("./api-webapp/superAdmin/subscription-plan/subscription-plan-api"));
