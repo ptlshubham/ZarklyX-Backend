@@ -55,52 +55,6 @@ const isSameState = (placeOfSupply: string | undefined, companyState: string | u
   return false;
 };
 
-// Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
-const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
-  const p = (placeOfSupply ?? '').toString().trim();
-  const c = (companyState ?? '').toString().trim();
-  if (!p || !c) return false;
-  const pLower = p.toLowerCase();
-  const cLower = c.toLowerCase();
-
-  // Direct substring match
-  if (pLower.includes(cLower) || cLower.includes(pLower)) return true;
-
-  // State abbreviation to full name mapping
-  const stateCodeMap: Record<string, string> = {
-    AN: 'andaman', AP: 'andhra', AR: 'arunachal', AS: 'assam', BR: 'bihar', CH: 'chandigarh', CT: 'chhattisgarh',
-    DL: 'delhi', GA: 'goa', GJ: 'gujarat', HP: 'himachal', HR: 'haryana', JH: 'jharkhand', JK: 'jammu',
-    KA: 'karnataka', KL: 'kerala', LA: 'ladakh', MH: 'maharashtra', ML: 'meghalaya', MN: 'manipur',
-    MP: 'madhya', MZ: 'mizoram', NL: 'nagaland', OR: 'odisha', PB: 'punjab', PY: 'puducherry',
-    RJ: 'rajasthan', SK: 'sikkim', TN: 'tamil', TR: 'tripura', TS: 'telangana', UP: 'uttar', UK: 'uttarakhand', WB: 'west'
-  };
-
-  // Extract 2-letter state code from place (handles 'GJ (24)', 'AS (18)', etc.)
-  const codeMatchPlace = p.match(/^([A-Za-z]{2})\s*\(/);
-  if (codeMatchPlace) {
-    const code = codeMatchPlace[1].toUpperCase();
-    const mapped = stateCodeMap[code];
-    if (mapped && cLower.includes(mapped)) return true;
-  }
-
-  // Also check if place is just the state code or code-like pattern
-  const justCodeMatch = p.match(/^([A-Za-z]{2})(\s|$)/i);
-  if (justCodeMatch) {
-    const code = justCodeMatch[1].toUpperCase();
-    const mapped = stateCodeMap[code];
-    if (mapped && cLower.includes(mapped)) return true;
-  }
-
-  // Try to extract any 2-letter sequence and match against codes
-  for (const [code, stateName] of Object.entries(stateCodeMap)) {
-    if (pLower.includes(code.toLowerCase()) || pLower.startsWith(code.toLowerCase())) {
-      if (cLower.includes(stateName)) return true;
-    }
-  }
-
-  return false;
-};
-
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
   quantity: number,

@@ -57,7 +57,6 @@ import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Asset
 import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
 import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
 import expensesRouter from './routes/api-webapp/accounting/expenses/expenses-api';
-import expenseItemRouter from './routes/api-webapp/accounting/expenses/expenses-item/expense-item-api';
 import modulesRouter from './routes/api-webapp/superAdmin/modules/module-api';
 import permissionsRouter from './routes/api-webapp/superAdmin/permissions/permissions-api';
 import subscriptionPlanRouter from './routes/api-webapp/superAdmin/subscription-plan/subscription-plan-api';
