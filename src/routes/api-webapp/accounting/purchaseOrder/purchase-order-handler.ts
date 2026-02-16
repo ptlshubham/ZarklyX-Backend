@@ -9,6 +9,52 @@ import { PurchaseBillItem } from "../purchase-Bill/purcharse-bill-item-model";
 import { sendEmail } from "../../../../services/mailService";
 import { Company } from "../../company/company-model";
 
+// Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
+const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
+  const p = (placeOfSupply ?? '').toString().trim();
+  const c = (companyState ?? '').toString().trim();
+  if (!p || !c) return false;
+  const pLower = p.toLowerCase();
+  const cLower = c.toLowerCase();
+  
+  // Direct substring match
+  if (pLower.includes(cLower) || cLower.includes(pLower)) return true;
+  
+  // State abbreviation to full name mapping
+  const stateCodeMap: Record<string, string> = {
+    AN: 'andaman', AP: 'andhra', AR: 'arunachal', AS: 'assam', BR: 'bihar', CH: 'chandigarh', CT: 'chhattisgarh',
+    DL: 'delhi', GA: 'goa', GJ: 'gujarat', HP: 'himachal', HR: 'haryana', JH: 'jharkhand', JK: 'jammu',
+    KA: 'karnataka', KL: 'kerala', LA: 'ladakh', MH: 'maharashtra', ML: 'meghalaya', MN: 'manipur',
+    MP: 'madhya', MZ: 'mizoram', NL: 'nagaland', OR: 'odisha', PB: 'punjab', PY: 'puducherry',
+    RJ: 'rajasthan', SK: 'sikkim', TN: 'tamil', TR: 'tripura', TS: 'telangana', UP: 'uttar', UK: 'uttarakhand', WB: 'west'
+  };
+  
+  // Extract 2-letter state code from place (handles 'GJ (24)', 'AS (18)', etc.)
+  const codeMatchPlace = p.match(/^([A-Za-z]{2})\s*\(/);
+  if (codeMatchPlace) {
+    const code = codeMatchPlace[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+  
+  // Also check if place is just the state code or code-like pattern
+  const justCodeMatch = p.match(/^([A-Za-z]{2})(\s|$)/i);
+  if (justCodeMatch) {
+    const code = justCodeMatch[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+  
+  // Try to extract any 2-letter sequence and match against codes
+  for (const [code, stateName] of Object.entries(stateCodeMap)) {
+    if (pLower.includes(code.toLowerCase()) || pLower.startsWith(code.toLowerCase())) {
+      if (cLower.includes(stateName)) return true;
+    }
+  }
+  
+  return false;
+};
+
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
   quantity: number,
@@ -139,7 +185,8 @@ const calculatePurchaseOrderTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
+    const isInterstate = !isSameState(placeOfSupply, companyState);
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, isInterstate, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -175,7 +222,7 @@ const calculatePurchaseOrderTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
+      if (!isSameState(placeOfSupply, companyState)) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -287,6 +334,12 @@ export const createPurchaseOrder = async (body: CreatePurchaseOrderInput, t: Tra
   );
 
   if (vendor?.email) {
+
+    const baseUrl = process.env.ADMIN_URL || process.env.BASE_URL || process.env.APP_BASE_URL || '';
+      if (!baseUrl) console.warn('ADMIN_URL not set — sending relative public-invoice link in email for invoice', purchaseOrder.id);
+      const normalizedBase = baseUrl ? baseUrl.replace(/\/$/, '') : '';
+      const purchaseOrderLink = normalizedBase ? `${normalizedBase}/public-invoice/${purchaseOrder.publicToken}` : `/public-invoice/${purchaseOrder.publicToken}`;
+
     await sendEmail({
       from: "" as any,
       to: vendor.email,
@@ -295,6 +348,7 @@ export const createPurchaseOrder = async (body: CreatePurchaseOrderInput, t: Tra
       replacements: {
         vendorName: vendor.name || "Vendor",
         poNo: purchaseOrder.poNo,
+        purchaseOrderLink,
         currentYear: new Date().getFullYear(),
       },
       html: null,
@@ -319,6 +373,11 @@ export const getPurchaseOrderById = async (id: string, companyId: string) => {
         model: PurchaseOrderItem,
         as: "purchaseOrderItems",
       },
+      {
+        model: Vendor,
+        as: "vendor",
+        attributes: ['id', 'name', 'email', 'phone', 'city', 'state'],
+      }
     ],
   });
 };
@@ -329,6 +388,13 @@ export const getPurchaseOrdersByCompany = async (companyId: string) => {
   return await PurchaseOrder.findAll({
     where: { companyId, isDeleted: false },
     order: [["poDate", "DESC"]],
+    include: [
+      {
+        model: Vendor,
+        as: "vendor",
+        attributes: ['id', 'name', 'email', 'phone', 'city', 'state'],
+      }
+    ]
   });
 };
 
@@ -473,6 +539,71 @@ export const deletePurchaseOrder = async (
     message: "Purchase order deleted successfully",
     purchaseOrderId: id,
   };
+};
+
+// Bulk delete purchase orders
+export const bulkDeletePurchaseOrders = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Fetch purchase order with lock
+      const purchaseOrder = await PurchaseOrder.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!purchaseOrder) {
+        results.failed.push({ id, reason: "Purchase order not found" });
+        continue;
+      }
+
+      // Status validation
+      if (purchaseOrder.status === "Converted") {
+        results.failed.push({
+          id,
+          reason: "Converted purchase orders cannot be deleted",
+        });
+        continue;
+      }
+
+      // Soft delete purchase order items
+      await PurchaseOrderItem.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { poId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete purchase order
+      await PurchaseOrder.update(
+        {
+          isActive: false,
+          isDeleted: true,
+          status: "Cancelled",
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
 };
 
 // Search invoices with filters
@@ -647,22 +778,38 @@ export const convertPurchaseOrderToBill = async (
   // Copy all items from purchase order
   const poItems = (po as any).purchaseOrderItems || [];
   await PurchaseBillItem.bulkCreate(
-    poItems.map((item: any) => ({
-      purchaseBillId: bill.id,
-      itemId: item.itemId,
-      itemName: item.itemName,
-      description: item.description,
-      hsn: item.hsn,
-      sac: item.sac,
-      unitId: item.unitId,
-      tax: item.tax,
-      cessPercentage: item.cessPercentage,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      discount: item.discount,
-      taxAmount: item.taxAmount,
-      totalAmount: item.totalAmount,
-    })),
+    poItems.map((item: any) => {
+      // compute taxable if not present
+      const taxable = (item.taxable !== undefined && item.taxable !== null)
+        ? item.taxable
+        : (item.taxableAmount !== undefined && item.taxableAmount !== null)
+          ? item.taxableAmount
+          : (() => {
+              const q = Number(item.quantity) || 0;
+              const up = Number(item.unitPrice) || 0;
+              const disc = Number(item.discount) || 0;
+              const base = q * up;
+              return parseFloat((base * (1 - disc / 100)).toFixed(2));
+            })();
+
+      return ({
+        purchaseBillId: bill.id,
+        itemId: item.itemId,
+        itemName: item.itemName,
+        description: item.description,
+        hsn: item.hsn,
+        sac: item.sac,
+        unitId: item.unitId,
+        tax: item.tax,
+        cessPercentage: item.cessPercentage,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: item.discount,
+        taxable: taxable,
+        taxAmount: item.taxAmount,
+        totalAmount: item.totalAmount,
+      });
+    }),
     { transaction: t }
   );
 

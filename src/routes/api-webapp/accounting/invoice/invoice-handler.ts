@@ -10,6 +10,7 @@ import { PaymentsDocuments } from "../payments/payments-documents-model";
 import { PaymentTerms, TaxSelection } from "./invoice-model";
 import { sendEmail } from "../../../../services/mailService";
 import crypto from 'crypto';
+import { addInvoiceLedger, deleteLedgerByReference } from "../client-ledger/client-ledger-handler";
 
 export type InvoiceStatus =
   | "Draft"
@@ -57,6 +58,52 @@ export const calculateDueDate = (invoiceDate: Date, paymentTerms: string, specif
   }
   
   return dueDate;
+};
+
+// Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
+const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
+  const p = (placeOfSupply ?? '').toString().trim();
+  const c = (companyState ?? '').toString().trim();
+  if (!p || !c) return false;
+  const pLower = p.toLowerCase();
+  const cLower = c.toLowerCase();
+  
+  // Direct substring match
+  if (pLower.includes(cLower) || cLower.includes(pLower)) return true;
+  
+  // State abbreviation to full name mapping
+  const stateCodeMap: Record<string, string> = {
+    AN: 'andaman', AP: 'andhra', AR: 'arunachal', AS: 'assam', BR: 'bihar', CH: 'chandigarh', CT: 'chhattisgarh',
+    DL: 'delhi', GA: 'goa', GJ: 'gujarat', HP: 'himachal', HR: 'haryana', JH: 'jharkhand', JK: 'jammu',
+    KA: 'karnataka', KL: 'kerala', LA: 'ladakh', MH: 'maharashtra', ML: 'meghalaya', MN: 'manipur',
+    MP: 'madhya', MZ: 'mizoram', NL: 'nagaland', OR: 'odisha', PB: 'punjab', PY: 'puducherry',
+    RJ: 'rajasthan', SK: 'sikkim', TN: 'tamil', TR: 'tripura', TS: 'telangana', UP: 'uttar', UK: 'uttarakhand', WB: 'west'
+  };
+  
+  // Extract 2-letter state code from place (handles 'GJ (24)', 'AS (18)', etc.)
+  const codeMatchPlace = p.match(/^([A-Za-z]{2})\s*\(/);
+  if (codeMatchPlace) {
+    const code = codeMatchPlace[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+  
+  // Also check if place is just the state code or code-like pattern
+  const justCodeMatch = p.match(/^([A-Za-z]{2})(\s|$)/i);
+  if (justCodeMatch) {
+    const code = justCodeMatch[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+  
+  // Try to extract any 2-letter sequence and match against codes
+  for (const [code, stateName] of Object.entries(stateCodeMap)) {
+    if (pLower.includes(code.toLowerCase()) || pLower.startsWith(code.toLowerCase())) {
+      if (cLower.includes(stateName)) return true;
+    }
+  }
+  
+  return false;
 };
 
 // Helper function to calculate line item totals
@@ -190,6 +237,15 @@ const calculateInvoiceTotals = (
   reverseCharge: boolean | undefined,
   tdsTcsEntries: any[] | undefined
 ): InvoiceCalculationResult => {
+  console.log('=== INVOICE CALCULATION START ===');
+  console.log('Input Parameters:', {
+    placeOfSupply,
+    companyState,
+    isTaxInvoice,
+    itemCount: items.length,
+    reverseCharge
+  });
+  
   let subTotal = 0;
   let finalDiscount = 0;
   let totalCgst = 0;
@@ -230,7 +286,17 @@ const calculateInvoiceTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
+    const isInterstate = !isSameState(placeOfSupply, companyState);
+    console.log('Tax Calculation Debug:', {
+      placeOfSupply,
+      companyState,
+      isSameState: isSameState(placeOfSupply, companyState),
+      isInterstate,
+      itemTax,
+      amountForTax
+    });
+
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, isInterstate, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -238,6 +304,8 @@ const calculateInvoiceTotals = (
     totalCgst = taxTotals.cgst;
     totalSgst = taxTotals.sgst;
     totalIgst = taxTotals.igst;
+    
+    console.log('Tax Totals After Split:', { totalCgst, totalSgst, totalIgst });
 
     if (isTaxInvoice && showCess && cessTax > 0) {
       const cessAmount = amountForTax * (cessTax / 100);
@@ -266,7 +334,7 @@ const calculateInvoiceTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (isTaxInvoice && shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
+      if (!isSameState(placeOfSupply, companyState)) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -290,20 +358,14 @@ const calculateInvoiceTotals = (
   let totalTds = 0;
   let totalTcs = 0;
   const taxableBase = subTotal - finalDiscount;
-  // Invoice total BEFORE TDS/TCS
+  // Invoice total BEFORE TDS/TCS - TDS/TCS should apply only on taxable/tax amounts, NOT on shipping/custom
   const totalBase = reverseCharge
     ? taxableBase
-        + (shippingAmount || 0)
-        + (customAmount || 0)
-        - (addDiscountTotal || 0)
     : taxableBase
         + totalCgst
         + totalSgst
         + totalIgst
-        + totalCess
-        + (shippingAmount || 0)
-        + (customAmount || 0)
-        - (addDiscountTotal || 0);
+        + totalCess;
   if (tdsTcsEntries && tdsTcsEntries.length > 0) {
     tdsTcsEntries.forEach(entry => {
 
@@ -334,7 +396,7 @@ const calculateInvoiceTotals = (
   const total = totalBeforeTdsTcs + totalTcs - totalTds;
   const totalTaxable = subTotal - finalDiscount;
 
-  return {
+  const result = {
     subTotal,
     finalDiscount,
     taxable: parseFloat(totalTaxable.toFixed(2)),
@@ -345,6 +407,11 @@ const calculateInvoiceTotals = (
     total,
     invoiceItemsData,
   };
+  
+  console.log('=== INVOICE CALCULATION RESULT ===', result);
+  console.log('======================================');
+  
+  return result;
 };
 
 // Create invoice with all related data
@@ -469,22 +536,27 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
     { transaction: t, validate: true }
   );
 
+  // Add ledger entry for invoice
+  await addInvoiceLedger(
+    invoice.clientId,
+    invoice.companyId,
+    invoice.id,
+    invoice.invoiceNo,
+    invoice.invoiceDate,
+    invoice.total,
+    t
+  );
+
   // Calculate base amounts for TDS/TCS (should match the calculation logic)
   const taxableBase = calculated.subTotal - calculated.finalDiscount;
 
   const totalBase = body.reverseCharge
     ? taxableBase
-        + (body.shippingAmount || 0)
-        + (body.customAmount || 0)
-        - (body.addDiscountTotal || 0)
     : taxableBase
         + calculated.totalCgst
         + calculated.totalSgst
         + calculated.totalIgst
-        + calculated.totalCess
-        + (body.shippingAmount || 0)
-        + (body.customAmount || 0)
-        - (body.addDiscountTotal || 0);
+        + calculated.totalCess;
 
   // Create TDS/TCS entries if provided
   let createdTdsTcs: any[] = [];
@@ -513,21 +585,28 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
   }
 
   const client = await Clients.findByPk(invoice.clientId,{ transaction: t} );
+  console.log("client email",client?.email);
 
   if (client && client.email) {
     try {
+
+      const baseUrl = process.env.ADMIN_URL || process.env.BASE_URL || process.env.APP_BASE_URL || '';
+      if (!baseUrl) console.warn('ADMIN_URL not set — sending relative public-invoice link in email for invoice', invoice.id);
+      const normalizedBase = baseUrl ? baseUrl.replace(/\/$/, '') : '';
+      const invoiceLink = normalizedBase ? `${normalizedBase}/public-invoice/${invoice.publicToken}` : `/public-invoice/${invoice.publicToken}`;
+
       await sendEmail({
-        from: "varadchaudhari04@gmail.com",
-        to: "varadchaudhari0210@gmail.com",
+        from: company.email || "",
+        to: client.email,
         subject: `Invoice ${invoice.invoiceNo}`,
-        htmlFile: "invoice-created",
+        htmlFile: "invoice",
         replacements: {
           userName: client.clientfirstName || "Customer",
           invoiceNo: invoice.invoiceNo,
           invoiceDate: invoice.invoiceDate,
           total: invoice.total,
           dueDate: invoice.dueDate,
-          documentLink: `${process.env.BASE_URL}/document/${publicToken}`,
+          invoiceLink,
           currentYear: new Date().getFullYear(),
         },
         html: null,
@@ -537,7 +616,7 @@ export const createInvoice = async (body: CreateInvoiceInput, t: Transaction) =>
         replyTo: null,
       });
     } catch (error) {
-      throw new Error("Invoice create email failed ")
+      console.error("Error sending invoice email:", error);
     }
   } else{
     throw new Error();
@@ -581,6 +660,12 @@ export const getInvoiceById = async (id: string, companyId: string) => {
 export const getInvoicesByCompany = async (companyId: string) => {
   return await Invoice.findAll({
     where: { companyId, isDeleted: false },
+    include: [
+      {
+        model: Clients,
+        as: "client",
+      },
+    ],
     order: [["invoiceDate", "DESC"]],
   });
 };
@@ -589,6 +674,12 @@ export const getInvoicesByCompany = async (companyId: string) => {
 export const getInvoicesByClient = async (clientId: string, companyId: string): Promise<any> => {
   return await Invoice.findAll({
     where: { clientId, companyId, isDeleted: false },
+    include: [
+      {
+        model: Clients,
+        as: "client",
+      },
+    ],
     order: [["invoiceDate", "DESC"]],
   });
 };
@@ -719,17 +810,11 @@ export const updateInvoice = async (
 
         const totalBase = mergedData.reverseCharge
           ? taxableBase
-              + (mergedData.shippingAmount || 0)
-              + (mergedData.customAmount || 0)
-              - (mergedData.addDiscountTotal || 0)
           : taxableBase
               + calculated.totalCgst
               + calculated.totalSgst
               + calculated.totalIgst
-              + calculated.totalCess
-              + (mergedData.shippingAmount || 0)
-              + (mergedData.customAmount || 0)
-              - (mergedData.addDiscountTotal || 0);
+              + calculated.totalCess;
 
         
         await InvoiceTdsTcs.bulkCreate(
@@ -819,6 +904,9 @@ export const deleteInvoice = async (
       transaction: t,
     }
   );
+
+  // Delete ledger entry for this invoice
+  await deleteLedgerByReference("invoice", id, t);
 
   // Soft delete invoice itself
   await Invoice.update(
@@ -1070,7 +1158,7 @@ export const convertInvoiceToPayment = async (
     if(newBalance === 0){
       try {
         await sendEmail({
-          from: company && company.email ? company.email : "",
+          from: company?.email || "",
           to: client.email,
           subject: `Payment received for Invoice ${invoice.invoiceNo}`,
           htmlFile: "payment-received",
@@ -1092,7 +1180,7 @@ export const convertInvoiceToPayment = async (
     } else{
       try {
         await sendEmail({
-          from: (company && company.email) ? company.email : "",
+          from: company?.email || "",
           to: client.email,
           subject: `Partial Payment received for Invoice ${invoice.invoiceNo}`,
           htmlFile: "partial-payment-received",
@@ -1123,6 +1211,114 @@ export const convertInvoiceToPayment = async (
   };
 };
 
+export const getPendingInvoiceAmount = async (
+  clientId: string,
+  companyId: string,
+) => {
+  // Validate client exists
+  const client = await Clients.findOne({
+    where: { id: clientId, isDeleted: false }
+  });
+  
+  if (!client) {
+    throw new Error("Client not found");
+  }
+  
+  // Validate company exists
+  const company = await Company.findOne({
+    where: { id: companyId, isActive: true }
+  });
+  
+  if (!company) {
+    throw new Error("Company not found");
+  }
+  
+  // Fetch all invoices for the client in the company with pending status
+  const pendingInvoices = await Invoice.findAll({
+    where: {
+      clientId,
+      companyId,
+      isDeleted: false,
+      status: {
+        [Op.in]: ["Unpaid", "Partially Paid", "Overdue"]
+      }
+    },
+    include: [
+      {
+        model: Clients,
+        as: "client",
+        attributes: ["id", "businessName", "email"]
+      },
+      {
+        model: Company,
+        as: "company",
+        attributes: ["id", "name"]
+      }
+    ],
+    order: [["invoiceDate", "ASC"]]
+  });
+  
+  // Calculate total pending amount (balance already accounts for payments made)
+  const totalPendingAmount = pendingInvoices.reduce((sum, invoice) => {
+    return sum + (Number(invoice.balance) || 0);
+  }, 0);
+  
+  // Calculate total invoice amount and total paid amount
+  const totalInvoiceAmount = pendingInvoices.reduce((sum, invoice) => {
+    return sum + (Number(invoice.total) || 0);
+  }, 0);
+  
+  const totalPaidAmount = totalInvoiceAmount - totalPendingAmount;
+  
+  // Prepare detailed invoice information with payment breakdown
+  const invoiceDetails = await Promise.all(pendingInvoices.map(async (invoice) => {
+    // Calculate amount paid for this invoice
+    const amountPaid = Number(invoice.total) - Number(invoice.balance);
+    
+    // Get payment records for this invoice
+    const paymentRecords = await PaymentsDocuments.findAll({
+      where: {
+        documentId: invoice.id,
+        documentType: "Invoice",
+        isDeleted: false
+      },
+      include: [
+        {
+          model: Payments,
+          as: "payment",
+          attributes: ["id", "paymentNo", "paymentDate", "paymentAmount", "method"]
+        }
+      ]
+    });
+    
+    return {
+      invoiceId: invoice.id,
+      invoiceNo: invoice.invoiceNo,
+      invoiceDate: invoice.invoiceDate,
+      dueDate: invoice.dueDate,
+      status: invoice.status,
+      totalAmount: invoice.total,
+      paidAmount: parseFloat(amountPaid.toFixed(2)),
+      balanceAmount: invoice.balance,
+      paymentCount: paymentRecords.length,
+      overdueDays: invoice.dueDate < new Date() ? 
+        Math.floor((new Date().getTime() - invoice.dueDate.getTime()) / (1000 * 60 * 60 * 24)) : 0
+    };
+  }));
+  
+  return {
+    clientId,
+    companyId,
+    clientName: client.clientfirstName,
+    companyName: company.name,
+    totalInvoiceAmount: parseFloat(totalInvoiceAmount.toFixed(2)),
+    totalPaidAmount: parseFloat(totalPaidAmount.toFixed(2)),
+    totalPendingAmount: parseFloat(totalPendingAmount.toFixed(2)),
+    pendingInvoicesCount: pendingInvoices.length,
+    invoices: invoiceDetails
+  };
+};
+
 // Handler to fetch invoice by publicToken, including related data
 export const getInvoiceByPublicToken = async (publicToken: string) => {
   return await Invoice.findOne({
@@ -1146,4 +1342,91 @@ export const getInvoiceByPublicToken = async (publicToken: string) => {
       },
     ],
   });
+};
+
+// Bulk delete invoices
+export const bulkDeleteInvoices = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+  for (const id of ids) {
+    try {
+      // Fetch invoice with lock
+      const invoice = await Invoice.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!invoice) {
+        results.failed.push({ id, reason: "Invoice not found" });
+        continue;
+      }
+
+      // Status validation
+      if (["Paid", "Partially Paid"].includes(invoice.status)) {
+        results.failed.push({
+          id,
+          reason: "Paid or partially paid invoices cannot be deleted",
+        });
+        continue;
+      }
+
+      // Check if payments exist
+      const paymentCount = await PaymentsDocuments.count({
+        where: {
+          documentId: id,
+          documentType: "Invoice",
+        },
+        transaction: t,
+      });
+      if (paymentCount > 0) {
+        results.failed.push({
+          id,
+          reason: "Invoice with payments cannot be deleted",
+        });
+        continue;
+      }
+
+      // Soft delete invoice items
+      await InvoiceItem.update(
+        { isDeleted: true },
+        {
+          where: { invoiceId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete TDS/TCS entries
+      await InvoiceTdsTcs.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { invoiceId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete invoice itself
+      await Invoice.update(
+        {
+          isActive: false,
+          isDeleted: true,
+          status: "Cancelled",
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+  return results;
 };

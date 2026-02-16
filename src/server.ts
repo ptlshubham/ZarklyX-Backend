@@ -48,12 +48,15 @@ import quoteRouter from './routes/api-webapp/accounting/quote/quote-api';
 import creditNoteRouter from './routes/api-webapp/accounting/credit-Note/credit-note-api';
 import purchaseBillRouter from './routes/api-webapp/accounting/purchase-Bill/purchase-bill-api';
 import purchaseOrderRouter from './routes/api-webapp/accounting/purchaseOrder/purchase-order-api';
+import expenseItemRouter from './routes/api-webapp/accounting/expenses/expenses-item/expense-item-api';
+import expenseRouter from './routes/api-webapp/accounting/expenses/expenses-api';
 import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Assets-Management/it-Assets-Management-api';
 
 // Import cron jobs
 // import './cron/warranty-reminder.cron';
 import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
 import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
+import expensesRouter from './routes/api-webapp/accounting/expenses/expenses-api';
 import modulesRouter from './routes/api-webapp/superAdmin/modules/module-api';
 import permissionsRouter from './routes/api-webapp/superAdmin/permissions/permissions-api';
 import subscriptionPlanRouter from './routes/api-webapp/superAdmin/subscription-plan/subscription-plan-api';
@@ -75,6 +78,12 @@ import zarklyXOverridesRouter from "./routes/api-webapp/superAdmin/rbac/user-per
 import zarklyX2FARouter from "./routes/api-webapp/superAdmin/authentication/2fa/zarklyX-2fa-api";
 import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-api';
 
+import clientUserAssignmentRouter from './routes/api-webapp/agency/clients/client-assignment/client-assignment-api'
+import warehouseRoutes from './routes/api-webapp/inventory-management/warehouse/warehouse-api';
+import stockTransactionRoutes from './routes/api-webapp/inventory-management/stock/stock-transaction/stock-transaction-api';
+import stockBalanceRoutes from './routes/api-webapp/inventory-management/stock/stock-balance/stock-balance-api';
+import systemLogRoutes from './routes/api-webapp/system-log/system-log-api';
+import todoRoutes from './routes/api-webapp/todo/todo-api';
 
 import path from "path";
 const app = express();
@@ -159,6 +168,8 @@ app.use("/accounting/purchaseOrder",purchaseOrderRouter);
 app.use("/itManagement/itAssetsManagement", itAssetsManagementRoutes);
 app.use("/accounting/payments",paymentsRouter);
 app.use("/accounting/debit-note",debitNoteRouter);
+app.use("/accounting/expense",expensesRouter);
+app.use("/accounting/expense-item",expenseItemRouter);
 app.use("/superAdmin/modules",modulesRouter);
 app.use("/superAdmin/permissions",permissionsRouter);
 app.use("/superAdmin/subscription-plan",subscriptionPlanRouter);
@@ -177,6 +188,14 @@ app.use("/superAdmin/zarklyx/permissions",zarklyXPermissionsRouter),
 app.use("/superAdmin/zarklyx/role-permissions",zarklyXRolePermissionsRouter),
 app.use("/superAdmin/zarklyx/overrides",zarklyXOverridesRouter),
 app.use("/superAdmin/zarklyx/2fa",zarklyX2FARouter),
+app.use("/clients/client-assignment",clientUserAssignmentRouter);
+
+
+app.use("/inventory/warehouse", warehouseRoutes);
+app.use("/stock/transaction", stockTransactionRoutes);
+app.use("/stock/balance", stockBalanceRoutes);
+app.use("/system-log", systemLogRoutes);
+app.use("/todo", todoRoutes);
 
 // Support root-level callback path that some OAuth providers / dev tools use
 // If TikTok (or your ngrok) redirects to '/auth/tiktok/callback' (root), forward it

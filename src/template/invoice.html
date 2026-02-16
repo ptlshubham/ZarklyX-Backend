@@ -1,276 +1,177 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en">
 
 <head>
-  <style>
-    @media print {
-      @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+    <meta charset="UTF-8">
+    <title>Invoice Created</title>
 
-      body {
-        font-family: "Roboto", sans-serif !important;
-        font-size: 10px;
-        line-height: 14px;
-      }
-
-      .header_table h3 {
-        color: #007b47;
-      }
-
-      table {
-        border-spacing: 0px;
-        width: 100%;
-      }
-
-      .devider {
-        /* background-color: #000; */
-        /* height: 15px; */
-        width: 100%;
-      }
-
-      .topInfoTime {
-        margin-bottom: 10px;
-      }
-
-      .topInfoTime td {
-        border-top: 1px solid #eee;
-        border-bottom: 1px solid #eee;
-        padding: 5px;
-        vertical-align: top;
-      }
-
-      .topInfo {
-        /*border-top: 1px solid #000;
-          border-left: 1px solid #000;*/
-        margin-top: 2px;
-        margin-bottom: 10px;
-      }
-
-      .topInfo th {
-        /*border-right: 1px solid #000;
-          border-bottom: 1px solid #000;*/
-        padding: 5px;
-        vertical-align: top;
-      }
-
-      .topInfo td {
-        /*border-right: 1px solid #000;
-          border-bottom: 1px solid #000;*/
-        padding: 5px;
-        vertical-align: top;
-      }
-
-      .fromto {
-        color: #007b47;
-      }
-
-      .itemTable {
-        border-top: 1px solid #eee;
-        border-left: 1px solid #eee;
-        margin-top: 2px;
-      }
-
-      .itemTable th {
-        border-right: 1px solid #eee;
-        border-bottom: 1px solid #eee;
-        padding: 10px 5px;
-        vertical-align: top;
-        background-color: #007b47;
-        color: #ffffff;
-      }
-
-      .itemTable tbody td {
-        border-right: 1px solid #eee;
-        padding: 5px;
-        vertical-align: top;
-      }
-
-      .itemTable tfoot td {
-        border-right: 1px solid #eee;
-        border-top: 1px solid #eee;
-        border-bottom: 1px solid #eee;
-        padding: 5px;
-        vertical-align: top;
-      }
-
-      .authorised {
-        text-align: right;
-        margin-top: 20px;
-      }
-
-      .note {
-        font-size: 8px;
-      }
-
-      .totalSection {
-        border-top: 1px solid #eee;
-      }
-
-      .finalTotal {
-        background-color: #007b47;
-        color: #ffffff;
-        font-weight: 600;
-        padding: 10px 5px !important;
-      }
-
-      .noteStyle {
-        text-align: center;
-        margin-top: 20px;
-      }
-    }
-  </style>
+    <!-- Font Awesome (browser support; limited email support) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 </head>
 
-<body>
-  <table class="header_table">
-    <tbody>
-      <tr>
-        <td align="center" style="position: relative">
-          <img src={{ data.adminUrl }} style="position: top; left: 0px; top: 30px; max-width: 150px" />
-          <!-- </td>
-          <td align="right" style="position: relative"> -->
-          <h2 style="margin-top: 10px">
-            Raschine Investments & Leasing Pvt Ltd
-          </h2>
-          <h3>Tax Invoice</h3>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+<body style="margin:0; padding:0; background:#f4f6f8; font-family:Arial, sans-serif; color:#0f2d2f;">
 
-  <table width="100%" class="topInfoTime">
-    <tbody>
-      <tr>
-        <td width="33%">Receipt No. {{data.invoiceNo}}</td>
-        <td width="33%" align="center">Dated: {{data.invoiceDate}}</td>
-        <td align="right">Customer Id: {{#if data.customerId}} {{data.customerId}}
-          {{/if}}
-        </td>
-      </tr>
-    </tbody>
-  </table>
-  <div class="devider"></div>
-  <table width="100%" class="topInfo">
-    <tbody>
-      <tr>
-        {{#if data.isMaharastra}}
-        <td width="33%" rowspan="2">
-          <strong class="fromto">Invoice From</strong><br />
-          Regd office - 605,<br />
-          Tulsiani Chambers, Free Press JournalMarg,<br />
-          Mumbai, Maharashtra, 400021<br /><br />
-          GSTIN/UIN: 27AAACR4084J1 Z6
-        </td>
-        {{/if}}
-        {{#if data.isKarnataka}}
-        <td width="33%" rowspan="2">
-          <strong class="fromto">Invoice From</strong><br />
-          Regd office - 930,<br />
-          28th main road Jayanagar, Bengaluru,<br />
-          Bengaluru Urban, Karnataka, 560069<br /><br />
-          GSTIN/UIN: 29AAACR4084J1 Z2
-        </td>
-        {{/if}}
-        <td width="33%"></td>
-        <td>
-          <strong class="fromto">Invoice To</strong><br />
-          <strong>{{data.fullName}}</strong><br />
-          {{data.address}}<br />
-          {{data.cityName}}, {{data.stateName}}, {{data.countryName}} <br />
-          Email: {{data.email}}
-        </td>
-      </tr>
-    </tbody>
-  </table>
-  <div class="devider"></div>
+<table width="100%" cellpadding="0" cellspacing="0"
+    style="background:#f4f6f8; padding:30px 0; font-family:Arial, sans-serif;">
+    <tr>
+        <td align="center">
 
-  <table width="100%" class="itemTable">
-    <thead>
-      <tr>
-        <th>Sr No.</th>
-        <th>Particulars</th>
-        <th>HSN/SAC</th>
-        <th>Taxable Amount</th>
-        <th width="14%">GST Rate</th>
-        <th>Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{#if data.isRental}}
-      <tr>
-        <td align="center" height="30">{{data.SR1}}</td>
-        <td>{{data.particulars}}<br />( {{ data.startDate }} - {{ data.renewalDate }} )</td>
-        <td align="center">{{data.HSNCode}}</td>
-        <td align="center">₹ {{data.feesAmountWithoutGst}}</td>
-        <td align="center">{{data.setTax}}%</td>
-        <td align="right">₹ {{data.amount}}</td>
-      </tr>
-      {{/if}}
-      {{#if data.isDeposit}}
-      <tr>
-        <td align="center" height="20">{{data.SR2}}</td>
-        <td>{{data.depositParticulars}}</td>
-        <td align="center">-</td>
-        <td align="center">₹ {{data.depositAmount}}</td>
-        <td align="center">-</td>
-        <td align="right">₹ {{data.depositAmount}}</td>
-      </tr>
-      {{/if}}
-    </tbody>
-    <tbody>
-      <tr>
-        <td class="totalSection" colspan="3">Total</td>
-        <td class="totalSection" align="center">₹ {{data.totalTaxableAmount}}</td>
-        <td class="totalSection" align="center"></td>
-        <td class="totalSection" align="right">₹ {{data.totalAmount}}</td>
-      </tr>
-      <tr>
-        <td class="totalSection" align="right" colspan="5">Taxable Amount</td>
-        <td class="totalSection" align="right">
-          ₹ {{data.totalTaxableAmount}}
-        </td>
-      </tr>
-      <tr>
-        <td align="right" colspan="5">IGST ({{data.tax.igst.taxPercent}}%)</td>
-        <td align="right">₹ {{data.tax.igst.amount}}</td>
-      </tr>
-      <tr>
-        <td align="right" colspan="5">CGST ({{data.tax.cgst.taxPercent}}%)</td>
+            <!-- MAIN CONTAINER -->
+            <table width="100%" cellpadding="0" cellspacing="0"
+                style="max-width:600px; background:#ffffff; border-radius:12px 12px 0 0;
+                padding:36px; box-shadow:0 10px 25px rgba(0,0,0,0.08);
+                color:#0f2d2f; font-family:Arial, sans-serif;">
 
-        {{#if data.isPresenseState}}
-        <td align="right">₹ {{data.CGST_SGST_Amount}}</td>
-        {{else}}
-        <td align="right">₹0</td>
-        {{/if}}
-      </tr>
-      <tr>
-        <td align="right" colspan="5">SGST ({{data.tax.sgst.taxPercent}}%)</td>
+                <!-- HEADER -->
+                <tr>
+                    <td style="padding-bottom:24px;">
+                        <table width="100%" cellpadding="0" cellspacing="0">
+                            <tr>
+                                <td align="left">
+                                    <img src="https://zarklyx.com/assets/img/logo-dark@2x.png"
+                                         alt="Company Logo" width="180" style="display:block;">
+                                </td>
 
-        {{#if data.isPresenseState}}
-        <td align="right">₹ {{data.CGST_SGST_Amount}}</td>
-        {{else}}
-        <td align="right">₹0</td>
-        {{/if}}
-      </tr>
-    </tbody>
-    <tfoot>
-      <tr>
-        <td colspan="4" align="right"></td>
-        <td align="right" class="finalTotal">Total</td>
-        <td align="right" class="finalTotal">₹ {{data.totalAmount}}</td>
-      </tr>
-    </tfoot>
-  </table>
+                                <td align="right">
+                                    <a href="#" style="margin-left:10px; color:#0f2d2f; text-decoration:none; font-size:18px;">
+                                        <i class="fab fa-facebook-f"></i>
+                                    </a>
+                                    <a href="#" style="margin-left:10px; color:#0f2d2f; text-decoration:none; font-size:18px;">
+                                        <i class="fab fa-x-twitter"></i>
+                                    </a>
+                                    <a href="#" style="margin-left:10px; color:#0f2d2f; text-decoration:none; font-size:18px;">
+                                        <i class="fab fa-instagram"></i>
+                                    </a>
+                                    <a href="#" style="margin-left:10px; color:#0f2d2f; text-decoration:none; font-size:18px;">
+                                        <i class="fab fa-linkedin-in"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
 
-  <div class="devider"></div>
-  <div class="authorised">
-    Raschine Investments & Leasing Pvt Ltd<br /><br /><br /><br /><br />
-    Authorised Signatory
-  </div>
-  <div class="noteStyle">
-    This is a computer-generated invoice and does not require a signature.
-  </div>
+                <!-- TITLE -->
+                <tr>
+                    <td style="padding-bottom:14px;">
+                        <h2 style="margin:0; color:#0f2d2f;">
+                            Invoice Created Successfully
+                        </h2>
+                    </td>
+                </tr>
 
+                <!-- GREETING -->
+                <tr>
+                    <td style="padding-bottom:16px; font-size:20px;">
+                        Hi {{clientName}},
+                    </td>
+                </tr>
 
+                <!-- CONTENT -->
+                <tr>
+                    <td style="padding-bottom:20px; font-size:18px; line-height:1.6;">
+                        We have generated a new invoice for you. Please find the
+                        invoice details below and review them at your convenience.
+                    </td>
+                </tr>
+
+                <!-- INVOICE DETAILS -->
+                <tr>
+                    <td style="padding-bottom:20px; font-size:18px; line-height:1.6;">
+                        <strong>Invoice Number:</strong> {{invoiceNo}}<br>
+                        <strong>Invoice Date:</strong> {{invoiceDate}}<br>
+                        <strong>Due Date:</strong> {{dueDate}}<br>
+                        <strong>Total Amount:</strong> {{totalAmount}}
+                    </td>
+                </tr>
+
+                <!-- CTA -->
+                <tr>
+                    <td style="padding-bottom:28px; font-size:17px; line-height:1.6;">
+                        You can view or download the invoice document using the link below.
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding-bottom:28px;">
+                        <a href="{{invoiceLink}}"
+                           style="display:inline-block; background:#0f2d2f; color:#ffffff;
+                           padding:12px 24px; text-decoration:none; border-radius:6px;
+                           font-size:16px;">
+                            View Invoice
+                        </a>
+                    </td>
+                </tr>
+
+                <!-- SIGN OFF -->
+                <tr>
+                    <td style="font-size:16px;">
+                        Thanks,<br>
+                        <strong>ZarklyX Team</strong>
+                    </td>
+                </tr>
+
+                <!-- APP LINKS -->
+                <tr>
+                    <td style="padding-top:25px;">
+                        <p style="font-size:14px;">
+                            Download our app for Google & Mac
+                        </p>
+                        <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
+                             width="120">
+                        &nbsp;
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
+                             width="120">
+                    </td>
+                </tr>
+
+            </table>
+            <!-- FOOTER -->
+                <table width="100%" cellpadding="0" cellspacing="0" align="center" style="max-width:600px; background:#000000; border-radius:0 0 12px 12px;
+                        border-radius:12px 12px 0 0; ">
+
+                    <tr>
+                        <td align="center" style="padding:32px 20px;">
+
+                            <!-- LINKS -->
+                            <p style="margin:0 0 14px; font-size:13px; color:#cccccc; line-height:1.6;">
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Our Work</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Services</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">About Us</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Insights</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Careers</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Privacy Policy</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Terms of Service</a>
+                            </p>
+
+                            <!-- CONTACT -->
+                            <p style="margin:0 0 6px; font-size:13px; color:#cccccc;">
+                                If you have any questions, you can always contact us at
+                                <a href="mailto:zarklyx@gmail.com" style="color:#ffffff; text-decoration:underline;">
+                                    zarklyx@gmail.com
+                                </a>
+                            </p>
+
+                            <!-- UNSUBSCRIBE -->
+                            <p style="margin:0 0 18px; font-size:13px;">
+                                <a href="#" style="color:#ffffff; text-decoration:underline;">
+                                    Unsubscribe
+                                </a>
+                                <span style="color:#cccccc;"> from this type of email.</span>
+                            </p>
+
+                            <!-- COPYRIGHT -->
+                            <p style="margin:0; font-size:13px; color:#888888;">
+                                © ZarklyX {{currentYear}}
+                            </p>
+
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 
 </html>
+           

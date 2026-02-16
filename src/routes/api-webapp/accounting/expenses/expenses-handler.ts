@@ -112,7 +112,8 @@ const calculateExpenseTotals = (
 
     // Apply tax split only if not reverse charge
     if (!reverseCharge && itemTax > 0) {
-      const taxTotals = applyTaxSplit(baseAmount, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
+      const isInterState = placeOfSupply.toLowerCase() !== companyState.toLowerCase();
+      const taxTotals = applyTaxSplit(baseAmount, itemTax, isInterState, {
         cgst: totalCgst,
         sgst: totalSgst,
         igst: totalIgst,
@@ -153,6 +154,15 @@ const calculateExpenseTotals = (
 export const createExpense = async (body: CreateExpenseInput, t: Transaction) => {
   const expenseDate = body.expenseDate || new Date();
 
+  // Validate required fields
+  if (!body.companyId) {
+    throw new Error("Company ID is required");
+  }
+
+  if (!body.expenseItems || !Array.isArray(body.expenseItems) || body.expenseItems.length === 0) {
+    throw new Error("At least one expense item is required");
+  }
+
   // Validate that at least one of vendorId or clientId is provided
   if (!body.vendorId && !body.clientId) {
     throw new Error("Either vendorId or clientId must be provided");
@@ -160,8 +170,13 @@ export const createExpense = async (body: CreateExpenseInput, t: Transaction) =>
 
   // Fetch all expense items from database to get their details
   const itemIds = body.expenseItems.map(item => item.expenseItemId);
+  
+  if (!itemIds || itemIds.length === 0) {
+    throw new Error("No valid expense item IDs provided");
+  }
+  
   const itemsFromDb = await ExpenseItem.findAll({
-    where: { id: itemIds, companyId: body.companyId, isActive: true, isDeleted: false }
+    where: { id: { [Op.in]: itemIds }, companyId: body.companyId, isActive: true, isDeleted: false }
   });
   const itemMap = new Map(itemsFromDb.map(item => [item.id, item]));
 
@@ -254,6 +269,10 @@ export const getExpensesByCompany = async (companyId: string) => {
     where: { companyId, isDeleted: false },
     include: [
       {
+        model: ExpenseLineItem,
+        as: "expenseLineItems",
+      },
+      {
         model: Vendor,
         as: "vendor",
         required: false,
@@ -328,7 +347,7 @@ export const updateExpense = async (id: string, companyId: string, data: Partial
     // Fetch all expense items from database to get their details
     const itemIds = data.expenseItems.map(item => item.expenseItemId);
     const itemsFromDb = await ExpenseItem.findAll({
-      where: { id: itemIds, companyId, isActive: true, isDeleted: false }
+      where: { id: { [Op.in]: itemIds }, companyId, isActive: true, isDeleted: false }
     });
     const itemMap = new Map(itemsFromDb.map(item => [item.id, item]));
 
@@ -401,6 +420,36 @@ export const deleteExpense = async (id: string, companyId: string) => {
     { isActive: false, isDeleted: true },
     { where: { id, companyId, isDeleted: false } }
   );
+};
+
+// Bulk delete expenses
+export const bulkDeleteExpenses = async (
+  ids: string[],
+  companyId: string
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      const [affectedRows] = await Expenses.update(
+        { isActive: false, isDeleted: true },
+        { where: { id, companyId, isDeleted: false } }
+      );
+
+      if (affectedRows > 0) {
+        results.successful.push(id);
+      } else {
+        results.failed.push({ id, reason: "Expense not found" });
+      }
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
 };
 
 // Search expenses with filters

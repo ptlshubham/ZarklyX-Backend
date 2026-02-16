@@ -6,14 +6,15 @@ import path from "path";
 //create a new item category
 export async function createItemCategory(body: any,t: any) {
   // Validate category type - only Product or Service allowed for IT Asset Management
-  if(!["Product","Service"].includes(body.categoryType))
+  const categoryType = body.categoryType || 'Product'; // Default to Product if not provided
+  if(!["Product","Service"].includes(categoryType))
   {
     throw new Error("Invalid Category Type. Must be product or service.")
   }
   return await ItemCategory.create(
     {
       ...body,
-      categoryType: body.categoryType,
+      categoryType: categoryType,
     }, { transaction: t }
   );
 }

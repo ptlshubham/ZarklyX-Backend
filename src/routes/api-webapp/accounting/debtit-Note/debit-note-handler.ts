@@ -7,6 +7,53 @@ import { Clients } from "../../agency/clients/clients-model";
 import { Vendor } from "../vendor/vendor-model";
 import { PurchaseBill } from "../purchase-Bill/purchase-bill-model";
 import { Invoice } from "../invoice/invoice-model";
+import { addDebitNoteLedger, deleteLedgerByReference } from "../client-ledger/client-ledger-handler";
+
+// Robust state comparison: handles 'Gujarat', 'GUJARAT', 'GJ (24)', 'GJ', etc
+const isSameState = (placeOfSupply: string | undefined, companyState: string | undefined): boolean => {
+  const p = (placeOfSupply ?? '').toString().trim();
+  const c = (companyState ?? '').toString().trim();
+  if (!p || !c) return false;
+  const pLower = p.toLowerCase();
+  const cLower = c.toLowerCase();
+
+  // Direct substring match
+  if (pLower.includes(cLower) || cLower.includes(pLower)) return true;
+
+  // State abbreviation to full name mapping
+  const stateCodeMap: Record<string, string> = {
+    AN: 'andaman', AP: 'andhra', AR: 'arunachal', AS: 'assam', BR: 'bihar', CH: 'chandigarh', CT: 'chhattisgarh',
+    DL: 'delhi', GA: 'goa', GJ: 'gujarat', HP: 'himachal', HR: 'haryana', JH: 'jharkhand', JK: 'jammu',
+    KA: 'karnataka', KL: 'kerala', LA: 'ladakh', MH: 'maharashtra', ML: 'meghalaya', MN: 'manipur',
+    MP: 'madhya', MZ: 'mizoram', NL: 'nagaland', OR: 'odisha', PB: 'punjab', PY: 'puducherry',
+    RJ: 'rajasthan', SK: 'sikkim', TN: 'tamil', TR: 'tripura', TS: 'telangana', UP: 'uttar', UK: 'uttarakhand', WB: 'west'
+  };
+
+  // Extract 2-letter state code from place (handles 'GJ (24)', 'AS (18)', etc.)
+  const codeMatchPlace = p.match(/^([A-Za-z]{2})\s*\(/);
+  if (codeMatchPlace) {
+    const code = codeMatchPlace[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+
+  // Also check if place is just the state code or code-like pattern
+  const justCodeMatch = p.match(/^([A-Za-z]{2})(\s|$)/i);
+  if (justCodeMatch) {
+    const code = justCodeMatch[1].toUpperCase();
+    const mapped = stateCodeMap[code];
+    if (mapped && cLower.includes(mapped)) return true;
+  }
+
+  // Try to extract any 2-letter sequence and match against codes
+  for (const [code, stateName] of Object.entries(stateCodeMap)) {
+    if (pLower.includes(code.toLowerCase()) || pLower.startsWith(code.toLowerCase())) {
+      if (cLower.includes(stateName)) return true;
+    }
+  }
+
+  return false;
+};
 
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
@@ -150,7 +197,7 @@ const calculateDebitNoteTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, !isSameState(placeOfSupply, companyState), {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -186,7 +233,7 @@ const calculateDebitNoteTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (isTaxInvoice && shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
+      if (!isSameState(placeOfSupply, companyState)) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -199,14 +246,14 @@ const calculateDebitNoteTotals = (
   const totalTaxable = subTotal - finalDiscount;
 
   return {
-    subTotal,
-    finalDiscount,
+    subTotal: parseFloat(subTotal.toFixed(2)),
+    finalDiscount: parseFloat(finalDiscount.toFixed(2)),
     taxable: parseFloat(totalTaxable.toFixed(2)),
-    totalCgst,
-    totalSgst,
-    totalIgst,
-    totalCess,
-    total,
+    totalCgst: parseFloat(totalCgst.toFixed(2)),
+    totalSgst: parseFloat(totalSgst.toFixed(2)),
+    totalIgst: parseFloat(totalIgst.toFixed(2)),
+    totalCess: parseFloat(totalCess.toFixed(2)),
+    total: parseFloat(total.toFixed(2)),
     debitNoteItemsData,
   };
 };
@@ -271,6 +318,16 @@ export const createDebitNote = async (body: CreateDebitNoteInput, t: Transaction
     body.shippingTax,
   );
 
+  console.log('Debit Note Calculation:', {
+    subTotal: calculated.subTotal,
+    totalCgst: calculated.totalCgst,
+    totalSgst: calculated.totalSgst,
+    totalIgst: calculated.totalIgst,
+    totalCess: calculated.totalCess,
+    finalDiscount: calculated.finalDiscount,
+    total: calculated.total,
+  });
+
   // Create debit note
   const debitNote = await DebitNote.create(
     {
@@ -318,6 +375,19 @@ export const createDebitNote = async (body: CreateDebitNoteInput, t: Transaction
     { transaction: t }
   );
 
+  // Add ledger entry for client-based debit note only
+  if (debitNote.clientId) {
+    await addDebitNoteLedger(
+      debitNote.clientId,
+      debitNote.companyId,
+      debitNote.id,
+      debitNote.debitNo,
+      debitNote.debitDate,
+      debitNote.total,
+      t
+    );
+  }
+
   return {
     debitNote,
     debitNoteItems: createdDebitNoteItems,
@@ -333,6 +403,30 @@ export const getDebitNoteById = async (id: string, companyId: string) => {
         model: DebitNoteItem,
         as: "debitNoteItems",
       },
+      {
+        model: Clients,
+        as: "client",
+        attributes: ["id", "clientfirstName", "clientlastName", "businessName", "email"],
+        required: false
+      },
+      {
+        model: Vendor,
+        as: "vendor",
+        attributes: ["id", "name", "companyName", "email"],
+        required: false
+      },
+      {
+        model: Invoice,
+        as: "invoice",
+        attributes: ["id", "invoiceNo", "invoiceDate"],
+        required: false
+      },
+      {
+        model: PurchaseBill,
+        as: "purchaseBill",
+        attributes: ["id", "purchaseBillNo", "purchaseBillDate"],
+        required: false
+      }
     ],
   });
 };
@@ -341,6 +435,32 @@ export const getDebitNoteById = async (id: string, companyId: string) => {
 export const getDebitNotesByCompany = async (companyId: string) => {
   return await DebitNote.findAll({
     where: { companyId, isDeleted: false },
+    include: [
+      {
+        model: Clients,
+        as: "client",
+        attributes: ["id", "clientfirstName", "clientlastName", "businessName", "email"],
+        required: false
+      },
+      {
+        model: Vendor,
+        as: "vendor",
+        attributes: ["id", "name", "companyName", "email"],
+        required: false
+      },
+      {
+        model: Invoice,
+        as: "invoice",
+        attributes: ["id", "invoiceNo", "invoiceDate"],
+        required: false
+      },
+      {
+        model: PurchaseBill,
+        as: "purchaseBill",
+        attributes: ["id", "purchaseBillNo", "purchaseBillDate"],
+        required: false
+      }
+    ],
     order: [["debitDate", "DESC"]],
   });
 };
@@ -531,6 +651,11 @@ export const deleteDebitNote = async (
     }
   );
 
+  // Delete ledger entry for client-based debit note only
+  if (debitNote.clientId) {
+    await deleteLedgerByReference("debit_note", id, t);
+  }
+
   // Soft delete debit note
   await DebitNote.update(
     {
@@ -547,6 +672,61 @@ export const deleteDebitNote = async (
     message: "Debit Note deleted successfully",
     creditNoteId: id,
   };
+};
+
+// Bulk delete debit notes
+export const bulkDeleteDebitNotes = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+
+  for (const id of ids) {
+    try {
+      // Fetch debit note with lock
+      const debitNote = await DebitNote.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!debitNote) {
+        results.failed.push({ id, reason: "Debit Note not found" });
+        continue;
+      }
+
+      // Soft delete debit note items
+      await DebitNoteItem.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { debitNoteId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete debit note
+      await DebitNote.update(
+        {
+          isActive: false,
+          isDeleted: true,
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
 };
 
 // Search debit note with filters

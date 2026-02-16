@@ -5,6 +5,7 @@ import {
   getPurchaseOrdersByCompany,
   updatePurchaseOrder,
   deletePurchaseOrder,
+  bulkDeletePurchaseOrders,
   convertPurchaseOrderToBill,
   searchPurchaseOrder,
   getPurchaseOrderByPublicToken
@@ -242,6 +243,45 @@ router.delete("/deletePurchaseOrder/:id", async (req: Request, res: Response): P
   } catch (err: any) {
     await t.rollback();
     return serverError(res, err.message || "Failed to delete purchase order");
+  }
+});
+
+// POST /accounting/purchaseOrder/bulkDelete?companyId=
+router.post("/bulkDelete", async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    const { companyId } = req.query;
+    const { ids } = req.body;
+
+    if (!companyId) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "ids array is required and must not be empty",
+      });
+    }
+
+    const results = await bulkDeletePurchaseOrders(ids, companyId as string, t);
+
+    await t.commit();
+
+    return res.json({
+      success: true,
+      message: `Bulk delete completed. ${results.successful.length} deleted, ${results.failed.length} failed.`,
+      data: results,
+    });
+  } catch (err: any) {
+    await t.rollback();
+    console.error("Bulk Delete Purchase Order Error:", err);
+    return serverError(res, err.message || "Failed to bulk delete purchase orders");
   }
 });
 
