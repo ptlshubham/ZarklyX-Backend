@@ -1232,12 +1232,12 @@ export const getPendingInvoiceAmount = async (
       {
         model: Clients,
         as: "client",
-        attributes: ["id", "name", "email"]
+        attributes: ["id", "businessName", "email"]
       },
       {
         model: Company,
         as: "company",
-        attributes: ["id", "companyName"]
+        attributes: ["id", "name"]
       }
     ],
     order: [["invoiceDate", "ASC"]]
@@ -1245,12 +1245,12 @@ export const getPendingInvoiceAmount = async (
   
   // Calculate total pending amount (balance already accounts for payments made)
   const totalPendingAmount = pendingInvoices.reduce((sum, invoice) => {
-    return sum + (invoice.balance || 0);
+    return sum + (Number(invoice.balance) || 0);
   }, 0);
   
   // Calculate total invoice amount and total paid amount
   const totalInvoiceAmount = pendingInvoices.reduce((sum, invoice) => {
-    return sum + (invoice.total || 0);
+    return sum + (Number(invoice.total) || 0);
   }, 0);
   
   const totalPaidAmount = totalInvoiceAmount - totalPendingAmount;
@@ -1327,4 +1327,91 @@ export const getInvoiceByPublicToken = async (publicToken: string) => {
       },
     ],
   });
+};
+
+// Bulk delete invoices
+export const bulkDeleteInvoices = async (
+  ids: string[],
+  companyId: string,
+  t: Transaction
+) => {
+  const results = {
+    successful: [] as string[],
+    failed: [] as { id: string; reason: string }[],
+  };
+  for (const id of ids) {
+    try {
+      // Fetch invoice with lock
+      const invoice = await Invoice.findOne({
+        where: { id, companyId, isDeleted: false },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!invoice) {
+        results.failed.push({ id, reason: "Invoice not found" });
+        continue;
+      }
+
+      // Status validation
+      if (["Paid", "Partially Paid"].includes(invoice.status)) {
+        results.failed.push({
+          id,
+          reason: "Paid or partially paid invoices cannot be deleted",
+        });
+        continue;
+      }
+
+      // Check if payments exist
+      const paymentCount = await PaymentsDocuments.count({
+        where: {
+          documentId: id,
+          documentType: "Invoice",
+        },
+        transaction: t,
+      });
+      if (paymentCount > 0) {
+        results.failed.push({
+          id,
+          reason: "Invoice with payments cannot be deleted",
+        });
+        continue;
+      }
+
+      // Soft delete invoice items
+      await InvoiceItem.update(
+        { isDeleted: true },
+        {
+          where: { invoiceId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete TDS/TCS entries
+      await InvoiceTdsTcs.update(
+        { isActive: false, isDeleted: true },
+        {
+          where: { invoiceId: id },
+          transaction: t,
+        }
+      );
+
+      // Soft delete invoice itself
+      await Invoice.update(
+        {
+          isActive: false,
+          isDeleted: true,
+          status: "Cancelled",
+        },
+        {
+          where: { id, companyId },
+          transaction: t,
+        }
+      );
+
+      results.successful.push(id);
+    } catch (error: any) {
+      results.failed.push({ id, reason: error.message || "Unknown error" });
+    }
+  }
+  return results;
 };

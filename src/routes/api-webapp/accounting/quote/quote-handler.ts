@@ -1058,89 +1058,61 @@ export const getPendingQuoteAmount = async (
     throw new Error("Company not found");
   }
   
-  // Fetch all invoices for the client in the company with pending status
-  const pendingInvoices = await Invoice.findAll({
+  // Fetch all pending quotes for the client in the company
+  const pendingQuotes = await Quote.findAll({
     where: {
       clientId,
       companyId,
       isDeleted: false,
       status: {
-        [Op.in]: ["Unpaid", "Partially Paid", "Overdue"]
+        [Op.in]: ["Open", "Draft"]
       }
     },
     include: [
       {
         model: Clients,
         as: "client",
-        attributes: ["id", "name", "email"]
+        attributes: ["id", "businessName", "email"]
       },
       {
         model: Company,
         as: "company",
-        attributes: ["id", "companyName"]
+        attributes: ["id", "name"]
       }
     ],
-    order: [["invoiceDate", "ASC"]]
+    order: [["quotationDate", "ASC"]]
   });
   
-  // Calculate total pending amount (balance already accounts for payments made)
-  const totalPendingAmount = pendingInvoices.reduce((sum, invoice) => {
-    return sum + (invoice.balance || 0);
+  // Calculate total pending quote amount
+  const totalPendingAmount = pendingQuotes.reduce((sum, quote) => {
+    return sum + (Number(quote.total) || 0);
   }, 0);
   
-  // Calculate total invoice amount and total paid amount
-  const totalInvoiceAmount = pendingInvoices.reduce((sum, invoice) => {
-    return sum + (invoice.total || 0);
-  }, 0);
-  
-  const totalPaidAmount = totalInvoiceAmount - totalPendingAmount;
-  
-  // Prepare detailed invoice information with payment breakdown
-  const invoiceDetails = await Promise.all(pendingInvoices.map(async (invoice) => {
-    // Calculate amount paid for this invoice
-    const amountPaid = Number(invoice.total) - Number(invoice.balance);
-    
-    // Get payment records for this invoice
-    const paymentRecords = await PaymentsDocuments.findAll({
-      where: {
-        documentId: invoice.id,
-        documentType: "Invoice",
-        isDeleted: false
-      },
-      include: [
-        {
-          model: Payments,
-          as: "payment",
-          attributes: ["id", "paymentNo", "paymentDate", "paymentAmount", "method"]
-        }
-      ]
-    });
-    
+  // Prepare detailed quote information
+  const quoteDetails = pendingQuotes.map((quote) => {
     return {
-      invoiceId: invoice.id,
-      invoiceNo: invoice.invoiceNo,
-      invoiceDate: invoice.invoiceDate,
-      dueDate: invoice.dueDate,
-      status: invoice.status,
-      totalAmount: invoice.total,
-      paidAmount: parseFloat(amountPaid.toFixed(2)),
-      balanceAmount: invoice.balance,
-      paymentCount: paymentRecords.length,
-      overdueDays: invoice.dueDate < new Date() ? 
-        Math.floor((new Date().getTime() - invoice.dueDate.getTime()) / (1000 * 60 * 60 * 24)) : 0
+      quoteId: quote.id,
+      quotationNo: quote.quotationNo,
+      quotationDate: quote.quotationDate,
+      validUntilDate: quote.validUntilDate,
+      status: quote.status,
+      totalAmount: quote.total,
+      subTotal: quote.subTotal,
+      taxable: quote.taxable,
+      cgst: quote.cgst,
+      sgst: quote.sgst,
+      igst: quote.igst
     };
-  }));
+  });
   
   return {
     clientId,
     companyId,
     clientName: client.clientfirstName,
     companyName: company.name,
-    totalInvoiceAmount: parseFloat(totalInvoiceAmount.toFixed(2)),
-    totalPaidAmount: parseFloat(totalPaidAmount.toFixed(2)),
     totalPendingAmount: parseFloat(totalPendingAmount.toFixed(2)),
-    pendingInvoicesCount: pendingInvoices.length,
-    invoices: invoiceDetails
+    pendingQuotesCount: pendingQuotes.length,
+    quotes: quoteDetails
   };
 };
 
