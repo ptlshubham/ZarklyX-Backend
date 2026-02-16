@@ -176,3 +176,86 @@ export const deactivateUserCompany = async (
   if (!user) throw new Error("User not found in company");
   return await user.update({ isActive: false }, { transaction });
 };
+
+// Valid asset types for company branding
+const VALID_ASSET_TYPES = [
+  'companyLogoLight',
+  'companyLogoDark',
+  'faviconLight',
+  'faviconDark',
+  'employeeLoginBanner',
+  'clientLoginBanner',
+  'clientSignupBanner'
+];
+
+// Validate asset type
+export const validateAssetType = (assetType: string): boolean => {
+  return VALID_ASSET_TYPES.includes(assetType);
+};
+
+// Get valid asset types list
+export const getValidAssetTypes = (): string[] => {
+  return VALID_ASSET_TYPES;
+};
+
+// Remove company asset
+export const removeCompanyAsset = async (
+  companyId: string,
+  assetType: string,
+  transaction: Transaction
+) => {
+  const company = await Company.findByPk(companyId);
+  if (!company) return null;
+
+  const currentAssetPath = (company.dataValues as any)[assetType];
+  
+  // Update company to remove the asset
+  await company.update({ [assetType]: null }, { transaction });
+
+  // Delete file from disk if it exists
+  if (currentAssetPath) {
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const filePath = path.join(process.cwd(), 'src', 'public', currentAssetPath.replace(/^\//, ''));
+      await fs.unlink(filePath).catch(() => { });
+    } catch (err) {
+      console.warn(`Failed to delete file at ${currentAssetPath}:`, err);
+    }
+  }
+
+  return { success: true, assetType, companyId };
+};
+
+// Upload company asset
+export const uploadCompanyAsset = async (
+  companyId: string,
+  assetType: string,
+  file: Express.Multer.File,
+  transaction: Transaction
+) => {
+  const company = await Company.findByPk(companyId);
+  if (!company) return null;
+
+  const oldAssetPath = (company.dataValues as any)[assetType];
+  const path = require('path');
+
+  // Build relative URL
+  const filePathRelative = `/${path.relative(path.join(process.cwd(), "src/public"), file.path).replace(/\\/g, "/")}`;
+
+  // Update DB
+  await company.update({ [assetType]: filePathRelative } as any, { transaction });
+
+  // Remove old file from disk after commit
+  if (oldAssetPath) {
+    try {
+      const fs = require("fs").promises;
+      const oldFilePath = path.join(process.cwd(), "src", "public", oldAssetPath.replace(/^\//, ""));
+      await fs.unlink(oldFilePath).catch(() => { });
+    } catch (err) {
+      console.warn(`Failed to delete old asset ${oldAssetPath}:`, err);
+    }
+  }
+
+  return { filePath: filePathRelative };
+};

@@ -26,6 +26,9 @@ export class Company extends Model<
   declare companyLogoDark: string | null;
   declare faviconLight: string | null;
   declare faviconDark: string | null;
+  declare employeeLoginBanner: string | null;
+  declare clientLoginBanner: string | null;
+  declare clientSignupBanner: string | null;
   declare timezone: string | null;
   declare country: string | null;
   declare state: string | null;
@@ -146,6 +149,18 @@ export class Company extends Model<
           allowNull: true,
         },
         faviconDark: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        employeeLoginBanner: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        clientLoginBanner: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        clientSignupBanner: {
           type: DataTypes.TEXT,
           allowNull: true,
         },

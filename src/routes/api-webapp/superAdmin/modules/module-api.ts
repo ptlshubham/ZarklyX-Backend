@@ -1,12 +1,14 @@
 import { Router } from "express";
-import { 
-    createModule, 
-    getModules, 
-    getModuleById, 
-    getActiveModules,
-    updateModule, 
-    deleteModule, 
-    toggleModuleActive
+import {
+  createModule,
+  getModules,
+  getModuleById,
+  getActiveModules,
+  getModulesWithPermissions,
+  getActiveModulesWithPermissions,
+  updateModule,
+  deleteModule,
+  toggleModuleActive
 } from "../../../api-webapp/superAdmin/modules/module-handler";
 import { Request, Response } from "express-serve-static-core";
 import dbInstance from "../../../../db/core/control-db";
@@ -25,7 +27,7 @@ router.post("/createModules", async (req: Request, res: Response): Promise<any> 
         message: "Name and description are required",
       });
     }
-    
+
     // Validate price if provided
     if (price !== undefined && (typeof price !== 'number' || price < 0)) {
       await t.rollback();
@@ -34,7 +36,7 @@ router.post("/createModules", async (req: Request, res: Response): Promise<any> 
         message: "Price must be a valid non-negative number",
       });
     }
-    
+
     // Validate isFreeForAll if provided
     if (isFreeForAll !== undefined && typeof isFreeForAll !== 'boolean') {
       await t.rollback();
@@ -43,7 +45,7 @@ router.post("/createModules", async (req: Request, res: Response): Promise<any> 
         message: "isFreeForAll must be a boolean value",
       });
     }
-    
+
     const module = await createModule(name, description, price || 0.00, isFreeForAll || false, t);
     await t.commit();
     return res.status(200).json({
@@ -55,8 +57,8 @@ router.post("/createModules", async (req: Request, res: Response): Promise<any> 
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
       const field = error.errors?.[0]?.path || 'field';
-      return res.status(409).json({ 
-        success: false, 
+      return res.status(409).json({
+        success: false,
         message: `A module with this ${field} already exists`,
         field: field
       });
@@ -85,6 +87,42 @@ router.get("/getActiveModules", async (_req: Request, res: Response): Promise<an
   }
 });
 
+// Get /superAdmin/modules/getAllModulesWithPermissions
+router.get("/getAllModulesWithPermissions", async (_req: Request, res: Response): Promise<any> => {
+  try {
+    const modulesWithPermissions = await getModulesWithPermissions();
+    return res.status(200).json({
+      success: true,
+      data: modulesWithPermissions,
+      message: "Modules with permissions fetched successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch modules with permissions",
+      details: error
+    });
+  }
+});
+
+// Get /superAdmin/modules/getActiveModulesWithPermissions
+router.get("/getActiveModulesWithPermissions", async (_req: Request, res: Response): Promise<any> => {
+  try {
+    const modulesWithPermissions = await getActiveModulesWithPermissions();
+    return res.status(200).json({
+      success: true,
+      data: modulesWithPermissions,
+      message: "Active modules with permissions fetched successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch active modules with permissions",
+      details: error
+    });
+  }
+});
+
 // Get /superAdmin/modules/getModuleById/:id
 router.get("/getModuleById/:id", async (req: Request, res: Response): Promise<any> => {
   try {
@@ -107,22 +145,38 @@ router.get("/getModuleById/:id", async (req: Request, res: Response): Promise<an
 router.patch("/updateModuleById/:id", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
   try {
-      let { id } = req.params;
-        if (Array.isArray(id)) id = id[0];
-      if (!id) {
-        await t.rollback();
-        return res.status(400).json({ error: "Module ID is required" });
-      }
-      const updateFields: any = { id };
-      const { name, description, isActive } = req.body;
-      if (typeof name === 'string') updateFields.name = name;
-      if (typeof description === 'string') updateFields.description = description;
-      if (typeof isActive === 'boolean') updateFields.isActive = isActive;
-      if (Object.keys(updateFields).length === 1) { // only id present
-        await t.rollback();
-        return res.status(400).json({ error: "At least one field (name, description, price, isActive) must be provided" });
-      }
-      const module = await updateModule(id, updateFields, t);
+    let { id } = req.params;
+    if (Array.isArray(id)) id = id[0];
+    if (!id) {
+      await t.rollback();
+      return res.status(400).json({ error: "Module ID is required" });
+    }
+    const updateFields: any = { id };
+    const { name, description, isActive, price, isFreeForAll } = req.body;
+    if (typeof name === 'string') updateFields.name = name;
+    if (typeof description === 'string') updateFields.description = description;
+    if (typeof isActive === 'boolean') updateFields.isActive = isActive;
+    if (price !== undefined && (typeof price !== 'number' || price < 0)) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Price must be a valid non-negative number",
+      });
+    }
+    if (price !== undefined && typeof price === 'number') updateFields.price = price;
+    if (isFreeForAll !== undefined && typeof isFreeForAll !== 'boolean') {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "isFreeForAll must be a boolean value",
+      });
+    }
+    if (isFreeForAll !== undefined && typeof isFreeForAll === 'boolean') updateFields.isFreeForAll = isFreeForAll;
+    if (Object.keys(updateFields).length === 1) { // only id present
+      await t.rollback();
+      return res.status(400).json({ error: "At least one field (name, description, price, isFreeForAll, isActive) must be provided" });
+    }
+    const module = await updateModule(id, updateFields, t);
     if (!module) {
       await t.rollback();
       return res.status(404).json({ error: "Module not found" });
@@ -133,8 +187,8 @@ router.patch("/updateModuleById/:id", async (req: Request, res: Response): Promi
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
       const field = error.errors?.[0]?.path || 'field';
-      return res.status(409).json({ 
-        success: false, 
+      return res.status(409).json({
+        success: false,
         message: `A module with this ${field} already exists`,
         field: field
       });

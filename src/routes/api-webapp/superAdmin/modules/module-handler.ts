@@ -1,16 +1,17 @@
 import { Modules } from "../../../api-webapp/superAdmin/modules/modules-model";
+import { Permissions } from "../../../api-webapp/superAdmin/permissions/permissions-model";
 
 // Create a new module
 export const createModule = async (name: string, description: string, price: number, isFreeForAll: boolean, t: any) => {
     return await Modules.create(
-        { 
-            name, 
+        {
+            name,
             description,
             price: price || 0.00,
             isFreeForAll: isFreeForAll || false,
-            isActive: true, 
-            isDeleted: false 
-        }, 
+            isActive: true,
+            isDeleted: false
+        },
         { transaction: t }
     );
 };
@@ -37,15 +38,15 @@ export const getActiveModules = async () => {
 export const updateModule = async (id: string, body: any, t: any) => {
     const module = await Modules.findByPk(body.id);
     if (!module) return null;
-      await Modules.update(
+    await Modules.update(
         {
             ...body,
         },
         {
-          where: { id: body.id },
-          transaction: t,
+            where: { id: body.id },
+            transaction: t,
         }
-      );
+    );
     await module.reload();
     return module;
 };
@@ -74,4 +75,38 @@ export const toggleModuleActive = async (id: string, t: any) => {
     module.isActive = !module.isActive;
     await module.save({ transaction: t });
     return module;
+};
+
+// Get all modules with their permissions
+export const getModulesWithPermissions = async () => {
+    return await Modules.findAll({
+        include: [
+            {
+                model: Permissions,
+                as: "permissions",
+                where: { isDeleted: false },
+                required: false,
+                attributes: ["id", "name", "description", "action", "price", "isSystemPermission", "isSubscriptionExempt", "isFreeForAll", "isActive"],
+            }
+        ],
+        where: { isDeleted: false },
+        order: [["name", "ASC"]],
+    });
+};
+
+// Get all active modules with their permissions
+export const getActiveModulesWithPermissions = async () => {
+    return await Modules.findAll({
+        include: [
+            {
+                model: Permissions,
+                as: "permissions",
+                where: { isDeleted: false, isActive: true },
+                required: false,
+                attributes: ["id", "name", "description", "action", "price", "isSystemPermission", "isSubscriptionExempt", "isFreeForAll", "isActive"],
+            }
+        ],
+        where: { isActive: true, isDeleted: false },
+        order: [["name", "ASC"]],
+    });
 };

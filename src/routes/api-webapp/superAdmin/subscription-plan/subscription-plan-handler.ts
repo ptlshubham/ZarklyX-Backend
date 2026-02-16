@@ -2,6 +2,8 @@ import { Transaction } from "sequelize";
 import { SubscriptionPlan } from "../../../api-webapp/superAdmin/subscription-plan/subscription-plan-model";
 import { SubscriptionPlanModule } from "../../../api-webapp/superAdmin/subscription-plan-module/subscription-plan-module-model";
 import { Modules } from "../../../api-webapp/superAdmin/modules/modules-model";
+import { SubscriptionPlanPermission } from "../subscription-plan-permission/subscription-plan-permission-model";
+import { Permissions } from "../../../api-webapp/superAdmin/permissions/permissions-model";
 import { bulkCreateSubscriptionPlanPermissions } from "../subscription-plan-permission/subscription-plan-permission-handler";
 
 export const calculateExpiryDate = (
@@ -96,11 +98,39 @@ export const createSubscriptionPlan = async (
 };
 
 /**
- * Get all active subscription plans
+ * Get all active subscription plans with modules and permissions
  */
 export const getActiveSubscriptionPlans = async () => {
   return await SubscriptionPlan.findAll({
     where: { status: "active", isDeleted: false },
+    include: [
+      {
+        model: SubscriptionPlanModule,
+        as: "planModules",
+        required: false,
+        where: { isActive: true, isDeleted: false },
+        include: [
+          {
+            model: Modules,
+            as: "module",
+            attributes: ["id", "name", "description", "price"],
+          },
+        ],
+      },
+      {
+        model: SubscriptionPlanPermission,
+        as: "planPermissions",
+        required: false,
+        where: { isActive: true, isDeleted: false },
+        include: [
+          {
+            model: Permissions,
+            as: "permission",
+            attributes: ["id", "name", "description", "moduleId", "action", "price"],
+          },
+        ],
+      },
+    ],
     order: [
       ["display_order", "ASC"],
       ["createdAt", "DESC"]
@@ -109,13 +139,41 @@ export const getActiveSubscriptionPlans = async () => {
 };
 
 /**
- * Get all subscription plans
+ * Get all subscription plans with modules and permissions
  * @param includeDeleted - Include soft-deleted plans (default: false)
  */
 export const getAllSubscriptionPlans = async (includeDeleted: boolean = false) => {
-  const whereClause = includeDeleted ? {} : { is_deleted: false };
+  const whereClause = includeDeleted ? {} : { isDeleted: false };
   return await SubscriptionPlan.findAll({
     where: whereClause,
+    include: [
+      {
+        model: SubscriptionPlanModule,
+        as: "planModules",
+        required: false,
+        where: { isActive: true, isDeleted: false },
+        include: [
+          {
+            model: Modules,
+            as: "module",
+            attributes: ["id", "name", "description", "price"],
+          },
+        ],
+      },
+      {
+        model: SubscriptionPlanPermission,
+        as: "planPermissions",
+        required: false,
+        where: { isActive: true, isDeleted: false },
+        include: [
+          {
+            model: Permissions,
+            as: "permission",
+            attributes: ["id", "name", "description", "moduleId", "action", "price"],
+          },
+        ],
+      },
+    ],
     order: [
       ["display_order", "ASC"],
       ["createdAt", "DESC"]
@@ -124,11 +182,39 @@ export const getAllSubscriptionPlans = async (includeDeleted: boolean = false) =
 };
 
 /**
- * Get subscription plan by ID
+ * Get subscription plan by ID with modules and permissions
  */
 export const getSubscriptionPlanById = async (id: string) => {
   return await SubscriptionPlan.findOne({
     where: { id, status: "active", isDeleted: false },
+    include: [
+      {
+        model: SubscriptionPlanModule,
+        as: "planModules",
+        required: false,
+        where: { isActive: true, isDeleted: false },
+        include: [
+          {
+            model: Modules,
+            as: "module",
+            attributes: ["id", "name", "description", "price"],
+          },
+        ],
+      },
+      {
+        model: SubscriptionPlanPermission,
+        as: "planPermissions",
+        required: false,
+        where: { isActive: true, isDeleted: false },
+        include: [
+          {
+            model: Permissions,
+            as: "permission",
+            attributes: ["id", "name", "description", "moduleId", "action", "price"],
+          },
+        ],
+      },
+    ],
   });
 };
 
@@ -149,6 +235,26 @@ export const updateSubscriptionPlan = async (
   if (!plan) return null;
 
   await plan.update(updateFields, { transaction: t });
+  return plan;
+};
+
+/**
+ * Set subscription plan status to active or inactive
+ */
+export const setSubscriptionPlanStatus = async (
+  id: string,
+  status: "active" | "inactive",
+  t: Transaction
+) => {
+  const plan = await SubscriptionPlan.findOne({
+    where: { id, isDeleted: false },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  if (!plan) return null;
+
+  await plan.update({ status }, { transaction: t });
   return plan;
 };
 
@@ -232,7 +338,7 @@ export const calculateSubscriptionPrice = async (
   }
 
   const basePlanPrice = Number(plan.price);
-  
+
   // Calculate plan price based on pricing model
   let calculatedPlanPrice: number;
   if (plan.price_per_user) {

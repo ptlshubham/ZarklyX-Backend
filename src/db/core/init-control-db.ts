@@ -22,6 +22,7 @@ import { ItTicketsTimeline } from "../../routes/api-webapp/it-Management/it-Tick
 // Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
+import { EmployeeDocument } from "../../routes/api-webapp/agency/employee/employee-documents.model";
 
 // import { Role } from "../../routes/api-webapp/roles/role-model";
 // import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
@@ -75,6 +76,12 @@ import { Expenses } from "../../routes/api-webapp/accounting/expenses/expenses-m
 import { ExpenseLineItem } from "../../routes/api-webapp/accounting/expenses/expense-line-item-model";
 import { ExpenseItem } from "../../routes/api-webapp/accounting/expenses/expenses-item/expense-item-model";
 
+import { Warehouse } from "../../routes/api-webapp/inventory-management/warehouse/warehouse-model";
+import { StockTransaction } from "../../routes/api-webapp/inventory-management/stock/stock-transaction/stock-transaction-model";
+import { StockBalance } from "../../routes/api-webapp/inventory-management/stock/stock-balance/stock-balance-model";
+import { SystemLog } from "../../routes/api-webapp/system-log/system-log-model";
+import { Todo } from "../../routes/api-webapp/todo/todo-model";
+
 export {
   User,
   Company,
@@ -87,6 +94,7 @@ export {
   BusinessSubcategory,
   SocialToken,
   Employee,
+  EmployeeDocument,
   ItTickets,
   // GoogleToken
   InfluencerCategory,
@@ -139,6 +147,12 @@ export {
   Expenses,
   ExpenseLineItem,
   ExpenseItem,
+  Warehouse,
+  StockTransaction,
+  StockBalance,
+  SystemLog,
+  Todo,
+
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -158,6 +172,8 @@ export function initControlDB(sequelize: Sequelize) {
   ItTicketsAttachments.initModel(sequelize);
   ItTicketsTimeline.initModel(sequelize);
   ItAssetsAttachments.initModel(sequelize);
+  Employee.initModel(sequelize);
+  EmployeeDocument.initModel(sequelize);
   // Roles
   // Role.initModel(sequelize);
   // SubRole.initModel(sequelize);
@@ -215,6 +231,14 @@ export function initControlDB(sequelize: Sequelize) {
   Expenses.initModel(sequelize);
   ExpenseLineItem.initModel(sequelize);
   ExpenseItem.initModel(sequelize);
+
+  Warehouse.initModel(sequelize);
+  StockTransaction.initModel(sequelize);
+  StockBalance.initModel(sequelize);
+  SystemLog.initModel(sequelize);
+  Todo.initModel(sequelize);
+
+
 
   // Relations and associations
   /***user <-> company */
@@ -295,6 +319,26 @@ export function initControlDB(sequelize: Sequelize) {
   Employee.hasMany(Employee, {
     foreignKey: "reportingManagerId",
     as: "subordinates",     // manager.getSubordinates()
+  });
+
+  /*** Employee <-> EmployeeDocument */
+  Employee.hasMany(EmployeeDocument, {
+    foreignKey: "employeeId",
+    as: "documents",
+  });
+  EmployeeDocument.belongsTo(Employee, {
+    foreignKey: "employeeId",
+    as: "employee",
+  });
+
+  /*** Company <-> EmployeeDocument */
+  Company.hasMany(EmployeeDocument, {
+    foreignKey: "companyId",
+    as: "employeeDocuments",
+  });
+  EmployeeDocument.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
   });
 
   /*** BusinessType <-> BusinessSubcategory */
@@ -845,6 +889,13 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
   ClientLedger.belongsTo(Company, {
+  /*** DebitNote <-> Company */
+  Company.hasMany(DebitNote, {
+    foreignKey: "companyId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Company, {
     foreignKey: "companyId",
     as: "company",
     constraints: false,
@@ -857,6 +908,13 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
   ClientLedger.belongsTo(Clients, {
+  /*** DebitNote <-> Clients */
+  Clients.hasMany(DebitNote, {
+    foreignKey: "clientId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Clients, {
     foreignKey: "clientId",
     as: "client",
     constraints: false,
@@ -955,6 +1013,75 @@ export function initControlDB(sequelize: Sequelize) {
       foreignKey: "itemId",
       as: "item",
     });
+  /*** DebitNote <-> Vendor */
+  Vendor.hasMany(DebitNote, {
+    foreignKey: "vendorId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
+
+  /*** DebitNote <-> Invoice */
+  Invoice.hasMany(DebitNote, {
+    foreignKey: "invoiceId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+    constraints: false,
+  });
+
+  /*** DebitNote <-> PurchaseBill */
+  PurchaseBill.hasMany(DebitNote, {
+    foreignKey: "purchaseBillId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(PurchaseBill, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBill",
+    constraints: false,
+  });
+
+  /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
+  DebitNote.belongsToMany(Item, {
+    through: DebitNoteItem,
+    foreignKey: "debitNoteId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(DebitNote, {
+    through: DebitNoteItem,
+    foreignKey: "itemId",
+    otherKey: "debitNoteId",
+    as: "debitNotes",
+  });
+
+  /*** DebitNote <-> DebitNoteItem */
+  DebitNote.hasMany(DebitNoteItem, {
+    foreignKey: "debitNoteId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(DebitNote, {
+    foreignKey: "debitNoteId",
+    as: "debitNote",
+  });
+
+  /*** Item <-> DebitNoteItem */
+  Item.hasMany(DebitNoteItem, {
+    foreignKey: "itemId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
 
   /*** InfluencerCategory <-> Influencer (Many-to-Many) */
   InfluencerCategory.belongsToMany(Influencer, {
@@ -997,7 +1124,7 @@ export function initControlDB(sequelize: Sequelize) {
     otherKey: "platformId",
     as: "platforms",
   });
-      /*** ItemCategory <-> ItAssetsManagement */
+  /*** ItemCategory <-> ItAssetsManagement */
   ItemCategory.hasMany(ItAssetsManagement, {
     foreignKey: "categoryId",
     as: "assets",
@@ -1008,8 +1135,8 @@ export function initControlDB(sequelize: Sequelize) {
     as: "category",
   });
 
-    /*** Company <-> ItAssetsManagement */
-   Company.hasMany(ItAssetsManagement, {
+  /*** Company <-> ItAssetsManagement */
+  Company.hasMany(ItAssetsManagement, {
     foreignKey: "companyId",
     as: "assets",
   });
@@ -1029,7 +1156,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "clientId",
     as: "client",
   });
-   /***ItTicketsAttachments<->ItTickets */
+  /***ItTicketsAttachments<->ItTickets */
   ItTickets.hasMany(ItTicketsAttachments, {
     foreignKey: "itTicketId",
     as: "attachments",
@@ -1039,7 +1166,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "itTicketId",
     as: "itTickets",
   });
-  
+
   //***ItAssetsAttachments<->ItAssetsManagement */
   ItAssetsManagement.hasMany(ItAssetsAttachments, {
     foreignKey: "itAssetId",
@@ -1050,7 +1177,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "itAssetId",
     as: "asset",
   });
-    /***ItTickets<->ItTicketsTimeline */
+  /***ItTickets<->ItTicketsTimeline */
   ItTickets.hasMany(ItTicketsTimeline, {
     foreignKey: "itTicketId",
     as: "timeline",
@@ -1273,7 +1400,7 @@ export function initControlDB(sequelize: Sequelize) {
   // ============================================================
   // ZarklyX RBAC Associations (Platform Admin System)
   // ============================================================
-  
+
   // ZarklyXUser <-> ZarklyXRole
   ZarklyXUser.belongsTo(ZarklyXRole, {
     foreignKey: "roleId",
@@ -1441,6 +1568,119 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "companyId",
     as: "company",
   });
+  //Compony <-> Warehouse
+  Company.hasMany(Warehouse, {
+    foreignKey: "companyId",
+    as: "warehouses",
+  });
+  Warehouse.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+
+  //company <-> StockTransaction
+  Company.hasMany(StockTransaction, {
+    foreignKey: "companyId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  //Warehouse <-> StockTransaction
+  Warehouse.hasMany(StockTransaction, {
+    foreignKey: "warehouseId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Warehouse, {
+    foreignKey: "warehouseId",
+    as: "warehouse",
+  });
+  //Item <-> StockTransaction
+  Item.hasMany(StockTransaction, {
+    foreignKey: "itemId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+  //vendor <-> stockTransaction
+  Vendor.hasMany(StockTransaction, {
+    foreignKey: "vendorId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+  });
+
+  //Company <-> StockBalance
+  Company.hasMany(StockBalance, {
+    foreignKey: "companyId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  //Warehouse <-> StockBalance
+  Warehouse.hasMany(StockBalance, {
+    foreignKey: "warehouseId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Warehouse, {
+    foreignKey: "warehouseId",
+    as: "warehouse",
+  });
+  //Item <-> StockBalance
+  Item.hasMany(StockBalance, {
+    foreignKey: "itemId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+
+  // SystemLog <-> User
+  User.hasMany(SystemLog, {
+    foreignKey: "userId",
+    as: "systemLogs",
+  });
+  SystemLog.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
+  // SystemLog <-> Company
+  Company.hasMany(SystemLog, {
+    foreignKey: "companyId",
+    as: "systemLogs",
+  });
+  SystemLog.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  // Todo <-> Company
+  Company.hasMany(Todo, {
+    foreignKey: "companyId",
+    as: "todos",
+  });
+  Todo.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  // Todo <-> User
+  User.hasMany(Todo, {
+    foreignKey: "userId",
+    as: "todos",
+  });
+  Todo.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
 
   console.log("✅ ZarklyX RBAC associations initialized");
 
@@ -1514,5 +1754,10 @@ export function initControlDB(sequelize: Sequelize) {
     Expenses,
     ExpenseLineItem,
     ExpenseItem,
+    Warehouse,
+    StockTransaction,
+    StockBalance,
+    SystemLog,
+    Todo
   };
 }

@@ -80,5 +80,10 @@ export default (app: Application) => {
     app.use("/superAdmin/zarklyx/2fa", require("./api-webapp/superAdmin/zarklyX-2fa/zarklyX-2fa-api"));
   
     app.use("/clients/client-assignment",require("./api-webapp/agency/clients/client-assignment/client-assignment-api"));
+    app.use("/inventory/warehouse", require("./api-webapp/inventory-management/warehouse/warehouse-api"));
+    app.use("/stock/transaction", require("./api-webapp/inventory-management/stock/stock-transaction/stock-transaction-api"));
+    app.use("/stock/balance", require("./api-webapp/inventory-management/stock/stock-balance/stock-balance-api"));
+    app.use("/system-log", require("./api-webapp/system-log/system-log-api"));
+    app.use("/todo", require("./api-webapp/todo/todo-api"));
 };
 
