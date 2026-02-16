@@ -695,6 +695,11 @@ export async function getUserAccessSnapshot(userId: string) {
     return { permissions: [], modules: [] };
   }
 
+  // Load user's role to get priority
+  const userRole = await Role.findByPk(user.roleId);
+  const userPriority = userRole?.priority ?? 999;
+  const isSuperAdmin = userPriority === 0;
+
   // Load all permissions
   const allPermissions = await Permissions.findAll({
     where: { isActive: true, isDeleted: false },
@@ -758,18 +763,25 @@ export async function getUserAccessSnapshot(userId: string) {
     const isPermissionFree = permission.isFreeForAll === true;
     const module = moduleMap.get(permission.moduleId);
     const isModuleFree = module?.isFreeForAll === true;
+    const isFree = isPermissionFree || isModuleFree;
 
-    // Company entitlement
+    // SuperAdmin (priority=0) gets all free permissions automatically
+    // For NON-FREE permissions, superAdmin still goes through normal checks below
+    if (isSuperAdmin && isFree) {
+      allowedPermissions.push(permission);
+      continue; // Skip remaining checks only for free permissions
+    }
+
+    // Company subscription entitlement check (applies to ALL users including superAdmin for non-free content)
     if (
       !permission.isSubscriptionExempt &&
-      !isPermissionFree &&
-      !isModuleFree
+      !isFree
     ) {
       const hasModuleAccess = allowedModuleIds.has(permission.moduleId);
       const hasPermissionAccess = companyPermissionSet.has(permissionId);
 
       if (!hasModuleAccess && !hasPermissionAccess) {
-        continue;
+        continue; // Company hasn't subscribed - DENY access
       }
     }
 
@@ -781,7 +793,7 @@ export async function getUserAccessSnapshot(userId: string) {
       continue;
     }
 
-    // Role permissions
+    // Role permissions (for free permissions, employees must have explicit access)
     if (rolePermissionSet.has(permissionId)) {
       allowedPermissions.push(permission);
     }
@@ -809,6 +821,20 @@ export async function getUserAccessSnapshot(userId: string) {
     }
 
     modulePermissionMap[mod.id].permissions.push(perm.name);
+  }
+
+  // Add free modules that aren't already included (only for superAdmin)
+  if (isSuperAdmin) {
+    for (const mod of modules) {
+      if (mod.isFreeForAll && !modulePermissionMap[mod.id]) {
+        modulePermissionMap[mod.id] = {
+          id: mod.id,
+          name: mod.name,
+          description: mod.description,
+          permissions: [],
+        };
+      }
+    }
   }
 
   // Final snapshot 

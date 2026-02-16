@@ -291,8 +291,7 @@ export class Invoice extends Model<
                 },
                 publicToken: {
                     type: DataTypes.STRING,
-                    allowNull: true,
-                    unique: true,
+                    allowNull: true,                   
                 },
                 isActive: {
                     type: DataTypes.BOOLEAN,
