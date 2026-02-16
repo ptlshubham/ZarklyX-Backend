@@ -14,6 +14,7 @@ import dbInstance from "../../../../db/core/control-db";
 const router = Router();
 
 // Create subscription plan
+
 router.post("/createSubscriptionPlan", async (req, res) => {
   const t = await dbInstance.transaction();
   try {
@@ -35,7 +36,6 @@ router.post("/createSubscriptionPlan", async (req, res) => {
       status,
       is_popular,
       modules, // Array of module IDs (full module access)
-      permissions, // Array of permission IDs (feature-level access)
     } = req.body;
 
     if (
@@ -76,14 +76,6 @@ router.post("/createSubscriptionPlan", async (req, res) => {
       });
     }
 
-    // Validate permissions array if provided
-    if (permissions !== undefined && (!Array.isArray(permissions) || permissions.some((id: any) => typeof id !== 'string'))) {
-      await t.rollback();
-      return res.status(400).json({
-        error: "permissions must be an array of valid permission IDs",
-      });
-    }
-
     const plan = await createSubscriptionPlan(
       {
         name,
@@ -103,7 +95,6 @@ router.post("/createSubscriptionPlan", async (req, res) => {
         status,
         is_popular,
         modules,
-        permissions,
       },
       t
     );
@@ -111,14 +102,9 @@ router.post("/createSubscriptionPlan", async (req, res) => {
     await t.commit();
 
     const modulesCount = modules?.length || 0;
-    const permissionsCount = permissions?.length || 0;
     let message = "Subscription plan created successfully";
-    if (modulesCount > 0 && permissionsCount > 0) {
-      message = `Subscription plan created with ${modulesCount} module(s) and ${permissionsCount} permission(s)`;
-    } else if (modulesCount > 0) {
-      message = `Subscription plan created with ${modulesCount} module(s)`;
-    } else if (permissionsCount > 0) {
-      message = `Subscription plan created with ${permissionsCount} permission(s)`;
+    if (modulesCount > 0) {
+      message = `Subscription plan created with ${modulesCount} module(s) `;
     }
 
     return res.status(201).json({
@@ -233,6 +219,7 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
       display_order,
       status,
       is_popular,
+      modules,
     } = req.body;
 
     if (typeof name === "string" && name.trim()) updateFields.name = name;
@@ -251,6 +238,17 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
     if (typeof display_order === "number") updateFields.display_order = display_order;
     if (["active", "inactive"].includes(status)) updateFields.status = status;
     if (typeof is_popular === "boolean") updateFields.is_popular = is_popular;
+
+    // Validate modules array if provided
+    if (modules !== undefined) {
+      if (!Array.isArray(modules) || modules.some((id: any) => typeof id !== 'string')) {
+        await t.rollback();
+        return res.status(400).json({
+          error: "modules must be an array of valid module IDs",
+        });
+      }
+      updateFields.modules = modules;
+    }
 
     // Validate min_users and max_users relationship
     const finalMinUsers = updateFields.min_users !== undefined ? updateFields.min_users : null;

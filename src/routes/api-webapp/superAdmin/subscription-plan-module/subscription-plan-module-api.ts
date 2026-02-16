@@ -5,6 +5,7 @@ import {
   getActiveSubscriptionPlanModules,
   getSubscriptionPlanModuleById,
   getModulesBySubscriptionPlanId,
+  getModulesNotInSubscriptionPlan,
   updateSubscriptionPlanModule,
   deleteSubscriptionPlanModule,
   hardDeleteSubscriptionPlanModule
@@ -82,6 +83,19 @@ router.get("/getModulesBySubscriptionPlanId/:subscriptionPlanId", async (req: Re
     return res.status(200).json({ success: true, data: modules });
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch modules for subscription plan", details: error });
+  }
+});
+
+// Get modules not included in a subscription plan
+router.get("/getModulesNotInSubscriptionPlan/:subscriptionPlanId", async (req: Request, res: Response): Promise<any> => {
+  try {
+    let { subscriptionPlanId } = req.params;
+    subscriptionPlanId = Array.isArray(subscriptionPlanId) ? subscriptionPlanId[0] : subscriptionPlanId;
+    if (!subscriptionPlanId) return res.status(400).json({ error: "Subscription Plan ID is required" });
+    const modules = await getModulesNotInSubscriptionPlan(subscriptionPlanId);
+    return res.status(200).json({ success: true, data: modules });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to fetch modules not in subscription plan", details: error });
   }
 });
 

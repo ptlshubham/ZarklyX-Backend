@@ -357,7 +357,7 @@ export async function checkUserPermission(
   // PRIORITY 1: Company Entitlement Check
   // ============================================================
   // This MUST come first to prevent billing bypass via overrides
-  
+
   // Exception: Subscription-exempt permissions (e.g., billing, subscription management)
   // These allow access even without subscription (account survival)
   const isSubscriptionExempt = (permission as any).isSubscriptionExempt;

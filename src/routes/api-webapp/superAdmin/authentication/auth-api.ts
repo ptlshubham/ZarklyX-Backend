@@ -20,86 +20,86 @@ router.post(
   requireZarklyXRolePriority(20),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { 
-        email, 
-        password, 
-        firstName, 
-        lastName, 
-        roleId, 
-        baseRoleId, 
-        roleName, 
-        roleDescription, 
-        permissionIds, 
-        phoneNumber, 
-        isdCode, 
-        isoCode, 
-        department 
+      const {
+        email,
+        password,
+        firstName,
+        lastName,
+        roleId,
+        baseRoleId,
+        roleName,
+        roleDescription,
+        permissionIds,
+        phoneNumber,
+        isdCode,
+        isoCode,
+        department
       } = req.body;
 
-    // Validation
-    if (!email || !password || !firstName || !lastName) {
-      res.status(400).json({
-        success: false,
-        message: "Email, password, firstName, and lastName are required",
+      // Validation
+      if (!email || !password || !firstName || !lastName) {
+        res.status(400).json({
+          success: false,
+          message: "Email, password, firstName, and lastName are required",
+        });
+        return;
+      }
+
+      // Must provide either roleId or baseRoleId
+      if (!roleId && !baseRoleId) {
+        res.status(400).json({
+          success: false,
+          message: "Either roleId or baseRoleId must be provided",
+        });
+        return;
+      }
+
+      if (password.length < 8) {
+        res.status(400).json({
+          success: false,
+          message: "Password must be at least 8 characters",
+        });
+        return;
+      }
+
+      // Register user
+      const result = await registerZarklyXUser({
+        email,
+        password,
+        firstName,
+        lastName,
+        roleId,
+        baseRoleId,
+        roleName,
+        roleDescription,
+        permissionIds,
+        phoneNumber,
+        isdCode,
+        isoCode,
+        department,
+        createdBy: req.zarklyXUser!.id,
       });
-      return;
-    }
 
-    // Must provide either roleId or baseRoleId
-    if (!roleId && !baseRoleId) {
-      res.status(400).json({
-        success: false,
-        message: "Either roleId or baseRoleId must be provided",
+      if (!result.success) {
+        res.status(400).json(result);
+        return;
+      }
+
+      res.status(201).json({
+        success: true,
+        message: result.message,
+        data: {
+          user: result.user,
+          token: result.token,
+        },
       });
-      return;
-    }
-
-    if (password.length < 8) {
-      res.status(400).json({
+    } catch (error: any) {
+      res.status(500).json({
         success: false,
-        message: "Password must be at least 8 characters",
+        message: error.message || "Failed to register user",
       });
-      return;
     }
-
-    // Register user
-    const result = await registerZarklyXUser({
-      email,
-      password,
-      firstName,
-      lastName,
-      roleId,
-      baseRoleId,
-      roleName,
-      roleDescription,
-      permissionIds,
-      phoneNumber,
-      isdCode,
-      isoCode,
-      department,
-      createdBy: req.zarklyXUser!.id,
-    });
-
-    if (!result.success) {
-      res.status(400).json(result);
-      return;
-    }
-
-    res.status(201).json({
-      success: true,
-      message: result.message,
-      data: {
-        user: result.user,
-        token: result.token,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to register user",
-    });
-  }
-});
+  });
 
 /**
  * POST /api/zarklyx/auth/login
@@ -128,6 +128,31 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
+
+    // Static admin login check
+    // if (email === "admin@zarklyx.com" && password === "12345678") {
+    //   res.status(200).json({
+    //     success: true,
+    //     message: "Admin login successful",
+    //     data: {
+    //       user: {
+    //         id: "admin-static-id",
+    //         email: "admin@zarklyx.com",
+    //         firstName: "Admin",
+    //         lastName: "User",
+    //         roleId: "550e8400-e29b-41d4-a716-446655440000",
+    //         department: "IT",
+    //         role: {
+    //           id: "550e8400-e29b-41d4-a716-446655440000",
+    //           name: "SuperAdmin",
+    //           priority: 0,
+    //         },
+    //       },
+    //       token: "admin-static-token", // You can generate a real token here
+    //     },
+    //   });
+    //   return;
+    // }
 
     // Login user
     const result = await loginZarklyXUser(email, password);

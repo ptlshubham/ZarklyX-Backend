@@ -94,3 +94,22 @@ export const hardDeleteSubscriptionPlanModule = async (id: string, t: Transactio
 
   return true;
 };
+
+// Get modules not included in a subscription plan
+export const getModulesNotInSubscriptionPlan = async (subscriptionPlanId: string) => {
+  // Get all active modules
+  const allModules = await Modules.findAll({
+    where: { isActive: true, isDeleted: false },
+  });
+
+  // Get modules already in the subscription plan
+  const planModules = await SubscriptionPlanModule.findAll({
+    where: { subscriptionPlanId, isActive: true, isDeleted: false },
+    attributes: ['moduleId'],
+  });
+
+  const planModuleIds = new Set(planModules.map(pm => pm.moduleId));
+
+  // Filter out modules that are already in the plan
+  return allModules.filter(module => !planModuleIds.has(module.id));
+};
