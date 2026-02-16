@@ -2410,6 +2410,8 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
         lastName: user.lastName,
         secretCode: user.secretCode || null,
         companyId: user.companyId || null,
+        userType: user.userType || null,
+        roleId: user.roleId || null,
         ...(user.isRegistering ? {} : { token }),
         isRegistering: user.isRegistering,
       },
