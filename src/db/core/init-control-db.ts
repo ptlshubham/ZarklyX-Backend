@@ -888,7 +888,6 @@ export function initControlDB(sequelize: Sequelize) {
     as: "clientLedgers",
     constraints: false,
   });
-  ClientLedger.belongsTo(Company, {
   /*** DebitNote <-> Company */
   Company.hasMany(DebitNote, {
     foreignKey: "companyId",
@@ -907,7 +906,6 @@ export function initControlDB(sequelize: Sequelize) {
     as: "ledgerEntries",
     constraints: false,
   });
-  ClientLedger.belongsTo(Clients, {
   /*** DebitNote <-> Clients */
   Clients.hasMany(DebitNote, {
     foreignKey: "clientId",
@@ -920,99 +918,8 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
-    /*** DebitNote <-> Company */
-    Company.hasMany(DebitNote, {
-      foreignKey: "companyId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Company, {
-      foreignKey: "companyId",
-      as: "company",
-      constraints: false,
-    });
 
-    /*** DebitNote <-> Clients */
-    Clients.hasMany(DebitNote, {
-      foreignKey: "clientId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Clients, {
-      foreignKey: "clientId",
-      as: "client",
-      constraints: false,
-    });
 
-    /*** DebitNote <-> Vendor */
-    Vendor.hasMany(DebitNote, {
-      foreignKey: "vendorId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Vendor, {
-      foreignKey: "vendorId",
-      as: "vendor",
-      constraints: false,
-    });
-
-    /*** DebitNote <-> Invoice */
-    Invoice.hasMany(DebitNote, {
-      foreignKey: "invoiceId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Invoice, {
-      foreignKey: "invoiceId",
-      as: "invoice",
-      constraints: false,
-    });
-
-    /*** DebitNote <-> PurchaseBill */
-    PurchaseBill.hasMany(DebitNote, {
-      foreignKey: "purchaseBillId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(PurchaseBill, {
-      foreignKey: "purchaseBillId",
-      as: "purchaseBill",
-      constraints: false,
-    });
-
-    /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
-    DebitNote.belongsToMany(Item, {
-      through: DebitNoteItem,
-      foreignKey: "debitNoteId",
-      otherKey: "itemId",
-      as: "items",
-    });
-    Item.belongsToMany(DebitNote, {
-      through: DebitNoteItem,
-      foreignKey: "itemId",
-      otherKey: "debitNoteId",
-      as: "debitNotes",
-    });
-
-    /*** DebitNote <-> DebitNoteItem */
-    DebitNote.hasMany(DebitNoteItem, {
-      foreignKey: "debitNoteId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(DebitNote, {
-      foreignKey: "debitNoteId",
-      as: "debitNote",
-    });
-
-    /*** Item <-> DebitNoteItem */
-    Item.hasMany(DebitNoteItem, {
-      foreignKey: "itemId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(Item, {
-      foreignKey: "itemId",
-      as: "item",
-    });
   /*** DebitNote <-> Vendor */
   Vendor.hasMany(DebitNote, {
     foreignKey: "vendorId",
@@ -1470,19 +1377,19 @@ export function initControlDB(sequelize: Sequelize) {
   });
 
   // ClientUserAssignment <-> User
-  User.hasMany(ClientUserAssignment, { 
-    foreignKey: "userId" 
+  User.hasMany(ClientUserAssignment, {
+    foreignKey: "userId"
   });
-  ClientUserAssignment.belongsTo(User, { 
-    foreignKey: "userId" 
+  ClientUserAssignment.belongsTo(User, {
+    foreignKey: "userId"
   });
 
   // ClientUserAssignment <-> Clients
-  ClientUserAssignment.belongsTo(Clients, { 
-    foreignKey: "clientId" 
+  ClientUserAssignment.belongsTo(Clients, {
+    foreignKey: "clientId"
   });
-  Clients.hasMany(ClientUserAssignment, { 
-    foreignKey: "clientId" 
+  Clients.hasMany(ClientUserAssignment, {
+    foreignKey: "clientId"
   });
 
   /*** Expenses <-> Company */
