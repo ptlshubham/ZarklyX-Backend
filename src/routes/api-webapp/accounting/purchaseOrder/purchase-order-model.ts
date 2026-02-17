@@ -40,6 +40,8 @@ export class PurchaseOrder extends Model<
     declare total: number;
     declare isActive: boolean;
     declare isDeleted: boolean;
+    declare lastReminderSentAt: CreationOptional<Date> | null;
+    declare publicToken: string | null;
     declare createdAt: CreationOptional<Date>;
     declare updatedAt: CreationOptional<Date>;
 
@@ -50,6 +52,11 @@ export class PurchaseOrder extends Model<
                     type: DataTypes.UUID,
                     defaultValue: DataTypes.UUIDV4,
                     primaryKey: true,
+                },
+                publicToken: {
+                    type: DataTypes.STRING(64),
+                    allowNull: true,
+                    unique: true,
                 },
                 companyId: {
                     type: DataTypes.UUID,
@@ -166,6 +173,10 @@ export class PurchaseOrder extends Model<
                     type: DataTypes.BOOLEAN,
                     allowNull: false,
                     defaultValue: false,
+                },
+                lastReminderSentAt: {
+                    type: DataTypes.DATE,
+                    allowNull: true,
                 },
                 createdAt: {
                     type: DataTypes.DATE,

@@ -25,16 +25,22 @@ function mapFacebookAccountsToDb(
             facebookBusinessId: null,
             instagramBusinessId: null,
             accountName: acc.name || acc.username,
+            profilePhoto: acc.picture?.data?.url || acc.picture || null,
             pageAccessToken: acc.access_token || null,
             isAdded: false,
+            isAssigned: false,
             createdAt: new Date(),
             updatedAt: new Date(),
         });
     });
 
-    // 2️⃣ Business Manager accounts
+    // 2️⃣ Business Manager accounts - handle both "pages" and "ownedPages" property names
     payload.businesses?.forEach((business: any) => {
-        business.ownedPages?.forEach((page: any) => {
+        const businessPages = business.pages || business.ownedPages || [];
+        console.log(`[FACEBOOK HANDLER] Processing business: ${business.id} ${business.name} with ${businessPages.length} pages`);
+        
+        businessPages.forEach((page: any) => {
+            console.log(`[FACEBOOK HANDLER] Processing business page: ${page.id} ${page.name}`);
             records.push({
                 companyId,
                 assignedClientId: clientId ?? null,
@@ -45,14 +51,17 @@ function mapFacebookAccountsToDb(
                 facebookBusinessId: business.id,
                 instagramBusinessId: null,
                 accountName: page.name || page.username,
-                pageAccessToken: page.access_token || null,
+                profilePhoto: page.picture?.data?.url || page.picture || null,
+                pageAccessToken: page.accessToken || page.access_token || null,  // Support both formats
                 isAdded: false,
+                isAssigned: false,
                 createdAt: new Date(),
                 updatedAt: new Date(),
             });
         });
     });
 
+    console.log("[FACEBOOK HANDLER] Total records to insert:", records.length);
     return records;
 }
 
@@ -75,15 +84,46 @@ export async function saveFacebookAccountsToDb(
         userAccessTokenId
     );
 
+    console.log("[FACEBOOK HANDLER] Records to insert:", JSON.stringify(records, null, 2));
+
     if (!records.length) return [];
 
-    const result = await MetaSocialAccount.bulkCreate(records, {
-        ignoreDuplicates: true,
-    });
+    // Insert one by one to handle duplicates properly
+    const results = [];
+    for (const record of records) {
+        try {
+            const [instance, created] = await MetaSocialAccount.findOrCreate({
+                where: {
+                    companyId: record.companyId,
+                    platform: record.platform,
+                    facebookPageId: record.facebookPageId,
+                },
+                defaults: record,
+            });
+            console.log(`[FACEBOOK HANDLER] ${created ? 'Created' : 'Already exists'}: ${record.accountName} (Page: ${record.facebookPageId})`);
+            // If exists, update profilePhoto / accountName / pageAccessToken when available
+            if (!created) {
+                try {
+                    const updates: any = {};
+                    if (record.profilePhoto) updates.profilePhoto = record.profilePhoto;
+                    if (record.accountName && record.accountName !== (instance as any).accountName) updates.accountName = record.accountName;
+                    if (record.pageAccessToken) updates.pageAccessToken = record.pageAccessToken;
+                    if (Object.keys(updates).length) {
+                        await instance.update(updates);
+                        console.log(`[FACEBOOK HANDLER] Updated existing record for Page: ${record.facebookPageId}`, updates);
+                    }
+                } catch (uerr: any) {
+                    console.warn(`[FACEBOOK HANDLER] Failed to update existing record for Page: ${record.facebookPageId}`, uerr.message);
+                }
+            }
+            results.push(instance);
+        } catch (err: any) {
+            console.error(`[FACEBOOK HANDLER] Error inserting ${record.accountName}:`, err.message);
+        }
+    }
 
-    console.log("[FACEBOOK HANDLER] Added entries:", result.length);
-
-    return result;
+    console.log("[FACEBOOK HANDLER] Total entries processed:", results.length);
+    return results;
 }
 
 /**
@@ -130,8 +170,10 @@ export async function getAddedFacebookAccountsFromDb(companyId: string) {
             "facebookPageId",
             "facebookBusinessId",
             "accountName",
+            "profilePhoto",
             "pageAccessToken",
             "isAdded",
+            "isAssigned",
             "assignedClientId",
             "userAccessTokenId",
             "createdAt"
@@ -154,13 +196,14 @@ export async function getUnaddedBusinessManagerPagesFromDb(companyId: string) {
             companyId,
             platform: "facebook",
             isAdded: false,
-            facebookBusinessId: { [require("sequelize").Op.not]: null }
+            // facebookBusinessId: { [require("sequelize").Op.not]: null }
         },
         attributes: [
             "id",
             "facebookPageId",
             "facebookBusinessId",
             "accountName",
+            "profilePhoto",
             "pageAccessToken",
             "isAdded",
             "userAccessTokenId",

@@ -11,6 +11,8 @@ import { InvoiceItem } from "../invoice/invoice-item-model";
 import { InvoiceTdsTcs } from "../invoice/tds-tcs/invoice-tds-tcs-model";
 import { createInvoice } from "../invoice/invoice-handler";
 import { Clients } from "../../agency/clients/clients-model";
+import { sendEmail } from "../../../../services/mailService";
+import crypto from "crypto";
 
 // Helper function to calculate line item totals
 const calculateLineItemTotal = (
@@ -161,7 +163,7 @@ const calculateQuoteTotals = (
     const amountForTax = baseAmount - discountAmount;
     const taxableAmount = parseFloat(amountForTax.toFixed(2));
 
-    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLocaleLowerCase !== companyState.toLocaleLowerCase, {
+    const taxTotals = applyTaxSplit(amountForTax, itemTax, placeOfSupply.toLowerCase !== companyState.toLowerCase, {
       cgst: totalCgst,
       sgst: totalSgst,
       igst: totalIgst,
@@ -197,7 +199,7 @@ const calculateQuoteTotals = (
   if (shippingAmount && shippingAmount > 0) {
     if (shippingTax) {
       const shippingTaxAmount = shippingAmount * (shippingTax / 100);
-      if (placeOfSupply.toLocaleLowerCase !== companyState.toLocaleLowerCase) {
+      if (placeOfSupply.toLowerCase !== companyState.toLowerCase) {
         totalIgst += shippingTaxAmount;
       } else {
         totalCgst += shippingTaxAmount / 2;
@@ -289,7 +291,6 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
     throw new Error("Company not found");
   }
   const companyState = company.state || '';
-  console.log(companyState);
 
   // Validate that all items have unitId
   const itemsWithoutUnit = itemsFromDb.filter(item => !item.unitId);
@@ -312,6 +313,8 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
     body.tdsTcsEntries
   );
 
+  // Generate a unique publicToken
+  const publicToken = crypto.randomBytes(32).toString("hex");
   // Create quote
   const quote = await Quote.create(
     {
@@ -345,6 +348,7 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
       total: parseFloat(calculated.total.toFixed(2)),
       isActive: true,
       isDeleted: false,
+      publicToken,
     },
     { transaction: t }
   );
@@ -396,6 +400,38 @@ export const createQuote = async (body: CreateQuoteInput, t: Transaction) => {
     );
   }
 
+  // sending email to the client about quote created
+  const client = await Clients.findOne({
+    where: {
+      id: quote.clientId
+    }
+  })
+  if(!client){
+    throw new Error("Client not found");
+  }
+    try {
+      await sendEmail({
+        from: "" as any,
+        to: client.email,
+        subject: `Quote ${quote.quotationNo}`,
+        htmlFile: "quote-created",
+        replacements: {
+          userName: client.clientfirstName || "Customer",
+          quotationNo: quote.quotationNo,
+          validUntilDate: quote.validUntilDate,
+          total: quote.total,
+          currentYear: new Date().getFullYear(),
+        },
+        html: null,
+        text: "",
+        attachments: null,
+        cc: null,
+        replyTo: null,
+      });
+    } catch (error) {
+      throw new Error("Quote create email failed");
+    }
+
   return {
     quote,
     quoteItems: createdQuoteItems,
@@ -408,6 +444,14 @@ export const getQuoteById = async (id: string, companyId: string) => {
   return await Quote.findOne({
     where: { id, companyId, isDeleted: false },
     include: [
+      {
+        model: Company,
+        as: "company",
+      },
+      {
+        model: Clients,
+        as: "client",
+      },
       {
         model: QuoteItem,
         as: "quoteItems",
@@ -690,7 +734,7 @@ export const searchQuotes = async (filters: SearchQuoteFilters) => {
 
   // Filter by quote number
   if (filters.quotationNo) {
-    whereConditions.quoteNo = {
+    whereConditions.quotationNo = {
       [Op.like]: `%${filters.quotationNo}%`,
     };
   }
@@ -713,14 +757,22 @@ export const searchQuotes = async (filters: SearchQuoteFilters) => {
     const dateFilter: any = {};
     if (filters.dueDateFrom) dateFilter[Op.gte] = filters.dueDateFrom;
     if (filters.dueDateTo) dateFilter[Op.lte] = filters.dueDateTo;
-    whereConditions.validUnilDate = dateFilter;
+    whereConditions.validUntilDate = dateFilter;
   }
 
   // Build include array for associations
   const includeArray: any[] = [
     {
+      model: Company,
+      as: "company",
+    },
+    {
+      model: Clients,
+      as: "client",
+    },
+    {
       model: QuoteItem,
-      as: "QuoteItems",
+      as: "quoteItems",
     },
     {
       model: QuoteTdsTcs,
@@ -903,14 +955,29 @@ export const convertQuoteToInvoice = async (
 
   // Mark quote as converted
   await Quote.update(
-    { status: "Converted" },
+    { 
+      status: "Converted",
+    },
     { where: { id: quoteId }, transaction: t }
   );
 
   return {
     invoice: result.invoice,
     invoiceItems: result.invoiceItems,
-    tdsTcsEntries: result.tdsTcsEntries,
+    tdsTcsEntries: result.invoiceTdsTcs,
     convertedFromQuote: quoteId,
   };
+};
+
+// Get quote by public token (public preview)
+export const getQuoteByPublicToken = async (publicToken: string) => {
+  return await Quote.findOne({
+    where: { publicToken, isDeleted: false },
+    include: [
+      { model: QuoteItem, as: "quoteItems" },
+      { model: QuoteTdsTcs, as: "tdsTcsEntries" },
+      { model: Clients, as: "client" },
+      { model: Company, as: "company" },
+    ],
+  });
 };
