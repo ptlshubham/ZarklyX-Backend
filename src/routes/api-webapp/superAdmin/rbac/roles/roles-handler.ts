@@ -2,6 +2,7 @@ import { Op, Transaction } from "sequelize";
 import { ZarklyXRole } from "../../../../api-webapp/superAdmin/rbac/roles/roles-model";
 import { ZarklyXUser } from "../../../../api-webapp/superAdmin/authentication/user/user-model";
 import { assignBulkPermissionsToRole, cloneZarklyXRolePermissions } from "../role-permissions/role-permissions-handler";
+import { calculateNewRoleStats } from "../../../../../utils/priority-calculator";
 
 /**
  * Get all ZarklyX roles
@@ -56,12 +57,13 @@ export async function getZarklyXRoleById(roleId: string) {
 }
 
 /**
- * Create new ZarklyX role
+ * Create new ZarklyX role with auto-calculated priority
  */
 export async function createZarklyXRole(data: {
   name: string;
   description?: string;
-  priority: number;
+  priority?: number; // Optional - will be auto-calculated if not provided
+  level?: number;
   isSystemRole?: boolean;
   baseRoleId?: string;
   createdBy: string;
@@ -72,14 +74,6 @@ export async function createZarklyXRole(data: {
       return {
         success: false,
         message: "Role name is required",
-      };
-    }
-
-    // Priority validation (must be non-negative integer)
-    if (typeof data.priority !== 'number' || data.priority < 0 || !Number.isInteger(data.priority)) {
-      return {
-        success: false,
-        message: "Priority must be a non-negative integer",
       };
     }
 
@@ -122,17 +116,78 @@ export async function createZarklyXRole(data: {
       }
     }
 
+    // ✨ AUTO-CALCULATE PRIORITY AND LEVEL
+    let priority: number;
+    let level: number;
+
+    if (data.baseRoleId && !data.priority) {
+      // Auto-calculate using safety ceiling logic
+      const baseRole = await ZarklyXRole.findByPk(data.baseRoleId);
+      if (!baseRole) {
+        return {
+          success: false,
+          message: "Base role not found",
+        };
+      }
+
+      // Fetch creator user
+      const creator = await ZarklyXUser.findByPk(data.createdBy);
+
+      if (!creator || !creator.roleId) {
+        return {
+          success: false,
+          message: "Creator or creator role not found",
+        };
+      }
+
+      // Fetch creator's role
+      const creatorRole = await ZarklyXRole.findByPk(creator.roleId);
+      if (!creatorRole) {
+        return {
+          success: false,
+          message: "Creator role not found",
+        };
+      }
+
+      // Auto-calculate using safety ceiling logic
+      const calculated = calculateNewRoleStats(
+        { role: { priority: creatorRole.priority } },
+        { priority: baseRole.priority, level: baseRole.level || 0 }
+      );
+
+      priority = calculated.priority;
+      level = calculated.level;
+    } else if (data.priority !== undefined) {
+      // Manual priority provided
+      priority = data.priority;
+      level = data.level !== undefined && data.level !== null ? data.level : 0;
+
+      // Basic validation
+      if (priority < 0 || priority > 99) {
+        return {
+          success: false,
+          message: "ZarklyX role priority must be between 0 and 99",
+        };
+      }
+    } else {
+      return {
+        success: false,
+        message: "Either priority or baseRoleId must be provided",
+      };
+    }
+
     const newRole = await ZarklyXRole.create({
       name: data.name,
       description: data.description || null,
-      priority: data.priority,
+      priority: priority,
+      level: level,
       isSystemRole: data.isSystemRole || false,
       baseRoleId: data.baseRoleId || null,
       isActive: true,
       isDeleted: false,
     });
 
-    console.log(`✅ Role ${newRole.id} created by ${data.createdBy}`);
+    console.log(`✅ ZarklyX Role ${newRole.id} created by ${data.createdBy} with priority ${priority} and level ${level}`);
 
     return {
       success: true,

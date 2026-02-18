@@ -5,9 +5,10 @@ import { User } from "../../api-webapp/authentication/user/user-model";
 import { cloneRolePermissions, assignBulkPermissionsToRole } from "../role-permissions/role-permissions-handler";
 import { checkCompanyModuleAccess, checkCompanyPermissionAccess } from "../rbac/rbac-check-handler";
 import { Modules } from "../../api-webapp/superAdmin/modules/modules-model";
+import { calculateNewRoleStats } from "../../../utils/priority-calculator";
 
 /**
- * Create a new role
+ * Create a new role with auto-calculated priority
  */
 export async function createRole(
   data: {
@@ -15,10 +16,12 @@ export async function createRole(
     description?: string | null;
     scope: "platform" | "company";
     companyId?: string | null;
+    baseRoleId?: string | null;
     isSystemRole?: boolean;
     priority?: number;
     level?: number;
     isActive?: boolean;
+    creatorUserId?: string;
   },
   transaction: Transaction
 ) {
@@ -27,15 +30,61 @@ export async function createRole(
     throw new Error("System roles must be platform-scoped");
   }
 
-  // EDGE CASE 2: Enforce priority floors by scope (prevent privilege escalation)
-  const priority = data.priority !== undefined ? data.priority : 50;
-
-  if (data.scope === "company" && priority < 20) {
-    throw new Error("Company roles cannot have priority lower than 20. Only platform roles can be admins.");
+  // Validate company scope requires companyId
+  if (data.scope === "company" && !data.companyId) {
+    throw new Error("Company-scoped roles must have a companyId");
   }
 
-  if (data.scope === "platform" && !data.isSystemRole && priority < 10) {
-    throw new Error("Custom platform roles cannot have priority lower than 10. Reserved for system roles.");
+  let priority: number;
+  let level: number;
+
+  // If baseRoleId provided, auto-calculate using new logic
+  if (data.baseRoleId && !data.priority) {
+    // Fetch base role
+    const baseRole = await Role.findByPk(data.baseRoleId);
+    if (!baseRole) {
+      throw new Error("Base role not found");
+    }
+
+    // Fetch creator user
+    if (!data.creatorUserId) {
+      throw new Error("creatorUserId is required for auto-calculation");
+    }
+
+    const creator = await User.findByPk(data.creatorUserId);
+
+    if (!creator || !creator.roleId) {
+      throw new Error("Creator or creator role not found");
+    }
+
+    // Fetch creator's role
+    const creatorRole = await Role.findByPk(creator.roleId);
+    if (!creatorRole) {
+      throw new Error("Creator role not found");
+    }
+
+    // Auto-calculate using safety ceiling logic
+    const calculated = calculateNewRoleStats(
+      { role: { priority: creatorRole.priority } },
+      { priority: baseRole.priority, level: baseRole.level || 0 }
+    );
+
+    priority = calculated.priority;
+    level = calculated.level;
+  } else if (data.priority !== undefined) {
+    // Manual priority provided
+    priority = data.priority;
+    level = data.level !== undefined && data.level !== null ? data.level : 0;
+
+    // Basic validation
+    if (data.scope === "company" && priority < 100) {
+      throw new Error("Company roles must have priority >= 100");
+    }
+    if (data.scope === "platform" && priority >= 100) {
+      throw new Error("Platform roles must have priority < 100");
+    }
+  } else {
+    throw new Error("Either priority or baseRoleId (with creatorUserId) must be provided");
   }
 
   return await Role.create(
@@ -44,9 +93,10 @@ export async function createRole(
       description: data.description || null,
       scope: data.scope,
       companyId: data.companyId || null,
+      baseRoleId: data.baseRoleId || null,
       isSystemRole: data.isSystemRole || false,
       priority: priority,
-      level: data.level || null,
+      level: level,
       isActive: data.isActive !== undefined ? data.isActive : true,
       isDeleted: false,
     },

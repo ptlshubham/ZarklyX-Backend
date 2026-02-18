@@ -3,11 +3,82 @@ import { checkUserPermission, batchCheckUserPermissions, checkCompanyModuleAcces
 import { User } from "../routes/api-webapp/authentication/user/user-model";
 import { Modules } from "../routes/api-webapp/superAdmin/modules/modules-model";
 
+// Action hierarchy utilities
+export const ACTION_HIERARCHY: Record<string, string[]> = {
+  manage: ["create", "update", "delete", "view"],
+  update: ["view"],
+  create: [],
+  delete: [],
+  view: [],
+  approve: ["view"],
+  export: ["view"],
+};
 
-/**
- * Middleware to check if user has a specific permission
- * Usage: router.get('/endpoint', requirePermission('users.view'), handler)
- */
+export function expandAction(action: string): string[] {
+  const expanded = new Set<string>([action]);
+  const children = ACTION_HIERARCHY[action] || [];
+
+  for (const child of children) {
+    const childExpanded = expandAction(child);
+    childExpanded.forEach((a) => expanded.add(a));
+  }
+
+  return Array.from(expanded);
+}
+
+export function actionSatisfies(grantedAction: string, requiredAction: string): boolean {
+  if (grantedAction === requiredAction) {
+    return true;
+  }
+
+  const expandedActions = expandAction(grantedAction);
+  return expandedActions.includes(requiredAction);
+}
+
+export function getActionsGranting(requiredAction: string): string[] {
+  const actions = new Set<string>([requiredAction]);
+
+  for (const [action, children] of Object.entries(ACTION_HIERARCHY)) {
+    if (actionSatisfies(action, requiredAction)) {
+      actions.add(action);
+    }
+  }
+
+  return Array.from(actions);
+}
+
+export function parsePermissionKey(permissionKey: string): {
+  module?: string;
+  resource: string;
+  action: string;
+} {
+  const parts = permissionKey.split(".");
+
+  if (parts.length === 3) {
+    return {
+      module: parts[0],
+      resource: parts[1],
+      action: parts[2],
+    };
+  } else if (parts.length === 2) {
+    return {
+      resource: parts[0],
+      action: parts[1],
+    };
+  } else {
+    throw new Error(`Invalid permission key format: ${permissionKey}`);
+  }
+}
+
+export function buildPermissionKey(resource: string, action: string, module?: string): string {
+  if (module) {
+    return `${module}.${resource}.${action}`;
+  }
+  return `${resource}.${action}`;
+}
+
+// Middleware functions
+
 export function requirePermission(permissionKey: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
