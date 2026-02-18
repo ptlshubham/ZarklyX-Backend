@@ -1,0 +1,209 @@
+﻿[
+    {
+        "id":  1,
+        "label":  "Dashboard"
+    },
+    {
+        "id":  2,
+        "label":  "My Account"
+    },
+    {
+        "id":  3,
+        "label":  "Profile"
+    },
+    {
+        "label":  "Subscription Billing",
+        "id":  4,
+        "subItems":  [
+                         {
+                             "label":  "Current Plan",
+                             "id":  5,
+                             "parentId":  4
+                         },
+                         {
+                             "label":  "Invoices",
+                             "id":  6,
+                             "parentId":  4
+                         },
+                         {
+                             "label":  "Payment History",
+                             "id":  7,
+                             "parentId":  4
+                         },
+                         {
+                             "label":  "Payment Methods",
+                             "id":  8,
+                             "parentId":  4
+                         }
+                     ]
+    },
+    {
+        "id":  9,
+        "label":  "Projects Tasks"
+    },
+    {
+        "label":  "My Projects",
+        "id":  10,
+        "subItems":  [
+                         {
+                             "label":  "All Projects",
+                             "id":  11,
+                             "parentId":  10
+                         },
+                         {
+                             "label":  "Active Projects",
+                             "id":  12,
+                             "parentId":  10
+                         },
+                         {
+                             "label":  "Completed Projects",
+                             "id":  13,
+                             "parentId":  10
+                         },
+                         {
+                             "label":  "Project Timeline",
+                             "id":  14,
+                             "parentId":  10
+                         }
+                     ]
+    },
+    {
+        "label":  "Tasks",
+        "id":  15,
+        "subItems":  [
+                         {
+                             "label":  "My Tasks",
+                             "id":  16,
+                             "parentId":  15
+                         },
+                         {
+                             "label":  "Task Calendar",
+                             "id":  17,
+                             "parentId":  15
+                         },
+                         {
+                             "label":  "Task Reports",
+                             "id":  18,
+                             "parentId":  15
+                         }
+                     ]
+    },
+    {
+        "id":  19,
+        "label":  "Communication"
+    },
+    {
+        "id":  20,
+        "label":  "Messages"
+    },
+    {
+        "label":  "Meetings",
+        "id":  21,
+        "subItems":  [
+                         {
+                             "label":  "Schedule Meeting",
+                             "id":  22,
+                             "parentId":  21
+                         },
+                         {
+                             "label":  "Upcoming Meetings",
+                             "id":  23,
+                             "parentId":  21
+                         },
+                         {
+                             "label":  "Past Meetings",
+                             "id":  24,
+                             "parentId":  21
+                         }
+                     ]
+    },
+    {
+        "id":  25,
+        "label":  "Files Documents"
+    },
+    {
+        "label":  "My Files",
+        "id":  26,
+        "subItems":  [
+                         {
+                             "label":  "All Files",
+                             "id":  27,
+                             "parentId":  26
+                         },
+                         {
+                             "label":  "Shared With Me",
+                             "id":  28,
+                             "parentId":  26
+                         },
+                         {
+                             "label":  "Documents",
+                             "id":  29,
+                             "parentId":  26
+                         },
+                         {
+                             "label":  "Media",
+                             "id":  30,
+                             "parentId":  26
+                         }
+                     ]
+    },
+    {
+        "id":  31,
+        "label":  "Contracts Agreements"
+    },
+    {
+        "id":  32,
+        "label":  "Support"
+    },
+    {
+        "label":  "Help  Support",
+        "id":  33,
+        "subItems":  [
+                         {
+                             "label":  "Create Ticket",
+                             "id":  34,
+                             "parentId":  33
+                         },
+                         {
+                             "label":  "My Tickets",
+                             "id":  35,
+                             "parentId":  33
+                         },
+                         {
+                             "label":  "Knowledge Base",
+                             "id":  36,
+                             "parentId":  33
+                         },
+                         {
+                             "label":  "FAQs",
+                             "id":  37,
+                             "parentId":  33
+                         }
+                     ]
+    },
+    {
+        "id":  38,
+        "label":  "Reports"
+    },
+    {
+        "label":  "Analytics Reports",
+        "id":  39,
+        "subItems":  [
+                         {
+                             "label":  "Project Reports",
+                             "id":  40,
+                             "parentId":  39
+                         },
+                         {
+                             "label":  "Performance Reports",
+                             "id":  41,
+                             "parentId":  39
+                         },
+                         {
+                             "label":  "Activity Logs",
+                             "id":  42,
+                             "parentId":  39
+                         }
+                     ]
+    }
+]

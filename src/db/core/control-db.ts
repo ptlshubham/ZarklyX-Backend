@@ -1,7 +1,7 @@
 import { Options, Sequelize } from "sequelize";
 import configs from "../../config/config";
 import environment from "../../../environment";
-// import { runSeeders } from "../seeder-data/main-seed";
+import { runSeeders } from "../seeder-data/main-seed";
 import currentUser from "../../services/current-user";
 // import { ActivityLogs } from "../../routes/activitylogs/activitylogs-model";
 import { ConsoleSpinner } from "../../services/console-info";
@@ -81,9 +81,9 @@ const syncControlledDB = async (maxAttempts = 3) => {
       await db.query("SET FOREIGN_KEY_CHECKS = 1;");
       
       try {
-        // await runSeeders(db);
+        await runSeeders(db);
       } catch (error) {
-        console.log("Seeding Error:", error);
+        console.error("Seeding Error:", error);
       }
       ConsoleSpinner.start(`Models synced for control DB`);
       return;

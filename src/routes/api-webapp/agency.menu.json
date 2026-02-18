@@ -1,0 +1,787 @@
+﻿[
+    {
+        "id":  1,
+        "label":  "Dashboard"
+    },
+    {
+        "id":  2,
+        "label":  "Business Operations"
+    },
+    {
+        "label":  "Client Management",
+        "id":  3,
+        "subItems":  [
+                         {
+                             "label":  "Add New Client",
+                             "id":  4,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "Client List",
+                             "id":  5,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "Client Profiles",
+                             "id":  6,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "Activity Timeline",
+                             "id":  7,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "Notes  Attachments",
+                             "id":  8,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "Contracts  Agreements",
+                             "id":  9,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "Client Schedules",
+                             "id":  10,
+                             "parentId":  3
+                         }
+                     ]
+    },
+    {
+        "label":  "Employee Management",
+        "id":  11,
+        "subItems":  [
+                         {
+                             "label":  "Employee List",
+                             "id":  12,
+                             "parentId":  11
+                         },
+                         {
+                             "label":  "Add Employee",
+                             "id":  13,
+                             "parentId":  11
+                         },
+                         {
+                             "label":  "Departments",
+                             "id":  14,
+                             "parentId":  11
+                         },
+                         {
+                             "label":  "Roles  Permissions",
+                             "id":  15,
+                             "parentId":  11
+                         },
+                         {
+                             "label":  "Access Control",
+                             "id":  16,
+                             "parentId":  11
+                         }
+                     ]
+    },
+    {
+        "label":  "Token Queue System",
+        "id":  17,
+        "subItems":  [
+                         {
+                             "label":  "Tokens",
+                             "id":  18,
+                             "parentId":  17
+                         },
+                         {
+                             "label":  "Waiting Queue",
+                             "id":  19,
+                             "parentId":  17
+                         },
+                         {
+                             "label":  "Call Next Token",
+                             "id":  20,
+                             "parentId":  17
+                         },
+                         {
+                             "label":  "Multi Counter",
+                             "id":  21,
+                             "parentId":  17
+                         }
+                     ]
+    },
+    {
+        "label":  "Projects Development",
+        "id":  22,
+        "subItems":  [
+                         {
+                             "label":  "All Projects",
+                             "id":  23,
+                             "parentId":  22
+                         },
+                         {
+                             "label":  "Create Project",
+                             "id":  24,
+                             "parentId":  22
+                         },
+                         {
+                             "label":  "Task Manager",
+                             "id":  25,
+                             "parentId":  22
+                         },
+                         {
+                             "label":  "Kanban Board",
+                             "id":  26,
+                             "parentId":  22
+                         },
+                         {
+                             "label":  "Gantt Timeline",
+                             "id":  27,
+                             "parentId":  22
+                         },
+                         {
+                             "label":  "Milestones",
+                             "id":  28,
+                             "parentId":  22
+                         },
+                         {
+                             "label":  "File  Asset Sharing",
+                             "id":  29,
+                             "parentId":  22
+                         }
+                     ]
+    },
+    {
+        "id":  30,
+        "label":  "Cloud Integrations"
+    },
+    {
+        "label":  "Cloud Storage",
+        "id":  31,
+        "subItems":  [
+                         {
+                             "label":  "Google Drive",
+                             "parentId":  31,
+                             "id":  32,
+                             "subItems":  [
+                                              {
+                                                  "label":  "Home",
+                                                  "id":  131,
+                                                  "parentId":  32
+                                              },
+                                              {
+                                                  "label":  "Activity",
+                                                  "id":  132,
+                                                  "parentId":  32
+                                              },
+                                              {
+                                                  "label":  "My Drive",
+                                                  "id":  133,
+                                                  "parentId":  32
+                                              },
+                                              {
+                                                  "label":  "Shared Drives",
+                                                  "id":  134,
+                                                  "parentId":  32
+                                              },
+                                              {
+                                                  "label":  "Shared With Me",
+                                                  "id":  135,
+                                                  "parentId":  32
+                                              },
+                                              {
+                                                  "label":  "Recent",
+                                                  "id":  136,
+                                                  "parentId":  32
+                                              },
+                                              {
+                                                  "label":  "Starred",
+                                                  "id":  137,
+                                                  "parentId":  32
+                                              },
+                                              {
+                                                  "label":  "Spam",
+                                                  "id":  138,
+                                                  "parentId":  32
+                                              },
+                                              {
+                                                  "label":  "Bin",
+                                                  "id":  139,
+                                                  "parentId":  32
+                                              }
+                                          ]
+                         },
+                         {
+                             "label":  "Dropbox",
+                             "id":  33,
+                             "parentId":  31
+                         },
+                         {
+                             "label":  "OneDrive",
+                             "id":  34,
+                             "parentId":  31
+                         },
+                         {
+                             "label":  "iCloud",
+                             "id":  35,
+                             "parentId":  31
+                         },
+                         {
+                             "label":  "Internal File Manager",
+                             "id":  36,
+                             "parentId":  31
+                         }
+                     ]
+    },
+    {
+        "id":  236,
+        "label":  "Reports Experts"
+    },
+    {
+        "label":  "Reports Analytics",
+        "id":  37,
+        "subItems":  [
+                         {
+                             "label":  "Project Reports",
+                             "id":  38,
+                             "parentId":  37
+                         },
+                         {
+                             "label":  "Client Reports",
+                             "id":  39,
+                             "parentId":  37
+                         },
+                         {
+                             "label":  "Employee Performance",
+                             "id":  40,
+                             "parentId":  37
+                         },
+                         {
+                             "label":  "Revenue Reports",
+                             "id":  41,
+                             "parentId":  37
+                         },
+                         {
+                             "label":  "Social Media Reports",
+                             "id":  42,
+                             "parentId":  37
+                         },
+                         {
+                             "label":  "Credit Usage Reports",
+                             "id":  43,
+                             "parentId":  37
+                         },
+                         {
+                             "label":  "Campaign Performance",
+                             "id":  44,
+                             "parentId":  37
+                         }
+                     ]
+    },
+    {
+        "label":  "Expert Sessions",
+        "id":  68,
+        "subItems":  [
+                         {
+                             "label":  "Live Workshops",
+                             "id":  69,
+                             "parentId":  68
+                         },
+                         {
+                             "label":  "Recorded Sessions",
+                             "id":  70,
+                             "parentId":  68
+                         },
+                         {
+                             "label":  "Register for Sessions",
+                             "id":  71,
+                             "parentId":  68
+                         },
+                         {
+                             "label":  "My Sessions",
+                             "id":  72,
+                             "parentId":  68
+                         }
+                     ]
+    },
+    {
+        "id":  82,
+        "label":  "Digital Marketing"
+    },
+    {
+        "label":  "Social Media Management",
+        "id":  83,
+        "subItems":  [
+                         {
+                             "label":  "Platform Connections",
+                             "parentId":  83,
+                             "id":  84,
+                             "subItems":  [
+                                              {
+                                                  "label":  "Instagram",
+                                                  "id":  85,
+                                                  "parentId":  84
+                                              },
+                                              {
+                                                  "label":  "Facebook",
+                                                  "id":  86,
+                                                  "parentId":  84
+                                              },
+                                              {
+                                                  "label":  "TikTok",
+                                                  "id":  87,
+                                                  "parentId":  84
+                                              },
+                                              {
+                                                  "label":  "YouTube",
+                                                  "id":  88,
+                                                  "parentId":  84
+                                              },
+                                              {
+                                                  "label":  "LinkedIn",
+                                                  "id":  89,
+                                                  "parentId":  84
+                                              },
+                                              {
+                                                  "label":  "X (Twitter)",
+                                                  "id":  90,
+                                                  "parentId":  84
+                                              }
+                                          ]
+                         },
+                         {
+                             "label":  "Content Scheduler",
+                             "id":  91,
+                             "parentId":  83
+                         },
+                         {
+                             "label":  "Multi-Calendar Planner",
+                             "id":  92,
+                             "parentId":  83
+                         },
+                         {
+                             "label":  "Insights Dashboard",
+                             "id":  93,
+                             "parentId":  83
+                         },
+                         {
+                             "label":  "Platform Analytics",
+                             "parentId":  83,
+                             "id":  94,
+                             "subItems":  [
+                                              {
+                                                  "label":  "Instagram Analytics",
+                                                  "id":  95,
+                                                  "parentId":  94
+                                              },
+                                              {
+                                                  "label":  "Facebook Analytics",
+                                                  "id":  96,
+                                                  "parentId":  94
+                                              },
+                                              {
+                                                  "label":  "TikTok Analytics",
+                                                  "id":  97,
+                                                  "parentId":  94
+                                              },
+                                              {
+                                                  "label":  "YouTube Analytics",
+                                                  "id":  98,
+                                                  "parentId":  94
+                                              },
+                                              {
+                                                  "label":  "LinkedIn Analytics",
+                                                  "id":  99,
+                                                  "parentId":  94
+                                              },
+                                              {
+                                                  "label":  "X Analytics",
+                                                  "id":  100,
+                                                  "parentId":  94
+                                              }
+                                          ]
+                         },
+                         {
+                             "label":  "Bulk Upload Posts",
+                             "id":  101,
+                             "parentId":  83
+                         },
+                         {
+                             "label":  "Auto Publishing",
+                             "id":  102,
+                             "parentId":  83
+                         },
+                         {
+                             "label":  "Hashtag Suggestions",
+                             "id":  103,
+                             "parentId":  83
+                         }
+                     ]
+    },
+    {
+        "label":  "Influencer Directory",
+        "id":  104,
+        "subItems":  [
+                         {
+                             "label":  "Search Influencers",
+                             "id":  105,
+                             "parentId":  104
+                         },
+                         {
+                             "label":  "Influencer Profiles",
+                             "id":  106,
+                             "parentId":  104
+                         },
+                         {
+                             "label":  "Saved Influencers",
+                             "id":  107,
+                             "parentId":  104
+                         },
+                         {
+                             "label":  "Filter by Niche",
+                             "id":  108,
+                             "parentId":  104
+                         },
+                         {
+                             "label":  "Filter by Location",
+                             "id":  109,
+                             "parentId":  104
+                         }
+                     ]
+    },
+    {
+        "label":  "Influencer Collaborations",
+        "id":  110,
+        "subItems":  [
+                         {
+                             "label":  "Past Projects",
+                             "id":  111,
+                             "parentId":  110
+                         },
+                         {
+                             "label":  "Performance Data",
+                             "id":  112,
+                             "parentId":  110
+                         },
+                         {
+                             "label":  "Communication Logs",
+                             "id":  113,
+                             "parentId":  110
+                         },
+                         {
+                             "label":  "Deliverables History",
+                             "id":  114,
+                             "parentId":  110
+                         }
+                     ]
+    },
+    {
+        "label":  "Email Marketing",
+        "id":  115,
+        "subItems":  [
+                         {
+                             "label":  "Campaign Builder",
+                             "id":  116,
+                             "parentId":  115
+                         },
+                         {
+                             "label":  "Email Templates",
+                             "id":  117,
+                             "parentId":  115
+                         },
+                         {
+                             "label":  "Contact Lists",
+                             "id":  118,
+                             "parentId":  115
+                         },
+                         {
+                             "label":  "Campaign Reports",
+                             "id":  119,
+                             "parentId":  115
+                         }
+                     ]
+    },
+    {
+        "label":  "SEO Tools",
+        "id":  120,
+        "subItems":  [
+                         {
+                             "label":  "SEO Checker",
+                             "id":  121,
+                             "parentId":  120
+                         },
+                         {
+                             "label":  "Keyword Ideas",
+                             "id":  122,
+                             "parentId":  120
+                         },
+                         {
+                             "label":  "Website Audit",
+                             "id":  123,
+                             "parentId":  120
+                         }
+                     ]
+    },
+    {
+        "id":  45,
+        "label":  "Finance HR"
+    },
+    {
+        "label":  "Inventory Assets",
+        "id":  46,
+        "subItems":  [
+                         {
+                             "label":  "Dashboard",
+                             "id":  47,
+                             "parentId":  46
+                         },
+                         {
+                             "label":  "Settings",
+                             "parentId":  46,
+                             "id":  48,
+                             "subItems":  [
+                                              {
+                                                  "label":  "Category",
+                                                  "id":  49,
+                                                  "parentId":  46
+                                              },
+                                              {
+                                                  "label":  "Units Of Measure",
+                                                  "id":  50,
+                                                  "parentId":  46
+                                              },
+                                              {
+                                                  "label":  "Warehouses",
+                                                  "id":  51,
+                                                  "parentId":  46
+                                              },
+                                              {
+                                                  "label":  "Vendors",
+                                                  "id":  52,
+                                                  "parentId":  46
+                                              }
+                                          ]
+                         },
+                         {
+                             "label":  "Add Items",
+                             "id":  53,
+                             "parentId":  46
+                         },
+                         {
+                             "label":  "Stock Inward",
+                             "id":  54,
+                             "parentId":  46
+                         },
+                         {
+                             "label":  "Stock Outward",
+                             "id":  55,
+                             "parentId":  46
+                         },
+                         {
+                             "label":  "Stock Adjustment",
+                             "id":  56,
+                             "parentId":  46
+                         },
+                         {
+                             "label":  "Report  Analytics",
+                             "id":  57,
+                             "parentId":  46
+                         }
+                     ]
+    },
+    {
+        "label":  "Attendance System",
+        "id":  51,
+        "subItems":  [
+                         {
+                             "label":  "Daily Attendance",
+                             "id":  52,
+                             "parentId":  51
+                         },
+                         {
+                             "label":  "Remote Check-In/Out",
+                             "id":  53,
+                             "parentId":  51
+                         },
+                         {
+                             "label":  "Attendance Reports",
+                             "id":  54,
+                             "parentId":  51
+                         },
+                         {
+                             "label":  "Late  Early Insights",
+                             "id":  55,
+                             "parentId":  51
+                         }
+                     ]
+    },
+    {
+        "label":  "Accounting  Finance",
+        "id":  56,
+        "subItems":  [
+                         {
+                             "label":  "Dashboard",
+                             "id":  57,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Items",
+                             "id":  58,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Invoices",
+                             "id":  59,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Quotes",
+                             "id":  60,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Credit Notes",
+                             "id":  61,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Debit Notes",
+                             "id":  62,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Purchase Orders",
+                             "id":  63,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Purchase Bills",
+                             "id":  64,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Expenses",
+                             "id":  65,
+                             "parentId":  56
+                         },
+                         {
+                             "label":  "Payments",
+                             "id":  66,
+                             "parentId":  56
+                         }
+                     ]
+    },
+    {
+        "label":  "Payroll System",
+        "id":  63,
+        "subItems":  [
+                         {
+                             "label":  "Salary Structure",
+                             "id":  64,
+                             "parentId":  63
+                         },
+                         {
+                             "label":  "Salary Sheet",
+                             "id":  65,
+                             "parentId":  63
+                         },
+                         {
+                             "label":  "Bonus  Deductions",
+                             "id":  66,
+                             "parentId":  63
+                         },
+                         {
+                             "label":  "Salary Slips",
+                             "id":  67,
+                             "parentId":  63
+                         }
+                     ]
+    },
+    {
+        "label":  "IT Management",
+        "id":  73,
+        "subItems":  [
+                         {
+                             "label":  "IT Tickets",
+                             "id":  74,
+                             "parentId":  73
+                         },
+                         {
+                             "label":  "IT Asset Records",
+                             "id":  75,
+                             "parentId":  73
+                         },
+                         {
+                             "label":  "Access Permissions",
+                             "id":  76,
+                             "parentId":  73
+                         }
+                     ]
+    },
+    {
+        "label":  "Human Resources",
+        "id":  77,
+        "subItems":  [
+                         {
+                             "label":  "Leave Requests",
+                             "id":  78,
+                             "parentId":  77
+                         },
+                         {
+                             "label":  "Employee Policies",
+                             "id":  79,
+                             "parentId":  77
+                         },
+                         {
+                             "label":  "Employee Documents",
+                             "id":  80,
+                             "parentId":  77
+                         },
+                         {
+                             "label":  "HR Announcements",
+                             "id":  81,
+                             "parentId":  77
+                         }
+                     ]
+    },
+    {
+        "id":  124,
+        "label":  "Marketing Sales"
+    },
+    {
+        "label":  "Sales Marketing",
+        "id":  125,
+        "subItems":  [
+                         {
+                             "label":  "Pipeline",
+                             "id":  126,
+                             "parentId":  125
+                         },
+                         {
+                             "label":  "Lead List",
+                             "id":  133,
+                             "parentId":  125
+                         },
+                         {
+                             "label":  "Contacts",
+                             "id":  134,
+                             "parentId":  125
+                         },
+                         {
+                             "label":  "Companies",
+                             "id":  135,
+                             "parentId":  125
+                         },
+                         {
+                             "label":  "Activities",
+                             "id":  136,
+                             "parentId":  125
+                         },
+                         {
+                             "label":  "Assign Stage",
+                             "id":  132,
+                             "parentId":  125
+                         },
+                         {
+                             "label":  "Dashboard",
+                             "id":  138,
+                             "parentId":  125
+                         }
+                     ]
+    }
+]
