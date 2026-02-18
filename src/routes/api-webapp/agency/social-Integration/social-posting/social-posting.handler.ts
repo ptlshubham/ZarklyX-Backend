@@ -9,6 +9,8 @@ import { SocialToken } from "../social-token.model";
 import { Clients } from "../../clients/clients-model";
 import { MakeQuery } from "../../../../../services/model-service";
 import { deleteFromGitHub } from "../../../../../services/image-uploader";
+import { getFacebookPostMetrics } from '../../../../../services/facebook-service';
+import { getInstagramPostMetrics } from '../../../../../services/instagram-service';
 
 /**
  * Helper: Create PostMediaFiles record with uploaded URLs
@@ -57,7 +59,12 @@ export const decrementRefCountAndCleanup = async (mediaFilesId: string): Promise
     const mediaFile = await PostMediaFiles.findByPk(mediaFilesId);
     if (!mediaFile) return;
 
-    if (mediaFile.refCount <= 1) {
+    // Decrement refCount first
+    await mediaFile.decrement('refCount');
+    const updatedRefCount = mediaFile.refCount - 1;
+
+    // Check if refCount is now zero
+    if (updatedRefCount <= 0) {
       // Delete from GitHub - extract urls from media file
       let urls = mediaFile.urls as any;
       
@@ -96,9 +103,7 @@ export const decrementRefCountAndCleanup = async (mediaFilesId: string): Promise
       await mediaFile.destroy();
       console.log(`[SOCIAL-POSTING HANDLER] Deleted PostMediaFiles record: ${mediaFilesId}`);
     } else {
-      // Just decrement
-      await mediaFile.decrement('refCount');
-      console.log(`[SOCIAL-POSTING HANDLER] Decremented refCount for ${mediaFilesId}`);
+      console.log(`[SOCIAL-POSTING HANDLER] Decremented refCount for ${mediaFilesId}, new count: ${updatedRefCount}`);
     }
   } catch (error: any) {
     console.warn("[SOCIAL-POSTING HANDLER] Failed to decrement refCount:", error.message);
@@ -116,7 +121,6 @@ export const getBatchAccountTokensForPublishing = async (metaSocialAccountIds: s
       return [];
     }
 
-    // SINGLE QUERY: Fetch all accounts at once
     const socialAccounts = await MetaSocialAccount.findAll({
       where: {
         id: metaSocialAccountIds,
@@ -179,12 +183,6 @@ export const getBatchAccountTokensForPublishing = async (metaSocialAccountIds: s
     if (missingIds.length > 0) {
       console.warn(`[GET-BATCH-ACCOUNT-TOKENS] Missing accounts: ${missingIds.join(", ")}`);
     }
-
-    console.log("[GET-BATCH-ACCOUNT-TOKENS] Fetched from database in SINGLE QUERY:", {
-      requestedCount: metaSocialAccountIds.length,
-      fetchedCount: results.length,
-      platforms: [...new Set(results.map(r => r.platform))].join(", "),
-    });
 
     return results;
   } catch (error: any) {
@@ -279,6 +277,7 @@ export const schedulePost = async (data: {
   caption: string | null;
   firstComment: string | null;
   taggedPeople: Array<string>;
+  collaborators: Array<string>;
   mediaUrlId: string;
   scheduleAt: Date;
 }) => {
@@ -332,6 +331,7 @@ export const schedulePost = async (data: {
         caption: data.caption,
         firstComment: data.firstComment,
         taggedPeople: data.taggedPeople,
+        collaborators: data.collaborators,
         media: [],  // Will be populated with server URLs after publishing
         mediaUrlId: data.mediaUrlId,
         status: "pending",
@@ -393,6 +393,7 @@ export const createImmediatePostDetail = async (data: {
   caption?: string | null;
   firstComment?: string | null;
   taggedPeople?: Array<string>;
+  collaborators?: Array<string>;
   mediaUrlId?: string;
   initialStatus?: "pending" | "processing" | "published" | "failed" | "cancelled";
   attempts?: number;
@@ -400,8 +401,8 @@ export const createImmediatePostDetail = async (data: {
   errorMessage?: string | null;
   scheduledAt?: Date | null;
 }) => {
+  const t = await dbInstance.transaction();
   try {
-    const t = await dbInstance.transaction();
     const id = uuidv4();
 
     // Media will be populated from server (Instagram/Facebook) after post is published
@@ -417,6 +418,7 @@ export const createImmediatePostDetail = async (data: {
         caption: data.caption || null,
         firstComment: data.firstComment || null,
         taggedPeople: data.taggedPeople || [],
+        collaborators: data.collaborators || [],
         media: [],  // Will be populated with server URLs after publishing
         mediaUrlId: data.mediaUrlId || null,
         status: data.initialStatus || "processing",
@@ -434,13 +436,12 @@ export const createImmediatePostDetail = async (data: {
     await t.commit();
     return id;
   } catch (error: any) {
+    if (t) await t.rollback();
     console.warn("[SOCIAL-POSTING HANDLER] createImmediatePostDetail failed:", error.message);
     return null;
   }
 };
 
-/**
- * Bulk create immediate PostDetails for multiple accounts/postTypes.
 /**
  * Bulk create immediate PostDetails for multiple accounts/postTypes.
  * Returns maps: preCreatedMap (key: `${socialAccountId}::${postType}` -> id)
@@ -453,6 +454,7 @@ export const createImmediatePostDetailsBulk = async (params: {
   caption?: string | null;
   firstComment?: string | null;
   taggedPeopleList?: string[];
+  collaboratorsList?: string[];
   mediaUrlId?: string;
   scheduledAt?: Date | null;
 }) => {
@@ -483,6 +485,7 @@ export const createImmediatePostDetailsBulk = async (params: {
           caption: params.caption || null,
           firstComment: params.firstComment || null,
           taggedPeople: params.taggedPeopleList || [],
+          collaborators: params.collaboratorsList || [],
           media: [],  // Will be populated with server URLs after publishing
           mediaUrlId: params.mediaUrlId || null,
           status: "processing",
@@ -532,6 +535,36 @@ export const updatePostDetail = async (postDetailId: string, updates: any) => {
 };
 
 /**
+ * Delete a post (hard delete) only if it's not published.
+ * Decrements media refcount and deletes media if refcount reaches zero.
+ * Returns { success, message } object.
+ */
+export const deletePostDetail = async (postDetailId: string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const post = await PostDetails.findByPk(postDetailId);
+    if (!post) return { success: false, message: 'Post not found' };
+    if (post.status === 'published' || post.externalPostId) return { success: false, message: 'Cannot delete published posts' };
+    
+    // Decrement media refcount and cleanup if zero
+    if ((post as any).mediaUrlId) {
+      await decrementRefCountAndCleanup((post as any).mediaUrlId);
+    }
+    
+    // Delete related PostSchedule records
+    await PostSchedule.destroy({ where: { postDetailId } });
+    
+    // Delete the PostDetails record (hard delete)
+    await PostDetails.destroy({ where: { id: postDetailId } });
+    
+    console.log(`[SOCIAL-POSTING HANDLER] Hard-deleted post ${postDetailId}`);
+    return { success: true, message: 'Post deleted permanently' };
+  } catch (error: any) {
+    console.error("[SOCIAL-POSTING HANDLER] deletePostDetail failed:", error.message);
+    return { success: false, message: error.message || 'Failed to delete post' };
+  }
+};
+
+/**
  * Get all social accounts for a company
  */
 export const getMetaSocialAccounts = async (query: any) => {
@@ -560,7 +593,24 @@ export const getAllAgencyClients = async (query: any) => {
 
     const result = await Clients.findAndCountAll({
       where: { companyId: query.companyId },
-      attributes: ["id", "userId", "clientfirstName", "clientLastName", "logo"],
+      // Include basic client details so frontend can display them
+      attributes: [
+        "id",
+        "userId",
+        "clientfirstName",
+        "clientLastName",
+        "businessName",
+        "businessWebsite",
+        "businessEmail",
+        "businessContact",
+        "email",
+        "contact",
+        "country",
+        "state",
+        "city",
+        "logo",
+        "profile",
+      ],
       order: orderBy || [["createdAt", "DESC"]],
       raw: false,
       include: [
@@ -866,7 +916,13 @@ export const getPublishedPostDetails = async (postDetailId: string): Promise<any
         {
           model: MetaSocialAccount,
           as: 'socialAccount',
-          attributes: ['id', 'accountName', 'platform', 'companyId']
+          attributes: ['id', 'accountName', 'platform', 'companyId', 'assignedClientId']
+        },
+        {
+          model: PostSchedule,
+          as: 'schedule',
+          attributes: ['id', 'runAt', 'status'],
+          required: false,
         }
       ]
     });
@@ -875,18 +931,88 @@ export const getPublishedPostDetails = async (postDetailId: string): Promise<any
       return null;
     }
 
-    return {
+    // Prepare base response
+    const response: any = {
       id: post.id,
+      companyId: post.companyId,
       platform: post.platform,
       postType: post.postType,
       caption: post.caption,
+      firstComment: (post as any).firstComment || null,
       status: post.status,
       externalPostId: post.externalPostId,
-      media: post.media || [],
+      media: post.media || [], // media as stored (usually contains server URLs and external ids)
+      mediaUrlId: (post as any).mediaUrlId || null, // reference to PostMediaFiles if uploads were used
       socialAccount: post.socialAccount,
+      taggedPeople: (post as any).taggedPeople || [],
       publishedAt: post.publishedAt,
-      createdAt: post.createdAt
+      createdAt: post.createdAt,
+      postSchedule: (post as any).schedule
+        ? { runAt: (post as any).schedule.runAt, status: (post as any).schedule.status }
+        : null,
     };
+
+    // If there is a PostMediaFiles reference, fetch the stored upload URLs and status
+    try {
+      const mediaUrlId = response.mediaUrlId;
+      if (mediaUrlId) {
+        const mediaRecord = await PostMediaFiles.findByPk(mediaUrlId);
+        let urls: any = [];
+        let status: any = null;
+
+        if (mediaRecord) {
+          urls = (mediaRecord as any).urls;
+          if (typeof urls === 'string') {
+            try {
+              urls = JSON.parse(urls);
+            } catch (e) {
+              urls = [];
+            }
+          }
+          status = (mediaRecord as any).status || null;
+        }
+
+        response.mediaFiles = Array.isArray(urls) ? urls : [];
+        response.mediaFilesStatus = status;
+      } else {
+        response.mediaFiles = [];
+        response.mediaFilesStatus = null;
+      }
+    } catch (err: any) {
+      console.warn('[GET-PUBLISHED-POST] Failed to fetch PostMediaFiles:', err?.message || err);
+      response.mediaFiles = [];
+      response.mediaFilesStatus = null;
+    }
+
+    // If the post has an assigned client id on the socialAccount, fetch client details
+    try {
+      const assignedClientId = response.socialAccount?.assignedClientId || null;
+      if (assignedClientId) {
+        const client = await Clients.findByPk(assignedClientId);
+        if (client) {
+          // Include minimal client details for frontend convenience
+          const clientPlain: any = typeof client.toJSON === 'function' ? client.toJSON() : client;
+          response.client = {
+            id: clientPlain.id,
+            clientfirstName: clientPlain.clientfirstName || null,
+            clientLastName: clientPlain.clientLastName || null,
+            businessName: clientPlain.businessName || null,
+            logo: clientPlain.logo || null,
+            businessEmail: clientPlain.businessEmail || null,
+            businessContact: clientPlain.businessContact || null,
+          };
+        } else {
+          response.client = null;
+        }
+      } else {
+        response.client = null;
+      }
+    } catch (err: any) {
+      console.warn('[GET-PUBLISHED-POST] Failed to fetch assigned client details:', err?.message || err);
+      response.client = null;
+    }
+
+    return response;
   } catch (error: any) {
     console.error("[GET-PUBLISHED-POST] Error:", error.message);
     throw error;
@@ -937,9 +1063,9 @@ export const cancelScheduledPost = async (postDetailId: string, companyId?: stri
 /**
  * Fetch scheduled posts (used by API)
  */
-export const getScheduledPosts = async (params: { companyId: string; status?: string; month?: string }) => {
+export const getScheduledPosts = async (params: { companyId: string; status?: string; month?: string; clientId?: string }) => {
   try {
-    const { companyId, status, month } = params;
+    const { companyId, status, month, clientId } = params;
 
     const whereClause: any = { companyId };
     const scheduleWhereClause: any = {};
@@ -964,6 +1090,19 @@ export const getScheduledPosts = async (params: { companyId: string; status?: st
       scheduleWhereClause.runAt = { [Sequelize.Op.between]: [startDate, endDate] };
     }
 
+    // If a clientId is provided, require the join to MetaSocialAccount and filter by assignedClientId
+    const socialAccountInclude: any = {
+      model: MetaSocialAccount,
+      as: 'socialAccount',
+      attributes: ['id', 'accountName', 'profilePhoto', 'platform', 'assignedClientId'],
+      required: false,
+    };
+
+    if (clientId) {
+      socialAccountInclude.where = { assignedClientId: clientId };
+      socialAccountInclude.required = true;
+    }
+
     const posts = await PostDetails.findAll({
       where: whereClause,
       include: [
@@ -973,12 +1112,7 @@ export const getScheduledPosts = async (params: { companyId: string; status?: st
           where: Object.keys(scheduleWhereClause).length > 0 ? scheduleWhereClause : undefined,
           required: false,
         },
-        {
-          model: MetaSocialAccount,
-          as: 'socialAccount',
-          attributes: ['id', 'accountName', 'profilePhoto', 'platform'],
-          required: false,
-        },
+        socialAccountInclude,
       ],
       order: [['createdAt', 'DESC']],
       limit: 100,
@@ -1032,4 +1166,58 @@ export const getScheduledPosts = async (params: { companyId: string; status?: st
     console.error('[SOCIAL-POSTING HANDLER] getScheduledPosts error:', error.message);
     throw error;
   }
+};
+
+/**
+ * Fetch engagement metrics (likes, comments, views) for published posts
+ * Accepts array of `postDetailId`s and returns per-post metrics.
+ */
+export const fetchPostEngagements = async (postDetailIds: string[] | string) => {
+  const ids = Array.isArray(postDetailIds) ? postDetailIds : [postDetailIds];
+  const out: any[] = [];
+
+  for (const id of ids) {
+    try {
+      const post = await getPublishedPostDetails(String(id));
+      if (!post) {
+        out.push({ postDetailId: id, success: false, error: 'Post not found' });
+        continue;
+      }
+
+      const platform = (post.platform || '').toLowerCase();
+      const externalId = post.externalPostId || null;
+
+      if (!externalId) {
+        out.push({ postDetailId: id, success: false, error: 'externalPostId missing on PostDetails' });
+        continue;
+      }
+
+      try {
+        if (platform === 'facebook') {
+          // Need page/user token and page id - try to fetch account tokens from DB
+          const accountTokens = await getAccountTokensForPublishing(post.socialAccount?.id, String(post.companyId));
+          const pageId = accountTokens.accountId || undefined;
+          const token = accountTokens.storedPageAccessToken || accountTokens.userAccessToken || accountTokens.accessToken;
+
+          const metrics = await getFacebookPostMetrics(token as string, String(externalId), pageId);
+          out.push({ postDetailId: id, success: true, platform: 'facebook', metrics, externalPostId: externalId });
+        } else if (platform === 'instagram') {
+          // For IG, account access token is needed
+          const accountTokens = await getAccountTokensForPublishing(post.socialAccount?.id, String(post.companyId));
+          const token = accountTokens.accessToken;
+          const metrics = await getInstagramPostMetrics(token as string, String(externalId));
+          out.push({ postDetailId: id, success: true, platform: 'instagram', metrics, externalPostId: externalId });
+        } else {
+          // Unsupported platform - return stored data only
+          out.push({ postDetailId: id, success: false, error: `Unsupported platform: ${platform}` });
+        }
+      } catch (err: any) {
+        out.push({ postDetailId: id, success: false, error: err?.message || String(err) });
+      }
+    } catch (error: any) {
+      out.push({ postDetailId: id, success: false, error: error?.message || String(error) });
+    }
+  }
+
+  return out;
 };

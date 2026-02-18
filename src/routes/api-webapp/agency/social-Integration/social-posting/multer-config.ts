@@ -5,7 +5,7 @@ import path from "path";
 export const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
-      cb(null, path.join(process.cwd(), "public/social-media-img"));
+      cb(null, path.join(process.cwd(), "src/public/social-media-img"));
     },
     filename: (req, file, cb) => {
       cb(null, `${Date.now()}-${file.originalname}`);

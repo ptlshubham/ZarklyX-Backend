@@ -1051,6 +1051,17 @@ export async function getFacebookCarouselChildren(
         }
 
         if (mediaItems.length > 0) {
+          // Try to fetch permalink_url for the post and attach to each child
+          try {
+            const permalinkResp = await axios.get(`https://graph.facebook.com/${postId}`, { params: { fields: 'permalink_url', access_token: token } });
+            const permalinkUrl = permalinkResp.data?.permalink_url || permalinkResp.data?.permalink;
+            if (permalinkUrl) {
+              mediaItems.forEach(mi => (mi as any).permalink = permalinkUrl);
+            }
+          } catch (e: any) {
+            // ignore permalink fetch errors
+          }
+
           console.log("[FACEBOOK SERVICE] Fetched carousel children from post attachments:", {
             postId,
             childrenCount: mediaItems.length
@@ -1076,11 +1087,13 @@ export async function getFacebookCarouselChildren(
 
     // PHOTO node - get highest quality image (first in images array)
     if (Array.isArray(nodeResp.data?.images) && nodeResp.data.images.length > 0) {
+      const permalinkUrl = nodeResp.data?.permalink_url || nodeResp.data?.permalink;
       mediaItems.push({
         id: postId,
         url: nodeResp.data.images[0].source, // highest quality
-        type: 'image'
-      });
+        type: 'image',
+        permalink: permalinkUrl
+      } as any);
       console.log("[FACEBOOK SERVICE] Fetched carousel children from Photo node:", {
         postId,
         url: nodeResp.data.images[0].source
@@ -1090,11 +1103,13 @@ export async function getFacebookCarouselChildren(
 
     // VIDEO node
     if (nodeResp.data?.source) {
+      const permalinkUrl = nodeResp.data?.permalink_url || nodeResp.data?.permalink;
       mediaItems.push({
         id: postId,
         url: nodeResp.data.source,
-        type: 'video'
-      });
+        type: 'video',
+        permalink: permalinkUrl
+      } as any);
       console.log("[FACEBOOK SERVICE] Fetched carousel children from Video node:", {
         postId,
         url: nodeResp.data.source
@@ -1177,6 +1192,17 @@ export async function getFacebookPostMedia(
         }
 
         if (mediaItems.length > 0) {
+          // Try to fetch permalink_url for the post and attach to each child
+          try {
+            const permalinkResp = await axios.get(`https://graph.facebook.com/${postId}`, { params: { fields: 'permalink_url', access_token: token } });
+            const permalinkUrl = permalinkResp.data?.permalink_url || permalinkResp.data?.permalink;
+            if (permalinkUrl) {
+              mediaItems.forEach(mi => (mi as any).permalink = permalinkUrl);
+            }
+          } catch (e: any) {
+            // ignore permalink fetch errors
+          }
+
           console.log("[FACEBOOK SERVICE] Fetched post media from attachments:", {
             postId,
             mediaCount: mediaItems.length
@@ -1202,11 +1228,13 @@ export async function getFacebookPostMedia(
 
     // PHOTO node - get highest quality image (first in images array)
     if (Array.isArray(nodeResp.data?.images) && nodeResp.data.images.length > 0) {
+      const permalinkUrl = nodeResp.data?.permalink_url || nodeResp.data?.permalink;
       mediaItems.push({
         id: postId,
         url: nodeResp.data.images[0].source, // highest quality
-        type: 'image'
-      });
+        type: 'image',
+        permalink: permalinkUrl
+      } as any);
       console.log("[FACEBOOK SERVICE] Fetched post media from Photo node:", {
         postId,
         resolution: `${nodeResp.data.images[0].width}x${nodeResp.data.images[0].height}`
@@ -1216,11 +1244,13 @@ export async function getFacebookPostMedia(
 
     // VIDEO node
     if (nodeResp.data?.source) {
+      const permalinkUrl = nodeResp.data?.permalink_url || nodeResp.data?.permalink;
       mediaItems.push({
         id: postId,
         url: nodeResp.data.source,
-        type: 'video'
-      });
+        type: 'video',
+        permalink: permalinkUrl
+      } as any);
       console.log("[FACEBOOK SERVICE] Fetched post media from Video node:", {
         postId,
         type: 'video'
@@ -1235,6 +1265,64 @@ export async function getFacebookPostMedia(
       error: error.message
     });
     return [];
+  }
+}
+
+/**
+ * Fetch simple engagement metrics for a Facebook post: likes (reactions), comments, and (when available) video views.
+ * token: page access token or user access token (if user token provided and pageId available, service will try to resolve page token)
+ */
+export async function getFacebookPostMetrics(token: string | undefined, postId: string, pageId?: string) {
+  try {
+    if (!token) throw new Error('No access token provided');
+    console.log("[FACEBOOK SERVICE] Fetching post metrics...", { postId, pageId, tokenProvided: !!token });
+
+    // If the token looks like a user token and a pageId is provided, try to fetch a page access token
+    let accessToken = token;
+    if (pageId && token && token.length > 0 && token.indexOf('|') === -1) {
+      // attempt to resolve page token (best-effort)
+      try {
+        const pageToken = await getPageAccessToken(token, pageId);
+        if (pageToken) accessToken = pageToken;
+      } catch (e) {
+        // ignore and continue with provided token
+      }
+    }
+
+    // Basic counts using summary fields
+    const fields = 'reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)';
+    const resp = await axios.get(`https://graph.facebook.com/v16.0/${postId}`, {
+      params: {
+        fields,
+        access_token: accessToken,
+      }
+    });
+
+    const likes = resp.data?.reactions?.summary?.total_count ?? 0;
+    const comments = resp.data?.comments?.summary?.total_count ?? 0;
+
+    // Try to fetch video views (best-effort) if available
+    let views: number | null = null;
+    try {
+      const insightsResp = await axios.get(`https://graph.facebook.com/v16.0/${postId}/insights`, {
+        params: {
+          metric: 'post_video_views',
+          access_token: accessToken,
+        }
+      });
+      const data = insightsResp.data?.data || [];
+      if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0].values) && data[0].values.length > 0) {
+        views = Number(data[0].values[0].value) || null;
+      }
+    } catch (e) {
+      // ignore insight errors
+      views = null;
+    }
+
+    return { likes: Number(likes), comments: Number(comments), views };
+  } catch (error: any) {
+    console.warn('[FACEBOOK SERVICE] getFacebookPostMetrics failed:', error.message);
+    throw error;
   }
 }
 

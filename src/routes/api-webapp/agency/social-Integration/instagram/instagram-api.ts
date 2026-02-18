@@ -3,7 +3,7 @@ import express, { Request, Response } from "express";
 import { exchangeInstagramCodeForTokens, exchangeShortLivedForLongLived, generateInstagramAuthUrl, getAddedIgAccountDetails, getBusinessIgAccounts, getFacebookUser, getIgAccountsAndBusinesses, getPageAdminIgAccounts, searchInstagramUserByUsername } from "../../../../../services/instagram-service";
 import { getConnectedSocialTokenByCompanyId, saveOrUpdateToken } from "../../../../../services/token-store.service";
 import { v4 as uuidv4 } from "uuid";
-import { assignClientToInstagramAccount, getAddedInstagramAccountsFromDb, markInstagramAccountsAsAddedInDb, saveInstagramAccountsToDb, getAssignedInstagramAccountsByCompanyId, getUnassignedInstagramAccountsByCompanyId, searchInstagramUserHandler, getAccountsWithAddedStatus, removeInstagramAccount } from './instagram-handler'
+import { assignClientToInstagramAccount, unassignClientFromInstagramAccount, getAddedInstagramAccountsFromDb, markInstagramAccountsAsAddedInDb, saveInstagramAccountsToDb, getAssignedInstagramAccountsByCompanyId, getUnassignedInstagramAccountsByCompanyId, searchInstagramUserHandler, getAccountsWithAddedStatus, removeInstagramAccount } from './instagram-handler'
 import { notifySocialConnectionAdded } from "../../../../../services/socket-service";
 
 const router = express.Router();
@@ -575,6 +575,49 @@ router.post('/assign-account', async (req: Request, res: Response): Promise<void
         res.status(400).json({
             success: false,
             message: error.message || "Failed to assign client",
+        });
+        return;
+    }
+});
+
+// POST /instagram/unassign-account
+router.post('/unassign-account', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { companyId, instagramBusinessId } = req.body;
+
+        if (!companyId || !instagramBusinessId) {
+            res.status(400).json({
+                success: false,
+                message: "companyId and instagramBusinessId are required"
+            });
+            return;
+        }
+
+        try {
+            const updatedAccount = await unassignClientFromInstagramAccount(String(companyId), String(instagramBusinessId));
+            if (!updatedAccount) {
+                res.status(404).json({ success: false, message: "Instagram account not found or nothing to unassign" });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "Instagram account unassigned successfully",
+                updatedAccount,
+            });
+            return;
+        } catch (err: any) {
+            res.status(400).json({
+                success: false,
+                message: err.message || "Failed to unassign Instagram account",
+            });
+            return;
+        }
+
+    } catch (error: any) {
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to unassign Instagram account",
         });
         return;
     }

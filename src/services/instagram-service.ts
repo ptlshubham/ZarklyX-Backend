@@ -275,6 +275,7 @@ type CreatePublishParams = {
   mediaType?: MediaType;
   publishType?: PublishType;
   userTags?: any[];
+  collaborators?: any[];
 };
 
 function delay(ms: number): Promise<void> {
@@ -329,7 +330,8 @@ async function createAndPublish({
   caption,
   mediaType = "IMAGE",
   publishType = "feed",
-  userTags = []
+  userTags = [],
+  collaborators = []
 }: CreatePublishParams): Promise<any> {
   const payload: any = { access_token: token };
 
@@ -537,53 +539,17 @@ async function createAndPublish({
   // Add collaborators to the post (co-authors who will be credited)
   // Collaborators are different from tags - they are credited as co-authors on the post
   // Note: Instagram allows up to 5 collaborators per post
-  if (userTags && userTags.length > 0 && publishType !== "story") {
+  if (collaborators && collaborators.length > 0 && publishType !== "story") {
     const MAX_COLLABS = 5;
-    const safeCollaborators = userTags
+    const safeCollaborators = collaborators
       .slice(0, MAX_COLLABS)
       .filter((u: string) => typeof u === "string" && u.trim().length > 0);
 
     if (safeCollaborators.length > 0) {
-      // First verify collaborators are accessible (optional - helps debug issues)
-      // Uncomment if you want to pre-check collaborator accessibility
-      /*
-      try {
-        const accessibleCollaborators: string[] = [];
-        
-        for (const username of safeCollaborators) {
-          try {
-            const igUsername = await searchInstagramUserByUsername(token, username.trim());
-            if (igUsername) {
-              accessibleCollaborators.push(username);
-              console.log(`[INSTAGRAM SERVICE] Collaborator accessible: ${username}`);
-            } else {
-              console.warn(`[INSTAGRAM SERVICE] Collaborator not found or not accessible: ${username}`);
-            }
-          } catch (err) {
-            console.warn(`[INSTAGRAM SERVICE] Failed to verify collaborator ${username}:`, err);
-          }
-        }
-        
-        if (accessibleCollaborators.length > 0) {
-          payload.collaborators = JSON.stringify(accessibleCollaborators);
-          console.log("[INSTAGRAM SERVICE] Collaborators (verified accessible) added from userTags:", {
-            count: accessibleCollaborators.length,
-            collaborators: accessibleCollaborators,
-            skipped: safeCollaborators.length - accessibleCollaborators.length
-          });
-        } else {
-          console.warn("[INSTAGRAM SERVICE] No accessible collaborators found");
-        }
-      } catch (verifyErr: any) {
-        console.warn("[INSTAGRAM SERVICE] Collaborator verification skipped, proceeding with all:", safeCollaborators);
-        payload.collaborators = JSON.stringify(safeCollaborators);
-      }
-      */
-      
       // For now, use all collaborators as-is (Instagram will filter inaccessible ones)
       payload.collaborators = JSON.stringify(safeCollaborators);
 
-      console.log("[INSTAGRAM SERVICE] Collaborators added from userTags:", {
+      console.log("[INSTAGRAM SERVICE] Collaborators added:", {
         count: safeCollaborators.length,
         collaborators: safeCollaborators,
         CRITICAL_API_LIMITATION: "⚠️ Instagram Graph API ONLY accepts PUBLIC accounts as collaborators",
@@ -601,6 +567,34 @@ async function createAndPublish({
         }
       });
     }
+  }
+
+  // Add user tags (mentions) to the post - separate from collaborators
+  // User tags work for images and carousel posts, but NOT for single video REELS
+  if (userTags && userTags.length > 0 && publishType !== "story" && !isSingleVideo) {
+    const MAX_TAGS = 20;
+    const safeTags = userTags
+      .slice(0, MAX_TAGS)
+      .filter((u: string) => typeof u === "string" && u.trim().length > 0);
+
+    if (safeTags.length > 0) {
+      const formattedTags = safeTags.map((username: string) => ({
+        username: username.trim(),
+        x: 0.5, // Default to center
+        y: 0.5
+      }));
+
+      payload.user_tags = JSON.stringify(formattedTags);
+      
+      console.log("[INSTAGRAM SERVICE] User tags (mentions) added:", {
+        count: formattedTags.length,
+        maxAllowed: MAX_TAGS,
+        tags: formattedTags,
+        note: "User tags are visual mentions on the post, different from collaborators"
+      });
+    }
+  } else if (userTags && userTags.length > 0 && isSingleVideo) {
+    console.warn("[INSTAGRAM SERVICE] User tags not applied - Instagram REELS do not support user tags");
   }
 
 
@@ -775,9 +769,10 @@ export async function addInstagramPost(
   mediaUrl: string | string[],
   caption: string,
   mediaType: MediaType = "IMAGE",
-  userTags: any[] = []
+  userTags: any[] = [],
+  collaborators: any[] = []
 ): Promise<any> {
-  console.log("[INSTAGRAM SERVICE] Adding Instagram post...", { tagsCount: userTags.length });
+  console.log("[INSTAGRAM SERVICE] Adding Instagram post...", { tagsCount: userTags.length, collaboratorsCount: collaborators.length });
   const result = await createAndPublish({
     igUserId: instagramData.platformUserId,
     token: instagramData.token,
@@ -785,7 +780,8 @@ export async function addInstagramPost(
     caption,
     mediaType,
     publishType: "feed",
-    userTags
+    userTags,
+    collaborators
   });
   console.log("[INSTAGRAM SERVICE] Instagram post added successfully");
   return result;
@@ -796,9 +792,10 @@ export async function addInstagramReel(
   mediaUrl: string | string[],
   caption: string,
   mediaType: MediaType = "VIDEO",
-  userTags: any[] = []
+  userTags: any[] = [],
+  collaborators: any[] = []
 ): Promise<any> {
-  console.log("[INSTAGRAM SERVICE] Adding Instagram reel...", { tagsCount: userTags.length });
+  console.log("[INSTAGRAM SERVICE] Adding Instagram reel...", { tagsCount: userTags.length, collaboratorsCount: collaborators.length });
   const result = await createAndPublish({
     igUserId: instagramData.platformUserId,
     token: instagramData.token,
@@ -806,7 +803,8 @@ export async function addInstagramReel(
     caption,
     mediaType,
     publishType: "reel",
-    userTags
+    userTags,
+    collaborators
   });
   console.log("[INSTAGRAM SERVICE] Instagram reel added successfully");
   return result;
@@ -865,9 +863,10 @@ export async function addFeedAndStory(
   mediaUrl: string | string[],
   caption: string,
   mediaType: MediaType = "IMAGE",
-  userTags: any[] = []
+  userTags: any[] = [],
+  collaborators: any[] = []
 ): Promise<{ feed: any; story: any }> {
-  const feed = await addInstagramPost(instagramData, mediaUrl, caption, mediaType, userTags);
+  const feed = await addInstagramPost(instagramData, mediaUrl, caption, mediaType, userTags, collaborators);
   await delay(3000);
 
   // For stories, always use single images
@@ -968,6 +967,53 @@ export async function checkInstagramAccountPermissions(
 }
 
 /**
+ * Fetch simple engagement metrics for an Instagram media object
+ * Returns: { likes, comments, views }
+ */
+export async function getInstagramPostMetrics(token: string | undefined, postId: string) {
+  try {
+    if (!token) throw new Error('No Instagram access token provided');
+
+    const fields = 'id,media_type,like_count,comments_count';
+    const resp = await axios.get(`https://graph.facebook.com/v19.0/${postId}`, {
+      params: {
+        fields,
+        access_token: token
+      }
+    });
+
+    const likes = resp.data?.like_count ?? 0;
+    const comments = resp.data?.comments_count ?? 0;
+    let views: number | null = null;
+
+    // Try to fetch video views for video media (best-effort)
+    if ((resp.data?.media_type || '').toUpperCase() === 'VIDEO') {
+      try {
+        const insights = await axios.get(`https://graph.facebook.com/v19.0/${postId}/insights`, {
+          params: {
+            metric: 'total_video_impressions,engagement',
+            access_token: token
+          }
+        });
+
+        // Pick a helpful metric if available
+        const data = insights.data?.data || [];
+        if (Array.isArray(data) && data.length > 0 && data[0].values && data[0].values.length > 0) {
+          views = Number(data[0].values[0].value) || null;
+        }
+      } catch (e) {
+        views = null;
+      }
+    }
+
+    return { likes: Number(likes), comments: Number(comments), views };
+  } catch (error: any) {
+    console.warn('[INSTAGRAM SERVICE] getInstagramPostMetrics failed:', error.message);
+    throw error;
+  }
+}
+
+/**
  * Fetch post details from Instagram Graph API
  * Returns post media (children/images) with URLs
  */
@@ -980,14 +1026,14 @@ export async function getInstagramPostChildren(
       `https://graph.facebook.com/v19.0/${postId}`,
       {
         params: {
-          fields: 'id,media_type,media_url,children{id,media_type,media_url}',
+          fields: 'id,media_type,media_url,permalink,children{id,media_type,media_url,permalink}',
           access_token: token
         }
       }
     );
 
     const postData = response.data;
-    const mediaItems: Array<{ url: string; type: any; id: string }> = [];
+    const mediaItems: Array<{ url: string; type: any; id: string; permalink?: string }> = [];
 
     // If it's a carousel, get all children
     if (postData.children && Array.isArray(postData.children.data)) {
@@ -996,7 +1042,8 @@ export async function getInstagramPostChildren(
           mediaItems.push({
             id: child.id,
             url: child.media_url,
-            type: child.media_type === 'VIDEO' ? 'video' : 'image'
+            type: child.media_type === 'VIDEO' ? 'video' : 'image',
+            permalink: child.permalink || undefined
           });
         }
       });
@@ -1005,7 +1052,8 @@ export async function getInstagramPostChildren(
       mediaItems.push({
         id: postData.id,
         url: postData.media_url,
-        type: postData.media_type === 'VIDEO' ? 'video' : 'image'
+        type: postData.media_type === 'VIDEO' ? 'video' : 'image',
+        permalink: postData.permalink || undefined
       });
     }
 

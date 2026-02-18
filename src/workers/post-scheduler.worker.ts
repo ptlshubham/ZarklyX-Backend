@@ -18,6 +18,8 @@ import { createLinkedInShare } from "../services/linkedin-service";
 import { sendEmail } from "../services/mailService";
 import { User } from "../routes/api-webapp/authentication/user/user-model";
 import { Company } from "../routes/api-webapp/company/company-model";
+import { MetaSocialAccount } from "../routes/api-webapp/agency/social-Integration/meta-social-account.model";
+import { Clients } from "../routes/api-webapp/agency/clients/clients-model";
 
 // Worker configuration
 const WORKER_ID = process.env.WORKER_ID || os.hostname();
@@ -237,6 +239,7 @@ async function callPlatformAPI(
     const caption = postDetail.caption || "";
     const firstComment = postDetail.firstComment || "";
     let taggedPeople: string[] = postDetail.taggedPeople || [];
+    let collaborators: string[] = postDetail.collaborators || [];
     const postType = postDetail.postType || "post";
     const accessToken = socialAccount.accessToken;
 
@@ -253,8 +256,21 @@ async function callPlatformAPI(
     if (!Array.isArray(taggedPeople)) {
       taggedPeople = [];
     }
-    // Filter to only strings (usernames)
     taggedPeople = taggedPeople.filter((item: any) => typeof item === 'string');
+
+    if (typeof collaborators === 'string') {
+      try {
+        const parsed = JSON.parse(collaborators);
+        collaborators = Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        console.warn(`[WORKER] Failed to parse collaborators JSON:`, e);
+        collaborators = [];
+      }
+    }
+    if (!Array.isArray(collaborators)) {
+      collaborators = [];
+    }
+    collaborators = collaborators.filter((item: any) => typeof item === 'string');
 
     console.log(`[WORKER] Publishing to ${platform}:`, {
       account: socialAccount.accountName,
@@ -262,11 +278,12 @@ async function callPlatformAPI(
       postType,
       hasFirstComment: !!firstComment,
       tagCount: taggedPeople.length,
+      collaboratorsCount: collaborators.length,
     });
 
     switch (platform) {
       case "instagram":
-        return await publishToInstagram(socialAccount, mediaUrls, caption, postType, accessToken, firstComment, taggedPeople);
+        return await publishToInstagram(socialAccount, mediaUrls, caption, postType, accessToken, firstComment, taggedPeople, collaborators);
       case "facebook":
         return await publishToFacebook(socialAccount, mediaUrls, caption, accessToken, firstComment);
       case "linkedin":
@@ -290,7 +307,8 @@ async function publishToInstagram(
   postType: string,
   accessToken: string,
   firstComment: string = "",
-  taggedPeople: Array<string> = []
+  taggedPeople: Array<string> = [],
+  collaborators: Array<string> = []
 ) {
   try {
     const instagramData = {
@@ -303,7 +321,7 @@ async function publishToInstagram(
     let result;
 
     if (postType === "reel") {
-      result = await addInstagramReel(instagramData, cdnUrls, caption, mediaType, taggedPeople);
+      result = await addInstagramReel(instagramData, cdnUrls, caption, mediaType, taggedPeople, collaborators);
       console.log("[WORKER] [INSTAGRAM] Reel published:", result.id);
       
       // Add first comment if provided
@@ -319,7 +337,7 @@ async function publishToInstagram(
       result = await addInstagramStory(instagramData, cdnUrls, mediaType);
       console.log("[WORKER] [INSTAGRAM] Story published");
     } else if (postType === "feed_story") {
-      result = await addFeedAndStory(instagramData, cdnUrls, caption, mediaType, taggedPeople);
+      result = await addFeedAndStory(instagramData, cdnUrls, caption, mediaType, taggedPeople, collaborators);
       console.log("[WORKER] [INSTAGRAM] Feed + Story published:", result.feed.id);
       
       // Add first comment to feed post if provided
@@ -332,7 +350,7 @@ async function publishToInstagram(
         }
       }
     } else if (postType === "carousel") {
-      result = await addInstagramPost(instagramData, cdnUrls, caption, mediaType, taggedPeople);
+      result = await addInstagramPost(instagramData, cdnUrls, caption, mediaType, taggedPeople, collaborators);
       console.log("[WORKER] [INSTAGRAM] Carousel published:", result.id);
       
       // Add first comment if provided
@@ -345,7 +363,7 @@ async function publishToInstagram(
         }
       }
     } else {
-      result = await addInstagramPost(instagramData, cdnUrls, caption, mediaType, taggedPeople);
+      result = await addInstagramPost(instagramData, cdnUrls, caption, mediaType, taggedPeople, collaborators);
       console.log("[WORKER] [INSTAGRAM] Feed post published:", result.id);
       
       // Add first comment if provided
@@ -456,99 +474,159 @@ async function publishToLinkedIn(
 async function sendPostNotificationEmail(
   postDetail: any,
   status: 'success' | 'failed',
-  errorMessage?: string
+  errorMessage?: string,
+  externalPostId?: string,
+  postLink?: string,
+  platform?: string
 ): Promise<void> {
   try {
-    const recipients: string[] = [];
-    const emailData: any = {
-      User_Name: '',
-      Agency_Name: '',
-      Client_Name: ''
-    };
+    // Prepare recipient emails and friendly names
+    let creatorEmail: string | undefined;
+    let creatorName = '';
+    let companyEmail: string | undefined;
+    let companyName = '';
+    let clientEmail: string | undefined;
+    let clientName = '';
 
-    // Get creator (User) email
+    // Creator
     if (postDetail.createdBy) {
       try {
         const user = await User.findByPk(postDetail.createdBy, {
           attributes: ['id', 'firstName', 'lastName', 'email']
         });
         if (user && user.email) {
-          recipients.push(user.email);
-          emailData.User_Name = `${user.firstName || ''} ${user.lastName || ''}`.trim();
-          console.log(`[WORKER] Added creator email: ${user.email}`);
+          creatorEmail = user.email;
+          creatorName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+          console.log(`[WORKER] Creator email: ${creatorEmail}`);
         }
       } catch (userErr: any) {
         console.warn(`[WORKER] Failed to fetch creator user:`, userErr.message);
       }
     }
 
-    // Get company email
+    // Company (agency)
     if (postDetail.companyId) {
       try {
         const company = await Company.findByPk(postDetail.companyId, {
           attributes: ['id', 'name', 'email']
         } as any);
         if (company && (company as any).email) {
-          recipients.push((company as any).email);
-          emailData.Agency_Name = (company as any).name || (company as any).email;
-          console.log(`[WORKER] Added company email: ${(company as any).email}`);
+          companyEmail = (company as any).email;
+          companyName = (company as any).name || companyEmail || '';
+          console.log(`[WORKER] Company (agency) email: ${companyEmail}`);
         }
       } catch (companyErr: any) {
         console.warn(`[WORKER] Failed to fetch company:`, companyErr.message);
       }
     }
 
-    // Get assigned client email (from socialAccount.client)
+    // Client
     if (postDetail.socialAccount?.client?.email) {
-      recipients.push(postDetail.socialAccount.client.email);
-      emailData.Client_Name = postDetail.socialAccount.client.businessName || postDetail.socialAccount.client.email;
-      console.log(`[WORKER] Added client email: ${postDetail.socialAccount.client.email}`);
+      clientEmail = postDetail.socialAccount.client.email;
+      clientName = postDetail.socialAccount.client.businessName || clientEmail || '';
+      console.log(`[WORKER] Client email: ${clientEmail}`);
     }
 
-    // Remove duplicates
-    const uniqueRecipients = [...new Set(recipients)];
+    // If client not attached on the joined socialAccount, try to resolve via MetaSocialAccount.assignedClientId
+    if (!clientEmail && postDetail.socialAccountId) {
+      try {
+        const metaAccount = await MetaSocialAccount.findByPk(postDetail.socialAccountId, { attributes: ['id', 'assignedClientId'] });
+        if (metaAccount && (metaAccount as any).assignedClientId) {
+          const assignedClientId = (metaAccount as any).assignedClientId;
+          try {
+            const clientRecord = await Clients.findByPk(assignedClientId, { attributes: ['id', 'email', 'businessName'] });
+            if (clientRecord && (clientRecord as any).email) {
+              clientEmail = (clientRecord as any).email;
+              clientName = (clientRecord as any).businessName || clientEmail || '';
+              console.log(`[WORKER] Resolved client via MetaSocialAccount.assignedClientId: ${clientEmail}`);
+            }
+          } catch (clientFetchErr: any) {
+            console.warn(`[WORKER] Failed to fetch client record for assignedClientId ${assignedClientId}:`, clientFetchErr.message);
+          }
+        }
+      } catch (metaErr: any) {
+        console.warn(`[WORKER] Failed to lookup MetaSocialAccount ${postDetail.socialAccountId}:`, metaErr.message);
+      }
+    }
 
-    if (uniqueRecipients.length === 0) {
+    // If neither agency nor client email is available, try creator as fallback
+    if (!companyEmail && !clientEmail && !creatorEmail) {
       console.warn(`[WORKER] No recipient emails found for post ${postDetail.id}`);
       return;
     }
 
-    // Send emails based on status
+    const sentEmails: Array<{ role: string; to: string; template: string }> = [];
+
+    // Helper to send and record
+    const sendAndRecord = async (to: string, template: string, subject: string, replacements: any) => {
+      try {
+        await sendEmail({ to, subject, htmlFile: template, replacements } as any);
+        sentEmails.push({ role: template.includes('Client') ? 'client' : 'agency', to, template });
+        console.log(`[WORKER] Email sent to ${to} using template ${template}`);
+      } catch (emailErr: any) {
+        console.error(`[WORKER] Failed to send email to ${to}:`, emailErr.message);
+      }
+    };
+
+    // Prepare common replacement values
+    const commonReplacements = {
+      Post_Link: postLink || externalPostId || '',
+      Platform: platform || postDetail.platform || '',
+      External_Post_Id: externalPostId || ''
+    };
+
     if (status === 'success') {
-      // Send success emails
-      for (const email of uniqueRecipients) {
-        try {
-          await sendEmail({
-            to: email,
-            subject: `Social Media Post Successfully Uploaded - ${postDetail.platform}`,
-            htmlFile: 'Post_Uploaded_Successfully_Client',
-            replacements: {
-              Client_Name: emailData.Agency_Name || emailData.User_Name || 'User',
-              Agency_Name: emailData.Agency_Name || 'ZarklyX'
-            }
-          } as any);
-          console.log(`[WORKER] Success email sent to: ${email}`);
-        } catch (emailErr: any) {
-          console.error(`[WORKER] Failed to send success email to ${email}:`, emailErr.message);
-        }
+      // Send client email (client-specific template)
+      if (clientEmail) {
+        await sendAndRecord(clientEmail, 'Post_Uploaded_Successfully_Client', `Your ${platform || postDetail.platform} post is live`, {
+          Client_Name: clientName || creatorName || 'Client',
+          Platform: commonReplacements.Platform,
+          Post_Link: commonReplacements.Post_Link
+        });
+      }
+
+      // Send agency email (agency-specific template) to company and/or creator
+      if (companyEmail) {
+        await sendAndRecord(companyEmail, 'Post_Uploaded_Successfully_Agency', `Social Media Post Successfully Uploaded - ${commonReplacements.Platform}`, {
+          Agency_Name: companyName || 'Agency',
+          Platform: commonReplacements.Platform,
+          Post_Link: commonReplacements.Post_Link
+        });
+      } else if (creatorEmail) {
+        // If no company email, notify creator with agency template
+        await sendAndRecord(creatorEmail, 'Post_Uploaded_Successfully_Agency', `Social Media Post Successfully Uploaded - ${commonReplacements.Platform}`, {
+          Agency_Name: creatorName || 'User',
+          Platform: commonReplacements.Platform,
+          Post_Link: commonReplacements.Post_Link
+        });
       }
     } else if (status === 'failed') {
-      // Send failure emails
-      for (const email of uniqueRecipients) {
-        try {
-          await sendEmail({
-            to: email,
-            subject: `Social Media Post Upload Failed - ${postDetail.platform}`,
-            htmlFile: 'Post_Failed_to_Upload_Agency',
-            replacements: {
-              Agency_Name: emailData.Agency_Name || emailData.User_Name || 'User',
-              Error_Message: errorMessage || 'Unknown error occurred'
-            }
-          } as any);
-          console.log(`[WORKER] Failure email sent to: ${email}`);
-        } catch (emailErr: any) {
-          console.error(`[WORKER] Failed to send failure email to ${email}:`, emailErr.message);
-        }
+      // On failure send agency-style notification to agency and client (if present)
+      const failureReplacements = {
+        Agency_Name: companyName || creatorName || 'Agency',
+        Error_Message: errorMessage || 'Unknown error occurred',
+        Platform: commonReplacements.Platform
+      };
+
+      if (companyEmail) {
+        await sendAndRecord(companyEmail, 'Post_Failed_to_Upload_Agency', `Social Media Post Upload Failed - ${commonReplacements.Platform}`, failureReplacements);
+      } else if (creatorEmail) {
+        await sendAndRecord(creatorEmail, 'Post_Failed_to_Upload_Agency', `Social Media Post Upload Failed - ${commonReplacements.Platform}`, failureReplacements);
+      }
+
+      if (clientEmail) {
+        // Inform client as well using the same agency failure template
+        await sendAndRecord(clientEmail, 'Post_Failed_to_Upload_Agency', `Social Media Post Upload Failed - ${commonReplacements.Platform}`, failureReplacements);
+      }
+    }
+
+    // Log a concise table of what was sent
+    if (sentEmails.length > 0) {
+      try {
+        console.log('[WORKER] Sent email summary:');
+        console.table(sentEmails);
+      } catch (tableErr: any) {
+        console.log('[WORKER] Sent emails:', JSON.stringify(sentEmails));
       }
     }
   } catch (error: any) {
@@ -571,6 +649,7 @@ async function processPost(schedule: any): Promise<void> {
   });
 
   try {
+    let resolvedPostLink: string | undefined;
     if (!socialAccount) {
       throw new Error("Social account not found for this post");
     }
@@ -685,6 +764,10 @@ async function processPost(schedule: any): Promise<void> {
           }
 
           if (mediaChildren.length > 0) {
+            // prefer permalink from fetched children if present
+            const childWithPermalink = mediaChildren.find((m: any) => m.permalink || m.permalink_url);
+            if (childWithPermalink) resolvedPostLink = childWithPermalink.permalink || childWithPermalink.permalink_url;
+
             await updatePostWithMediaChildren(postDetail.id, mediaChildren);
             console.log(`[WORKER] Updated post with ${mediaChildren.length} media children from Instagram`);
           }
@@ -719,6 +802,10 @@ async function processPost(schedule: any): Promise<void> {
 
           // Store media: prioritize Facebook URLs, fallback to original uploaded URLs if fetch failed
           if (mediaChildren.length > 0) {
+            // prefer permalink from fetched children/post if present
+            const childWithPermalink = mediaChildren.find((m: any) => m.permalink || m.permalink_url);
+            if (childWithPermalink) resolvedPostLink = childWithPermalink.permalink || childWithPermalink.permalink_url;
+
             await updatePostWithMediaChildren(postDetail.id, mediaChildren);
             console.log(`[WORKER] Stored ${mediaChildren.length} Facebook media URLs`);
           } else if (postDetail.media && Array.isArray(postDetail.media) && postDetail.media.length > 0) {
@@ -750,8 +837,32 @@ async function processPost(schedule: any): Promise<void> {
         platform: postDetail.platform,
       });
 
-      // Send success notification email
-      await sendPostNotificationEmail(schedule.postDetail, 'success');
+      // Send success notification email (include external post id/link/platform when available)
+      try {
+        const externalId = apiResult.postId;
+        const pf = postDetail.platform;
+        // prefer resolvedPostLink collected from media children, otherwise fall back to heuristic
+        let postLink = resolvedPostLink;
+        if (!postLink && externalId) {
+          if (pf === 'facebook') {
+            const pageId = socialAccount.facebookPageId || socialAccount.accountId;
+            if (pageId) {
+              const idPart = typeof externalId === 'string' && externalId.includes('_') ? externalId.split('_').slice(1).join('_') : externalId;
+              postLink = `https://www.facebook.com/${pageId}/posts/${idPart}`;
+            } else {
+              postLink = `https://www.facebook.com/${externalId}`;
+            }
+          } else if (pf === 'instagram') {
+            postLink = `https://www.instagram.com/p/${externalId}`;
+          } else if (pf === 'linkedin') {
+            postLink = `https://www.linkedin.com/feed/update/${externalId}`;
+          }
+        }
+
+        await sendPostNotificationEmail(schedule.postDetail, 'success', undefined, externalId, postLink, pf);
+      } catch (emailNotifyErr: any) {
+        console.warn('[WORKER] Failed to send success notification email:', emailNotifyErr.message);
+      }
     } else {
       const errorMsg = apiResult.error || "Unknown API error";
       await markPostAsFailed(postDetail.id, errorMsg, schedule.attempts);
@@ -768,8 +879,8 @@ async function processPost(schedule: any): Promise<void> {
           error: errorMsg,
         });
 
-        // Send failure notification email only on final failure
-        await sendPostNotificationEmail(schedule.postDetail, 'failed', errorMsg);
+        // Send failure notification email only on final failure (include platform)
+        await sendPostNotificationEmail(schedule.postDetail, 'failed', errorMsg, undefined, undefined, postDetail.platform);
       }
     }
   } catch (error: any) {
@@ -782,7 +893,7 @@ async function processPost(schedule: any): Promise<void> {
 
     // Send failure notification email on unexpected error
     if (schedule.attempts >= MAX_RETRIES) {
-      await sendPostNotificationEmail(schedule.postDetail, 'failed', error.message);
+      await sendPostNotificationEmail(schedule.postDetail, 'failed', error.message, undefined, undefined, postDetail.platform);
     }
   }
 }

@@ -15,7 +15,9 @@ import {
   createImmediatePostDetail,
   createImmediatePostDetailsBulk,
   updatePostDetail,
+  deletePostDetail,
   updatePostWithMediaChildren
+  , fetchPostEngagements
 } from "./social-posting.handler";
 import { addFeedAndStory, addInstagramPost, addInstagramStory, addInstagramComment, addInstagramReel, getInstagramPostChildren, getInstagramStoryMedia } from "../../../../../services/instagram-service";
 import { uploadToGitHub } from "../../../../../services/image-uploader";
@@ -68,6 +70,7 @@ router.post("/publish", upload.array("files", 10), async (req: Request, res: Res
       caption,
       firstComment,
       taggedPeople,
+      collaborators,
       socketId
     } = req.body;
 
@@ -103,12 +106,32 @@ router.post("/publish", upload.array("files", 10), async (req: Request, res: Res
       }
     }
 
+    // Parse collaborators if it's a string and extract only usernames for Instagram
+    let collaboratorsList: string[] = [];
+    if (collaborators) {
+      try {
+        let parsed = typeof collaborators === 'string' ? JSON.parse(collaborators) : collaborators;
+        if (Array.isArray(parsed)) {
+          // Extract usernames from objects or use strings directly
+          collaboratorsList = parsed.map((item: any) => {
+            if (typeof item === 'string') return item;
+            if (typeof item === 'object' && item.username) return item.username;
+            return null;
+          }).filter((username: string | null) => username);
+        }
+      } catch (e) {
+        console.warn("[SOCIAL POSTING API] Failed to parse collaborators");
+        collaboratorsList = [];
+      }
+    }
+
     // Log request
     console.log("[SOCIAL POSTING API] Publish request:", {
       companyId: companyId || "MISSING",
       metaSocialAccountIds,
       caption: caption ? caption.substring(0, 50) + "..." : "MISSING",
       taggedPeopleCount: taggedPeopleList.length,
+      collaboratorsCount: collaboratorsList.length,
       postingConfig,
       filesCount: files?.length || 0,
     });
@@ -245,6 +268,7 @@ router.post("/publish", upload.array("files", 10), async (req: Request, res: Res
           caption,
           firstComment,
           taggedPeopleList,
+          collaboratorsList,
           mediaUrlId, // Pass mediaUrlId instead of mediaUrls
         });
       } catch (e: any) {
@@ -327,7 +351,7 @@ router.post("/publish", upload.array("files", 10), async (req: Request, res: Res
                     console.warn("[SOCIAL POSTING API] Failed to ensure PostDetails for instagram feed: postDetailId is null");
                   }
 
-                  const result = await addInstagramPost(instagramData, cdnUrls, caption, mediaType, taggedPeopleList);
+                  const result = await addInstagramPost(instagramData, cdnUrls, caption, mediaType, taggedPeopleList, collaboratorsList);
                   results.push({ platform: "instagram", type: "feed", account: account.accountName, filesCount: cdnUrls.length, success: true, ...result });
                   console.log(`[SOCIAL POSTING API]  Instagram feed posted`);
 
@@ -516,7 +540,7 @@ router.post("/publish", upload.array("files", 10), async (req: Request, res: Res
                     console.warn("[SOCIAL POSTING API] Failed to ensure PostDetails for instagram feed_story: postDetailId is null");
                   }
 
-                  const feedResult = await addFeedAndStory(instagramData, cdnUrls, caption, mediaType, taggedPeopleList);
+                  const feedResult = await addFeedAndStory(instagramData, cdnUrls, caption, mediaType, taggedPeopleList, collaboratorsList);
                   results.push({ platform: "instagram", type: "feed_story", account: account.accountName, filesCount: cdnUrls.length, success: true, ...feedResult });
                   console.log(`[SOCIAL POSTING API]  Instagram feed_story posted`);
 
@@ -601,7 +625,7 @@ router.post("/publish", upload.array("files", 10), async (req: Request, res: Res
                     console.warn("[SOCIAL POSTING API] Failed to ensure PostDetails for instagram reel: postDetailId is null");
                   }
 
-                  const result = await addInstagramReel(instagramData, cdnUrls, caption, "VIDEO", taggedPeopleList);
+                  const result = await addInstagramReel(instagramData, cdnUrls, caption, "VIDEO", taggedPeopleList, collaboratorsList);
                   results.push({ platform: "instagram", type: "reel", account: account.accountName, filesCount: cdnUrls.length, success: true, ...result });
                   console.log(`[SOCIAL POSTING API]  Instagram reel posted`);
 
@@ -665,7 +689,7 @@ router.post("/publish", upload.array("files", 10), async (req: Request, res: Res
                     console.warn("[SOCIAL POSTING API] Failed to ensure PostDetails for instagram carousel: postDetailId is null");
                   }
 
-                  const result = await addInstagramPost(instagramData, cdnUrls, caption, mediaType, taggedPeopleList);
+                  const result = await addInstagramPost(instagramData, cdnUrls, caption, mediaType, taggedPeopleList, collaboratorsList);
                   results.push({ platform: "instagram", type: "carousel", account: account.accountName, filesCount: cdnUrls.length, success: true, ...result });
                   console.log(`[SOCIAL POSTING API]  Instagram carousel posted`);
 
@@ -1040,6 +1064,7 @@ router.post("/schedule-post", upload.array("files", 10), async (req: Request, re
       caption,
       firstComment,
       tagPeople,
+      collaborators,
       socketId,
       destinations, // NEW: Array of platforms to post to
       // Legacy single-platform support
@@ -1067,6 +1092,25 @@ router.post("/schedule-post", upload.array("files", 10), async (req: Request, re
       } catch (e) {
         console.warn("[SCHEDULE-POST API] Failed to parse tagPeople");
         tagPeopleList = [];
+      }
+    }
+
+    // Parse collaborators if it's a string and extract only usernames for Instagram
+    let collaboratorsList: string[] = [];
+    if (collaborators) {
+      try {
+        let parsed = typeof collaborators === 'string' ? JSON.parse(collaborators) : collaborators;
+        if (Array.isArray(parsed)) {
+          // Extract usernames from objects or use strings directly
+          collaboratorsList = parsed.map((item: any) => {
+            if (typeof item === 'string') return item;
+            if (typeof item === 'object' && item.username) return item.username;
+            return null;
+          }).filter((username: string | null) => username);
+        }
+      } catch (e) {
+        console.warn("[SCHEDULE-POST API] Failed to parse collaborators");
+        collaboratorsList = [];
       }
     }
 
@@ -1234,68 +1278,44 @@ router.post("/schedule-post", upload.array("files", 10), async (req: Request, re
 
       // ============ VALIDATE SCHEDULE TIME ============
       const { scheduleAt } = req.body;
-      let scheduledDate: Date = new Date(); // Initialize with current date
+      let scheduledDate: Date | null = null;
 
       if (!scheduleAt) {
-        errors.push("scheduleAt (ISO datetime) is required");
+        errors.push("scheduleAt (ISO datetime in UTC) is required");
       } else if (typeof scheduleAt === 'string') {
         try {
-          // Check if it has timezone info (Z, +, or -)
-          if (scheduleAt.includes('Z') || /[+-]\d{2}:\d{2}/.test(scheduleAt)) {
-            // Already has timezone, use as-is
-            scheduledDate = new Date(scheduleAt);
-          } else {
-            // No timezone info - assume it's IST (Asia/Kolkata +05:30)
-            // Parse as local IST time and convert to UTC for storage
-            const localDate = new Date(scheduleAt);
-
-            // Get the local time components
-            const year = localDate.getFullYear();
-            const month = localDate.getMonth();
-            const day = localDate.getDate();
-            const hours = localDate.getHours();
-            const minutes = localDate.getMinutes();
-            const seconds = localDate.getSeconds();
-
-            // Create UTC date with same values (assuming input is IST)
-            const utcDate = new Date(Date.UTC(year, month, day, hours, minutes, seconds));
-
-            // Subtract 5:30 to convert IST to UTC
-            utcDate.setHours(utcDate.getHours() - 5);
-            utcDate.setMinutes(utcDate.getMinutes() - 30);
-
-            scheduledDate = utcDate;
-
-            console.log(`[SCHEDULE-POST API] Timezone conversion: IST ${scheduleAt} → UTC ${scheduledDate.toISOString()}`);
-          }
+          scheduledDate = new Date(scheduleAt);
 
           if (isNaN(scheduledDate.getTime())) {
-            errors.push("scheduleAt must be valid ISO datetime string");
+            errors.push("scheduleAt must be a valid ISO datetime string (e.g., 2026-02-13T10:42:00.000Z)");
           } else {
-            // Check if time is in the future (allowing 1 minute buffer for processing)
+            // Validate that the time is in the future (allowing 1 minute buffer for processing)
             const now = new Date();
             if (scheduledDate.getTime() < now.getTime() - 60000) {
-              errors.push("scheduleAt must be in the future (or within 1 minute)");
+              errors.push("Schedule time must be in the future");
             }
+
+            console.log(`[SCHEDULE-POST API] Parsed scheduleAt (UTC): ${scheduledDate.toISOString()}`);
           }
-        } catch (e: any) {
+        } catch (e: any) { 
           errors.push(`Failed to parse scheduleAt: ${e.message}`);
         }
       } else {
-        try {
-          scheduledDate = new Date(scheduleAt);
-          if (isNaN(scheduledDate.getTime())) {
-            errors.push("scheduleAt must be valid datetime");
-          }
-        } catch (e: any) {
-          errors.push(`Failed to parse scheduleAt: ${e.message}`);
-        }
+        errors.push("scheduleAt must be a string (ISO format: 2026-02-13T10:42:00.000Z)");
       }
 
       if (errors.length > 0) {
         return res.status(400).json({
           success: false,
           errors,
+        });
+      }
+
+      // Ensure scheduledDate is set (safeguard after validation)
+      if (!scheduledDate) {
+        return res.status(400).json({
+          success: false,
+          errors: ['Schedule date could not be determined'],
         });
       }
 
@@ -1330,6 +1350,7 @@ router.post("/schedule-post", upload.array("files", 10), async (req: Request, re
             caption: caption || null,
             firstComment: firstComment || null,
             taggedPeople: tagPeopleList,
+            collaborators: collaboratorsList,
             mediaUrlId, // Pass mediaUrlId instead of mediaUrls
             scheduleAt: scheduledDate,
           });
@@ -1492,16 +1513,27 @@ router.get("/clients", async (req: Request, res: Response) => {
 
 /**
  * GET /scheduled-posts
+ * Supports optional `clientId` query to filter posts assigned to a specific client.
+ * Supports `status=all` to return posts of any status.
  */
 router.get("/scheduled-posts", async (req: Request, res: Response) => {
   try {
-    const { companyId, status, month } = req.query;
+    const { companyId, status, month, clientId } = req.query;
 
     if (!companyId) {
       return res.status(400).json({ success: false, error: 'companyId is required' });
     }
 
-    const posts = await getScheduledPosts({ companyId: String(companyId), status: status ? String(status) : undefined, month: month ? String(month) : undefined });
+    // Normalize status: treat 'all' as no status filter
+    let statusParam: string | undefined = status ? String(status) : undefined;
+    if (statusParam === 'all') statusParam = undefined;
+
+    const posts = await getScheduledPosts({
+      companyId: String(companyId),
+      status: statusParam,
+      month: month ? String(month) : undefined,
+      clientId: clientId ? String(clientId) : undefined,
+    });
 
     return res.status(200).json({ success: true, data: posts });
   } catch (error: any) {
@@ -1519,6 +1551,7 @@ router.get("/scheduled-posts", async (req: Request, res: Response) => {
 router.delete("/scheduled-posts/:postDetailId", async (req: Request, res: Response) => {
   try {
     const { postDetailId } = req.params;
+    const postId = Array.isArray(postDetailId) ? postDetailId[0] : postDetailId;
     const { companyId } = req.query;
 
     if (!companyId) {
@@ -1558,6 +1591,9 @@ router.get("/published-post/:postDetailId", async (req: Request, res: Response) 
       });
     }
 
+    // Backward-compatible: accept optional filters via query params
+    const { companyId, userId, clientId } = req.query;
+
     const postDetails = await getPublishedPostDetails(postDetailId as string);
 
     if (!postDetails) {
@@ -1565,6 +1601,20 @@ router.get("/published-post/:postDetailId", async (req: Request, res: Response) 
         success: false,
         error: "Post not found"
       });
+    }
+
+    // If filters were provided, perform ownership checks; otherwise return the post directly
+    if (companyId) {
+      if (String(postDetails.companyId) !== String(companyId)) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: post does not belong to this company' });
+      }
+    }
+
+    if (clientId) {
+      const assignedClient = postDetails.socialAccount?.assignedClientId || null;
+      if (!assignedClient || String(assignedClient) !== String(clientId)) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: post does not belong to this client' });
+      }
     }
 
     return res.status(200).json({
@@ -1580,5 +1630,143 @@ router.get("/published-post/:postDetailId", async (req: Request, res: Response) 
     });
   }
 });
+
+/**
+ * POST /published-post
+ * Accepts JSON body with { postDetailId, companyId, userId, clientId } and returns the same data as GET
+ */
+router.post("/published-post", async (req: Request, res: Response) => {
+  try {
+    const { postDetailId, companyId, userId, clientId } = req.body;
+
+    if (!postDetailId || !companyId || !userId || !clientId) {
+      return res.status(400).json({ success: false, error: 'postDetailId, companyId, userId and clientId are required in body' });
+    }
+
+    const postDetails = await getPublishedPostDetails(String(postDetailId));
+
+    if (!postDetails) {
+      return res.status(404).json({ success: false, error: 'Post not found' });
+    }
+
+    if (String(postDetails.companyId) !== String(companyId)) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: post does not belong to this company' });
+    }
+
+    const assignedClient = postDetails.socialAccount?.assignedClientId || null;
+    if (!assignedClient || String(assignedClient) !== String(clientId)) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: post does not belong to this client' });
+    }
+
+    return res.status(200).json({ success: true, data: postDetails, message: 'Post details retrieved successfully' });
+  } catch (error: any) {
+    console.error('[POST-PUBLISHED-POST API] Error:', error.message);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to fetch post details' });
+  }
+});
+
+/**
+ * POST /post-engagements
+ * Body: { postDetailIds: string[] | string }
+ * Returns likes/comments/views for each requested post
+ */
+router.post("/post-engagements", async (req: Request, res: Response) => {
+  try {
+    const { postDetailIds } = req.body;
+
+    if (!postDetailIds) {
+      return res.status(400).json({ success: false, error: 'postDetailIds is required in body' });
+    }
+
+    const ids = Array.isArray(postDetailIds) ? postDetailIds : [postDetailIds];
+
+    const results = await fetchPostEngagements(ids);
+
+    return res.status(200).json({ success: true, data: results });
+  } catch (error: any) {
+    console.error('[POST-ENGAGEMENTS API] Error:', error.message);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to fetch engagements' });
+  }
+});
+
+/**
+ * PUT /post/:postDetailId
+ * Update editable fields for a post (caption, scheduled time, taggedPeople, assignedClientId, etc.)
+ * Images/media are not updated via this endpoint.
+ */
+router.put('/post/:postDetailId', async (req: Request, res: Response) => {
+  try {
+    const { postDetailId } = req.params;
+    const postId = Array.isArray(postDetailId) ? postDetailId[0] : postDetailId;
+    const { companyId } = req.body;
+
+    if (!postId || !companyId) {
+      return res.status(400).json({ success: false, error: 'postDetailId and companyId are required' });
+    }
+
+    // Only allow specific updatable fields
+    const allowed: any = {};
+    const { caption, firstComment, scheduledAt, taggedPeople, assignedClientId, postType } = req.body;
+    if (caption !== undefined) allowed.caption = caption;
+    if (firstComment !== undefined) allowed.firstComment = firstComment;
+    if (scheduledAt !== undefined) allowed.scheduledAt = scheduledAt;
+    if (taggedPeople !== undefined) allowed.taggedPeople = taggedPeople;
+    if (assignedClientId !== undefined) allowed.assignedClientId = assignedClientId;
+    if (postType !== undefined) allowed.postType = postType;
+
+    const success = await updatePostDetail(postId as string, allowed);
+    if (!success) {
+      return res.status(500).json({ success: false, error: 'Failed to update post' });
+    }
+
+    // If scheduledAt was updated, also update PostSchedule.runAt so the scheduler
+    // picks up the new time and the GET response reflects the change.
+    if (scheduledAt !== undefined) {
+      try {
+        await PostSchedule.update(
+          { runAt: new Date(scheduledAt) },
+          { where: { postDetailId: postId as string } }
+        );
+      } catch (schedErr: any) {
+        console.warn('[UPDATE-POST API] Failed to update PostSchedule.runAt:', schedErr?.message || schedErr);
+      }
+    }
+
+    return res.status(200).json({ success: true, message: 'Post updated' });
+  } catch (error: any) {
+    console.error('[UPDATE-POST API] Error:', error.message);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to update post' });
+  }
+});
+
+/**
+ * DELETE /post/:postDetailId
+ * Permanently delete a post and all its details ONLY if it's not published
+ */
+router.delete('/post/:postDetailId', async (req: Request, res: Response) => {
+  try {
+    const { postDetailId } = req.params;
+    const postId = Array.isArray(postDetailId) ? postDetailId[0] : postDetailId;
+
+    if (!postDetailId) {
+      return res.status(400).json({ success: false, error: 'postDetailId is required' });
+    }
+
+    const result = await deletePostDetail(postId as string);
+    
+    if (!result.success) {
+      return res.status(result.message === 'Cannot delete published posts' ? 403 : 500).json({ 
+        success: false, 
+        error: result.message 
+      });
+    }
+
+    return res.status(200).json({ success: true, message: result.message });
+  } catch (error: any) {
+    console.error('[DELETE-POST API] Error:', error.message);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to delete post' });
+  }
+});
+
 
 module.exports = router;

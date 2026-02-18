@@ -192,13 +192,17 @@ export async function assignClientToInstagramAccount(
     throw new Error("Instagram account not found for given identifier");
   }
 
-  // Prevent assigning the same client to another IG account
-  if (assignedClientId) {
+  // Normalize client id input and prevent assigning the same client to another IG account
+  const clientIdNorm = assignedClientId ? String(assignedClientId) : null;
+
+  if (clientIdNorm) {
     const existingAssignment = await MetaSocialAccount.findOne({
       where: {
         companyId,
         platform: "instagram",
-        assignedClientId,
+        assignedClientId: clientIdNorm,
+        // Only consider accounts that are actively added to avoid false-positives
+        isAdded: true,
         id: {
           [Op.ne]: targetAccount.id,
         },
@@ -207,13 +211,14 @@ export async function assignClientToInstagramAccount(
     });
 
     if (existingAssignment) {
-      throw new Error("Client already assigned to another Instagram account");
+      const conflictId = (existingAssignment as any).instagramBusinessId || (existingAssignment as any).id;
+      throw new Error(`Client already assigned to another Instagram account (${conflictId})`);
     }
   }
 
   // Update by primary key to avoid ambiguity
   await MetaSocialAccount.update(
-    { assignedClientId },
+    { assignedClientId: clientIdNorm },
     {
       where: {
         id: targetAccount.id,
@@ -256,20 +261,53 @@ export async function assignClientToInstagramAccount(
 
 export async function unassignClientFromInstagramAccount(
   companyId: string,
-  instagramBusinessId: string
+  instagramBusinessIdOrId: string
 ) {
-  const [updatedCount] = await MetaSocialAccount.update(
+  // Resolve target record by either primary key `id` OR `instagramBusinessId`.
+  const targetAccount = await MetaSocialAccount.findOne({
+    where: {
+      companyId,
+      platform: "instagram",
+      [Op.or]: [
+        { instagramBusinessId: instagramBusinessIdOrId },
+        { id: instagramBusinessIdOrId },
+      ],
+    },
+  });
+
+  if (!targetAccount) {
+    throw new Error("Instagram account not found for given identifier");
+  }
+
+  await MetaSocialAccount.update(
     { assignedClientId: null },
     {
-      where: {
-        companyId,
-        platform: "instagram",
-        instagramBusinessId,
-      },
+      where: { id: targetAccount.id },
     }
   );
 
-  return updatedCount;
+  const updatedAccount = await MetaSocialAccount.findOne({
+    where: { id: targetAccount.id },
+    attributes: [
+      "id",
+      "instagramBusinessId",
+      "accountName",
+      "profilePhoto",
+      "facebookPageId",
+      "isAdded",
+      "assignedClientId",
+      "createdAt",
+    ],
+    include: [
+      {
+        model: Clients,
+        as: "client",
+        attributes: ["id", "clientfirstName", "clientLastName", "logo"],
+      },
+    ],
+  });
+
+  return updatedAccount;
 }
 
 export async function unassignClientFromPlatformByClientId(

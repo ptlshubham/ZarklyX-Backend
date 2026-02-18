@@ -21,6 +21,7 @@ export class PostDetails extends Model<
   declare caption: string | null;
   declare firstComment: string | null;
   declare taggedPeople: Array<string>;
+  declare collaborators: Array<string>;
   declare media: CreationOptional<Array<{ url: string; type: any }>>;
   declare mediaUrlId: string | null;
   declare status: "pending" | "processing" | "published" | "failed" | "cancelled";
@@ -83,6 +84,12 @@ export class PostDetails extends Model<
 
         taggedPeople: {
           field: "tagPeople",
+          type: DataTypes.JSON,
+          allowNull: true,
+          defaultValue: [],
+        },
+
+        collaborators: {
           type: DataTypes.JSON,
           allowNull: true,
           defaultValue: [],
