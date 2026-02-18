@@ -15,12 +15,17 @@ export class MetaSocialAccount extends Model<
   declare id: CreationOptional<string>;
   declare companyId: string;
   declare assignedClientId: string | null;
-  declare platform: "facebook" | "instagram";
+  declare platform: "facebook" | "instagram" | "pinterest" | "linkedin";
   declare userAccessTokenId: string | null;
-  declare facebookUserId: string;
+  declare facebookUserId: string | null;
   declare facebookPageId: string | null;
   declare facebookBusinessId: string | null;
   declare instagramBusinessId: string | null;
+  declare pinterestUserId: string | null;
+  declare pinterestAccountId: string | null;
+  declare pinterestBoardId: string | null;
+  declare linkedinUserId: string | null;
+  declare linkedinOrganizationId: string | null;
   declare accountName: string;
   declare profilePhoto: string | null;
   declare pageAccessToken: string | null;
@@ -51,7 +56,7 @@ export class MetaSocialAccount extends Model<
         },
 
         platform: {
-          type: DataTypes.ENUM("facebook", "instagram"),
+          type: DataTypes.ENUM("facebook", "instagram", "pinterest", "linkedin"),
           allowNull: false,
         },
 
@@ -62,7 +67,8 @@ export class MetaSocialAccount extends Model<
 
         facebookUserId: {
           type: DataTypes.STRING(255),
-          allowNull: false,
+          allowNull: true,
+          defaultValue: null,
         },
 
         facebookPageId: {
@@ -78,6 +84,36 @@ export class MetaSocialAccount extends Model<
         },
 
         instagramBusinessId: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+
+        pinterestUserId: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+
+        pinterestAccountId: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+
+        pinterestBoardId: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+
+        linkedinUserId: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+          defaultValue: null,
+        },
+
+        linkedinOrganizationId: {
           type: DataTypes.STRING(255),
           allowNull: true,
           defaultValue: null,

@@ -8,31 +8,31 @@ import {
 } from "sequelize";
 
 /**
- * FacebookAssignment Model
- * Represents the assignment of Facebook pages to clients/employees
- * Tracks which client/employee is assigned to manage which Facebook page
+ * LinkedInAccount Model
+ * Represents LinkedIn organizations/accounts that are connected to the platform
+ * Tracks which LinkedIn organization is assigned to which company/client
  */
 
-export class FacebookAssignment extends Model<
-  InferAttributes<FacebookAssignment>,
-  InferCreationAttributes<FacebookAssignment>
+export class LinkedInAccount extends Model<
+  InferAttributes<LinkedInAccount>,
+  InferCreationAttributes<LinkedInAccount>
 > {
   declare id: CreationOptional<string>;
   declare companyId: string;
-  declare metaAccountId: string;
-  declare pageId: string;
-  declare clientId: string;
-  declare clientName: string;
-  declare clientEmail: string;
-  declare facebookPageName: string;
-  declare facebookPageCategory: string | null;
-  declare isSaved: boolean; // Flag indicating saved pages
-  declare assignedAt: CreationOptional<Date>;
+  declare userAccessTokenId: string;
+  declare linkedinOrganizationId: string;
+  declare organizationName: string;
+  declare organizationEmail: string | null;
+  declare accountType: string; // 'personal' | 'organization' | 'ad_account'
+  declare profileUrl: string | null;
+  declare profileImage: string | null;
+  declare isAdded: boolean; // Flag indicating if account is added/enabled
+  declare addedAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
   declare createdAt: CreationOptional<Date>;
 
-  static initModel(sequelize: Sequelize): typeof FacebookAssignment {
-    FacebookAssignment.init(
+  static initModel(sequelize: Sequelize): typeof LinkedInAccount {
+    LinkedInAccount.init(
       {
         id: {
           type: DataTypes.UUID,
@@ -43,46 +43,47 @@ export class FacebookAssignment extends Model<
         companyId: {
           type: DataTypes.STRING(255),
           allowNull: false,
-        },  
-        metaAccountId: {
+        },
+        userAccessTokenId: {
           type: DataTypes.UUID,
           allowNull: false,
           references: {
-            model: "meta_social_accounts",
+            model: "social_tokens",
             key: "id",
           },
           onDelete: "CASCADE",
         },
-        pageId: {
+        linkedinOrganizationId: {
           type: DataTypes.STRING(255),
           allowNull: false,
         },
-        clientId: {
+        organizationName: {
           type: DataTypes.STRING(255),
           allowNull: false,
         },
-        clientName: {
-          type: DataTypes.STRING(255),
-          allowNull: false,
-        },
-        clientEmail: {
-          type: DataTypes.STRING(255),
-          allowNull: false,
-        },
-        facebookPageName: {
-          type: DataTypes.STRING(255),
-          allowNull: false,
-        },
-        facebookPageCategory: {
+        organizationEmail: {
           type: DataTypes.STRING(255),
           allowNull: true,
         },
-        isSaved: {
+        accountType: {
+          type: DataTypes.ENUM("personal", "organization", "ad_account"),
+          defaultValue: "personal",
+          allowNull: false,
+        },
+        profileUrl: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        profileImage: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        isAdded: {
           type: DataTypes.BOOLEAN,
           defaultValue: false,
           allowNull: false,
         },
-        assignedAt: {
+        addedAt: {
           type: DataTypes.DATE,
           defaultValue: DataTypes.NOW,
           allowNull: false,
@@ -100,15 +101,15 @@ export class FacebookAssignment extends Model<
       },
       {
         sequelize,
-        tableName: "facebook_assignments",
+        tableName: "linkedin_accounts",
         timestamps: true,
         underscored: false,
         freezeTableName: true,
       }
     );
 
-    return FacebookAssignment;
+    return LinkedInAccount;
   }
 }
 
-export default FacebookAssignment;
+export default LinkedInAccount;

@@ -1,4 +1,10 @@
 import axios from "axios";
+import {
+  getScopesForMode,
+  formatScopesForOAuth,
+  LinkedInMode,
+  logScopeConfiguration
+} from "./linkedin-scope-manager";
 
 function getRedirectUri() {
   return process.env.LINKEDIN_REDIRECT_URI || `${process.env.API_URL || "http://localhost:9005"}/linkedin/oauth2callback`;
@@ -11,14 +17,20 @@ function getClient() {
   return { clientId, clientSecret, redirectUri };
 }
 
-export function generateLinkedInAuthUrl(scopes?: string[]) {
+/**
+ * Generate LinkedIn OAuth URL with flexible scopes
+ * 
+ * @param scopes - Optional override scopes. If not provided, uses current mode scopes
+ * @param mode - Optional mode override (defaults to LINKEDIN_MODE env var)
+ * @returns Object with { url, state, usedScopes } for debugging
+ */
+export function generateLinkedInAuthUrl(scopes?: string[], mode?: LinkedInMode) {
   const { clientId, redirectUri } = getClient();
 
-  const scopeList = scopes?.length
-    ? scopes
-    : ["openid", "profile", "email", "w_member_social"];
+  // Use provided scopes, or default to current mode scopes
+  const scopeList = scopes?.length ? scopes : getScopesForMode(mode);
+  const scopeParam = formatScopesForOAuth(mode);
 
-  const scopeParam = scopeList.join(" ");
 
   const state = Math.random().toString(36).slice(2);
 
@@ -30,7 +42,7 @@ export function generateLinkedInAuthUrl(scopes?: string[]) {
     `&scope=${encodeURIComponent(scopeParam)}` +
     `&state=${state}`;
 
-  return { url, state };
+  return { url, state, usedScopes: scopeList };
 }
 
 export async function exchangeLinkedInCodeForTokens(code: string) {

@@ -24,6 +24,7 @@ const googleRoutes = require('./routes/api-webapp/agency/social-Integration/goog
 const linkedinRoutes = require('./routes/api-webapp/agency/social-Integration/linkedin/linkedin-api');
 const facebookRoutes = require('./routes/api-webapp/agency/social-Integration/facebook/facebook-api');
 const pinterestRoutes = require('./routes/api-webapp/agency/social-Integration/pinterest/pinterest-api');
+const instagramRoutes = require('./routes/api-webapp/agency/social-Integration/instagram/instagram-api');
 import twitterRoutes from './routes/api-webapp/agency/social-Integration/twitter/twitter-api';
 import tiktokRoutes from './routes/api-webapp/agency/social-Integration/tiktok/tiktok-api';
 // const twitterRoutes = require('./routes/api-webapp/agency/social-Integration/twitter/twitter-api');
@@ -39,7 +40,7 @@ const cookieSession = require('cookie-session');
 
 import employeeRoutes from './routes/api-webapp/agency/employee/employee-api';
 import itTicketsRoutes from './routes/api-webapp/it-Management/it-Tickets/it-Tickets-api';
-import itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/item-Category-api';
+import  itemCategoryRoutes from './routes/api-webapp/accounting/item-Category/item-Category-api';
 import unitRouter from './routes/api-webapp/accounting/unit/unit-api';
 import itemRouter from './routes/api-webapp/accounting/item/item-api';
 import vendorRouter from './routes/api-webapp/accounting/vendor/vendor-api';
@@ -77,7 +78,6 @@ import zarklyXRolePermissionsRouter from './routes/api-webapp/superAdmin/rbac/ro
 import db from "./db/core/control-db"; // Import sequelize instance
 import { initScheduler } from "./cron/init-scheduler"; // Import scheduler initializer
 
-const instagramRoutes = require('./routes/api-webapp/agency/social-Integration/instagram/instagram-api');
 const socialPostRoutes = require('./routes/api-webapp/agency/social-Integration/social-posting/social-posting-api');
 
 import path from "path";
@@ -115,7 +115,7 @@ app.use(
   express.static(publicPath, { maxAge: '1d', etag: true, immutable: true })
 );
 
-app.use(express.json());
+app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 app.use("/user", userRoutes);
 app.use("/company", companyRoutes);

@@ -8,31 +8,31 @@ import {
 } from "sequelize";
 
 /**
- * FacebookAssignment Model
- * Represents the assignment of Facebook pages to clients/employees
- * Tracks which client/employee is assigned to manage which Facebook page
+ * GoogleBusinessAccount Model
+ * Represents Google My Business accounts that are connected to the platform
+ * Tracks which Google Business account is assigned to which company/client
  */
 
-export class FacebookAssignment extends Model<
-  InferAttributes<FacebookAssignment>,
-  InferCreationAttributes<FacebookAssignment>
+export class GoogleBusinessAccount extends Model<
+  InferAttributes<GoogleBusinessAccount>,
+  InferCreationAttributes<GoogleBusinessAccount>
 > {
   declare id: CreationOptional<string>;
   declare companyId: string;
-  declare metaAccountId: string;
-  declare pageId: string;
-  declare clientId: string;
-  declare clientName: string;
-  declare clientEmail: string;
-  declare facebookPageName: string;
-  declare facebookPageCategory: string | null;
-  declare isSaved: boolean; // Flag indicating saved pages
-  declare assignedAt: CreationOptional<Date>;
+  declare userAccessTokenId: string;
+  declare googleBusinessAccountId: string;
+  declare accountName: string;
+  declare accountEmail: string | null;
+  declare businessLocationsCount: number | null;
+  declare profileUrl: string | null;
+  declare profileImage: string | null;
+  declare isAdded: boolean; // Flag indicating if account is added/enabled
+  declare addedAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
   declare createdAt: CreationOptional<Date>;
 
-  static initModel(sequelize: Sequelize): typeof FacebookAssignment {
-    FacebookAssignment.init(
+  static initModel(sequelize: Sequelize): typeof GoogleBusinessAccount {
+    GoogleBusinessAccount.init(
       {
         id: {
           type: DataTypes.UUID,
@@ -43,46 +43,47 @@ export class FacebookAssignment extends Model<
         companyId: {
           type: DataTypes.STRING(255),
           allowNull: false,
-        },  
-        metaAccountId: {
+        },
+        userAccessTokenId: {
           type: DataTypes.UUID,
           allowNull: false,
           references: {
-            model: "meta_social_accounts",
+            model: "social_tokens",
             key: "id",
           },
           onDelete: "CASCADE",
         },
-        pageId: {
+        googleBusinessAccountId: {
           type: DataTypes.STRING(255),
           allowNull: false,
         },
-        clientId: {
+        accountName: {
           type: DataTypes.STRING(255),
           allowNull: false,
         },
-        clientName: {
-          type: DataTypes.STRING(255),
-          allowNull: false,
-        },
-        clientEmail: {
-          type: DataTypes.STRING(255),
-          allowNull: false,
-        },
-        facebookPageName: {
-          type: DataTypes.STRING(255),
-          allowNull: false,
-        },
-        facebookPageCategory: {
+        accountEmail: {
           type: DataTypes.STRING(255),
           allowNull: true,
         },
-        isSaved: {
+        businessLocationsCount: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+          defaultValue: null,
+        },
+        profileUrl: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        profileImage: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        isAdded: {
           type: DataTypes.BOOLEAN,
           defaultValue: false,
           allowNull: false,
         },
-        assignedAt: {
+        addedAt: {
           type: DataTypes.DATE,
           defaultValue: DataTypes.NOW,
           allowNull: false,
@@ -100,15 +101,11 @@ export class FacebookAssignment extends Model<
       },
       {
         sequelize,
-        tableName: "facebook_assignments",
+        tableName: "google_business_accounts",
         timestamps: true,
-        underscored: false,
-        freezeTableName: true,
+        underscored: true,
       }
     );
-
-    return FacebookAssignment;
+    return GoogleBusinessAccount;
   }
 }
-
-export default FacebookAssignment;

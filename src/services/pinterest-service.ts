@@ -148,20 +148,160 @@ export async function refreshPinterestAccessToken(refreshToken: string) {
   }
 }
 
+/**
+ * Make a rate-limit aware request to Pinterest API with retry logic for 429 (Too Many Requests)
+ * @param url - The Pinterest API endpoint URL
+ * @param config - Axios request config
+ * @param maxRetries - Maximum number of retries for 429 errors (default: 3)
+ * @returns Response data
+ */
+async function makePinterestRequest(url: string, config: any, maxRetries = 3) {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await axios.get(url, config);
+      return res.data;
+    } catch (err: any) {
+      lastError = err;
+      const status = err?.response?.status;
+      const retryAfter = err?.response?.headers?.['retry-after'];
+      
+      // If 429 (rate limit) or 503 (service unavailable), retry with backoff
+      if ((status === 429 || status === 503) && attempt < maxRetries) {
+        // Use Retry-After header if available, otherwise exponential backoff
+        let delayMs = retryAfter ? parseInt(retryAfter) * 1000 : (1000 * Math.pow(2, attempt)); // 1s, 2s, 4s, 8s
+        
+        console.log(`[PINTEREST API] Rate limited (429/503). Retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        
+        // Add jitter to prevent thundering herd
+        delayMs += Math.random() * 1000;
+        
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue; // Retry
+      }
+      
+      // For other errors, throw immediately
+      throw err;
+    }
+  }
+  
+  // All retries exhausted
+  throw lastError;
+}
+
 export async function getPinterestUser(accessToken: string) {
-  const url = `https://api.pinterest.com/v5/user_account`;
-  const res = await axios.get(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  return res.data;
+  // Request profile_image to ensure we get the user's picture
+  const url = `https://api.pinterest.com/v5/user_account?fields=id,username,name,email,profile_image`;
+  
+  return makePinterestRequest(
+    url,
+    { 
+      headers: { Authorization: `Bearer ${accessToken}` },
+      timeout: 15000 // Increase timeout to allow for retries
+    },
+    3 // Allow 3 retries for rate limiting
+  );
 }
 
 export async function listBoards(accessToken: string) {
-  const url = `https://api.pinterest.com/v5/boards`;
-  const res = await axios.get(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  return res.data; // { items: [...] }
+  try {
+    // Check if using Personal Access Token (PAT) or OAuth token
+    const isPersonalAccessToken = accessToken.startsWith('pina_');
+    console.log("[PINTEREST SERVICE] listBoards - Token type:", isPersonalAccessToken ? "Personal Access Token (PAT)" : "OAuth Token");
+    
+    let userAccountId: string | undefined;
+    
+    if (isPersonalAccessToken) {
+      // For Personal Access Tokens, use /v5/user_account (singular) endpoint
+      console.log("[PINTEREST SERVICE] listBoards - Using /user_account endpoint for PAT");
+      const userUrl = `https://api.pinterest.com/v5/user_account?fields=id,username`;
+      
+      const userRes = await makePinterestRequest(
+        userUrl,
+        { 
+          headers: { 
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        },
+        3 // Retry on rate limit
+      );
+      
+      console.log("[PINTEREST SERVICE] listBoards - User response (PAT):", {
+        data: userRes
+      });
+      
+      // For PAT, the response is direct (not in items array)
+      userAccountId = userRes?.id;
+    } else {
+      // For OAuth tokens, use /v5/user_accounts (plural) endpoint
+      console.log("[PINTEREST SERVICE] listBoards - Using /user_accounts endpoint for OAuth");
+      const userUrl = `https://api.pinterest.com/v5/user_accounts?fields=id,username`;
+      
+      const userRes = await makePinterestRequest(
+        userUrl,
+        { 
+          headers: { 
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        },
+        3 // Retry on rate limit
+      );
+      
+      console.log("[PINTEREST SERVICE] listBoards - User response (OAuth):", {
+        data: userRes
+      });
+      
+      // For OAuth, response is in items array
+      userAccountId = userRes?.items?.[0]?.id;
+    }
+    
+    console.log("[PINTEREST SERVICE] listBoards - User account ID:", userAccountId);
+    
+    if (!userAccountId) {
+      throw new Error("Could not retrieve user account ID from Pinterest API");
+    }
+    
+    // Now get boards for this user account
+    const boardsUrl = `https://api.pinterest.com/v5/boards?owner=${userAccountId}&fields=id,name,description,privacy,collaborator_count,creator,media_count,url`;
+    console.log("[PINTEREST SERVICE] listBoards - Calling boards endpoint:", boardsUrl);
+    
+    const boardsRes = await makePinterestRequest(
+      boardsUrl,
+      { 
+        headers: { 
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      },
+      3 // Retry on rate limit
+    );
+    
+    console.log("[PINTEREST SERVICE] listBoards - Boards Response:", {
+      itemsCount: boardsRes?.items?.length || 0,
+      data: boardsRes
+    });
+    
+    return boardsRes; // { items: [...] }
+  } catch (error: any) {
+    console.error("[PINTEREST SERVICE] listBoards - Error:", {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      url: error.config?.url
+    });
+    throw error;
+  }
 }
 
 export async function createPin(accessToken: string, board_id: string, title: string, link?: string, media_url?: string) {
-  const url = `https://api.pinterest.com/v5/pins`;
+  // Use sandbox API for apps with Trial access, production API for full access
+  const url = `https://api-sandbox.pinterest.com/v5/pins`;
   const body: any = { board_id, title };
   if (link) body.link = link;
   if (media_url) body.media = [{ media_type: "image", original_url: media_url }];
