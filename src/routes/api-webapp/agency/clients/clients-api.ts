@@ -2,6 +2,7 @@ import express from "express";
 import { Request, Response } from "express";
 import { notFound } from "../../../../services/response";
 import dbInstance from "../../../../db/core/control-db";
+import { clientProfilePhotoUpload } from "../../../../services/multer";
 import {
   serverError,
   unauthorized,
@@ -24,6 +25,8 @@ import {
   getagencyClientByid,
   getAllAgencyClient,
   getAgencyClientByUserId,
+  getClientDataWithCounts,
+  validateCompanyUrlAndBranding,
 } from "../../../../routes/api-webapp/agency/clients/clients-handler";
 import { User } from "../../../../routes/api-webapp/authentication/user/user-model";
 import { generateUniqueSecretCode } from "../../../../routes/api-webapp/authentication/user/user-handler";
@@ -35,6 +38,7 @@ import { sendMobileOTP } from "../../../../services/otp-service";
 import { OAuth2Client } from "google-auth-library";
 import * as speakeasy from "speakeasy";
 import QRCode from "qrcode";
+import { requirePermission } from "../../../../middleware/permission.middleware";
 
 const router = express.Router();
 
@@ -141,6 +145,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
 
     // Validate company if companyId is provided
     let validatedCompanyId = null;
+    let companyIsdCode = null;
+    let companyIsoCode = null;
     if (companyId) {
       const company = await Company.findByPk(companyId, { transaction: t });
       if (!company) {
@@ -152,6 +158,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         return;
       }
       validatedCompanyId = companyId;
+      companyIsdCode = company.isdCode;
+      companyIsoCode = company.isoCode;
     }
 
     // Check if client already exists
@@ -181,8 +189,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         lastName,
         email: googleEmail,
         contact: null,
-        isdCode: null,
-        isoCode: null,
+        isdCode: companyIsdCode,
+        isoCode: companyIsoCode,
         password: generateRandomPassword(),
         userType: "client",
         isEmailVerified: emailVerified,
@@ -219,8 +227,8 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         isdBusinessCode: null,
         businessDescription: null,
         countryCode: null,
-        isoCode: null,
-        isdCode: null,
+        isoCode: companyIsoCode,
+        isdCode: companyIsdCode,
         country: null,
         state: null,
         city: null,
@@ -250,6 +258,7 @@ router.post("/auth/google-signup", async (req: Request, res: Response): Promise<
         registrationStep: 1,
         isMobileVerified: false,
         isFirstLogin: true,
+        isassigned: false,
         twofactorEnabled: false,
         twofactorSecret: null,
         twofactorVerified: false,
@@ -988,6 +997,7 @@ router.post("/clientSignup/verify-otp",
           isCredential: false,
           profileStatus: false,
           isFirstLogin: true,
+          isassigned: false,
           // twofactorEnabled: false,
           // twofactorSecret: null,
           // twofactorVerified: false,
@@ -1049,7 +1059,7 @@ router.post("/clientSignup/verify-otp",
 );
 
 // add agency client 
-router.post("/clients/add", async (req: Request, res: Response): Promise<void> => {
+router.post("/clients/add", tokenMiddleWare, requirePermission("client;create"), async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
 
   try {
@@ -1215,13 +1225,15 @@ router.post("/clients/add", async (req: Request, res: Response): Promise<void> =
       accountType,
       currency,
       taxVatId,
+      profile: req.body.profile || null,
       isActive: true,
       isDeleted: false,
-      isApprove: false,
+      isApprove: true,
       isCredential: false,
       profileStatus: false,
       isEmailVerified: true,
       isFirstLogin: true,
+      isassigned: true,
     };
 
     const client = await addAgencyClient(payload, t);
@@ -1381,7 +1393,8 @@ router.get("/clients/getAll", async (req: Request, res: Response): Promise<void>
 router.get("/clients/getById/:id",
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const id = req.params.id;
+      let id = req.params.id;
+      if (Array.isArray(id)) id = id[0];
       console.log(id)
       if (!id || id.trim() === '') {
         res.status(400).json({
@@ -1415,7 +1428,8 @@ router.get("/clients/by-user/:userId",
   async (req: Request, res: Response): Promise<void> => {
     console.log(req.params.userId);
     try {
-      const { userId } = req.params;
+      let { userId } = req.params;
+      if (Array.isArray(userId)) userId = userId[0];
 
       if (!userId || userId.trim() === "") {
         res.status(400).json({
@@ -1450,8 +1464,9 @@ router.get("/clients/by-user/:userId",
 router.put("/clients/updateById/:id", async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
   try {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) {
+    let id = req.params.id;
+    if (Array.isArray(id)) id = id[0];
+    if (!id || id.trim() === '') {
       await t.rollback();
       res.status(400).json({
         success: false,
@@ -1691,6 +1706,7 @@ router.put("/clients/updateById/:id", async (req: Request, res: Response): Promi
       accountType: accountType ?? existing.accountType,
       currency: currency ?? existing.currency,
       taxVatId: taxVatId ?? existing.taxVatId,
+      profile: req.body.profile ?? existing.profile,
     };
 
     await existing.update(updatePayload, { transaction: t });
@@ -1844,14 +1860,79 @@ router.patch("/clients/restore/:id",
   }
 );
 
+// POST /toggle-active
+// Toggle isActive status (true/false) for a client by clientId
+router.post("/client-active-status",
+  async (req: Request, res: Response): Promise<void> => {
+    const t = await dbInstance.transaction();
+    try {
+      const { clientId, isActive } = req.body;
+
+      // Validate clientId
+      if (!clientId || String(clientId).trim() === '') {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "clientId is required.",
+        });
+        return;
+      }
+
+      // Validate isActive parameter (accept both boolean and number: 0 or 1)
+      if (isActive === undefined || isActive === null) {
+        await t.rollback();
+        res.status(400).json({
+          success: false,
+          message: "isActive field is required (true/false or 0/1).",
+        });
+        return;
+      }
+
+      // Convert to boolean if it's a number (0 or 1)
+      const activeStatus = typeof isActive === 'number' ? Boolean(isActive) : Boolean(isActive);
+
+      // Find client by ID (supports both numeric and UUID string IDs)
+      const client = await Clients.findByPk(clientId, { transaction: t });
+
+      if (!client) {
+        await t.rollback();
+        notFound(res, "Client not found.");
+        return;
+      }
+
+      // Update isActive status
+      await client.update(
+        { isActive: activeStatus },
+        { transaction: t }
+      );
+
+      await t.commit();
+
+      res.status(200).json({
+        success: true,
+        message: `Client ${activeStatus ? "activated" : "deactivated"} successfully.`,
+        data: {
+          id: client.id,
+          clientfirstName: client.clientfirstName,
+          clientLastName: client.clientLastName,
+          email: client.email,
+          isActive: activeStatus,
+        },
+      });
+    } catch (error: any) {
+      await t.rollback();
+      console.error("[POST /clients/toggle-active] ERROR:", error);
+      ErrorLogger.write({ type: "toggle client active status error", error });
+      serverError(res, error.message || "Failed to update client status.");
+    }
+  }
+);
+
 // get clients by companyid 
 router.get("/clients/by-company/:companyId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { companyId } = req.params;
-    const { search, ...restQuery } = req.query as {
-      [key: string]: any;
-      search?: string;
-    };
+    const { search } = req.query as { search?: string };
 
     if (!companyId) {
       res.status(400).json({
@@ -1864,47 +1945,17 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
     const limit = Number(req.query.limit) || 10;
     const offset = Number(req.query.offset) || 0;
 
-    const queryForHandler = {
-      ...restQuery,
-      companyId,
-    };
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "approved", { search }, limit, offset);
 
-    const result: any = await getAllAgencyClient(queryForHandler);
-
-    let rows = result.rows || result;
-    let count = result.count ?? rows.length;
-
-    // ---------- SEARCH FILTER ----------
-    if (search) {
-      const s = search.toString().toLowerCase();
-
-      rows = rows.filter((r: any) => {
-        const fullName = `${r.clientfirstName || ""} ${r.clientLastName || ""}`
-          .trim()
-          .toLowerCase();
-        const email = (r.email || "").toLowerCase();
-        const businessName = (r.businessName || "").toLowerCase();
-
-        return (
-          fullName.includes(s) ||
-          email.includes(s) ||
-          businessName.includes(s)
-        );
-      });
-
-      count = rows.length;
-    }
-
-    // ---------- PAGINATION ----------
-    const paginatedRows = rows.slice(offset, offset + limit);
-
-    // ---------- RESPONSE ----------
     res.status(200).json({
       success: true,
-      message: "Clients fetched successfully for the company.",
-      data: paginatedRows,
+      message: "Approved and assigned clients fetched successfully for the company.",
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
       pagination: {
-        total: count,
+        total: result.count,
         limit,
         offset,
       },
@@ -1923,6 +1974,210 @@ router.get("/clients/by-company/:companyId", async (req: Request, res: Response)
     });
   }
 });
+
+// get unassigned clients by companyId (OPTIMIZED: Single efficient query)
+router.get("/clients/unassigned/:companyId", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { companyId } = req.params;
+    const { search } = req.query as { search?: string };
+
+    if (!companyId) {
+      res.status(400).json({
+        success: false,
+        message: "Company ID is required.",
+      });
+      return;
+    }
+
+    const limit = Number(req.query.limit) || 10;
+    const offset = Number(req.query.offset) || 0;
+
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "unassigned", { search }, limit, offset);
+
+    res.status(200).json({
+      success: true,
+      message: "Unassigned clients fetched successfully for the company.",
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
+      pagination: {
+        total: result.count,
+        limit,
+        offset,
+      },
+    });
+  } catch (error: any) {
+    console.error("[GET /clients/unassigned/:companyId] ERROR:", error);
+
+    ErrorLogger.write({
+      type: "get unassigned clients by company error",
+      error,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch unassigned clients.",
+    });
+  }
+});
+
+// get unapproved clients by companyId (OPTIMIZED: Single efficient query)
+router.get("/clients/pending/:companyId", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { companyId } = req.params;
+    const { search } = req.query as { search?: string };
+
+    if (!companyId) {
+      res.status(400).json({
+        success: false,
+        message: "Company ID is required.",
+      });
+      return;
+    }
+
+    const limit = Number(req.query.limit) || 10;
+    const offset = Number(req.query.offset) || 0;
+
+    // OPTIMIZED: Single database query with parallel counts
+    const result = await getClientDataWithCounts(companyId as string, "pending", { search }, limit, offset);
+
+    res.status(200).json({
+      success: true,
+      message: "Pending (unapproved) clients fetched successfully for the company.",
+      count: result.count,
+      counts: result.counts,
+      data: result.data,
+      pagination: {
+        total: result.count,
+        limit,
+        offset,
+      },
+    });
+  } catch (error: any) {
+    console.error("[GET /clients/pending/:companyId] ERROR:", error);
+
+    ErrorLogger.write({
+      type: "get pending clients by company error",
+      error,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch pending clients.",
+    });
+  }
+});
+
+// Approve client (set isApprove = 1)
+router.post("/approve/:clientId", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { clientId } = req.params;
+    if (Array.isArray(clientId)) clientId = clientId[0];
+
+    if (!clientId || clientId.trim() === "") {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+      return;
+    }
+
+    const client = await Clients.findByPk(clientId, { transaction: t });
+
+    if (!client) {
+      await t.rollback();
+      res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+      return;
+    }
+
+    await client.update(
+      { isApprove: true },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "Client approved successfully.",
+      data: {
+        id: client.id,
+        clientfirstName: client.clientfirstName,
+        clientLastName: client.clientLastName,
+        email: client.email,
+        isApprove: true,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[POST /clients/approve/:clientId] ERROR:", error);
+    ErrorLogger.write({ type: "approve client error", error });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to approve client.",
+    });
+  }
+});
+
+// Reject client (soft delete)
+router.post("/reject/:clientId", async (req: Request, res: Response): Promise<void> => {
+  const t = await dbInstance.transaction();
+  try {
+    let { clientId } = req.params;
+    if (Array.isArray(clientId)) clientId = clientId[0];
+
+    if (!clientId || clientId.trim() === "") {
+      await t.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+      return;
+    }
+
+    const client = await Clients.findByPk(clientId, { transaction: t });
+
+    if (!client) {
+      await t.rollback();
+      res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+      return;
+    }
+
+    await client.destroy({ transaction: t });
+
+    await t.commit();
+
+    res.status(200).json({
+      success: true,
+      message: "Client rejected and deleted successfully.",
+      data: {
+        id: clientId,
+        clientfirstName: client.clientfirstName,
+        clientLastName: client.clientLastName,
+        email: client.email,
+        isDeleted: true,
+      },
+    });
+  } catch (error: any) {
+    await t.rollback();
+    console.error("[POST /clients/reject/:clientId] ERROR:", error);
+    ErrorLogger.write({ type: "reject client error", error });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to reject client.",
+    });
+  }
+});
+
 
 // check the user exists for the company
 router.post("/clients/validate-company-user", async (req: Request, res: Response): Promise<void> => {
@@ -2024,6 +2279,13 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
         return;
       }
 
+      // Check if user is a client
+      if (user.userType !== "client") {
+        await t.rollback();
+        res.status(403).json({ success: false, message: "Access denied. Only clients can login through this endpoint." });
+        return;
+      }
+
       if (!user.isActive) {
         await t.rollback();
         res.status(403).json({
@@ -2085,6 +2347,13 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
       if (!user || !user.validatePassword(password)) {
         await t.rollback();
         res.status(401).json({ success: false, message: "Invalid credentials." });
+        return;
+      }
+
+      // Check if user is a client
+      if (user.userType !== "client") {
+        await t.rollback();
+        res.status(403).json({ success: false, message: "Access denied. Only clients can login through this endpoint." });
         return;
       }
 
@@ -2178,8 +2447,6 @@ router.post("/clients/login", async (req: Request, res: Response): Promise<void>
     serverError(res, error.message || "Login failed.");
   }
 });
-
-
 
 /**
  * POST /clients/verify-2fa
@@ -2399,8 +2666,7 @@ router.post("/check-client-exists", async (req: Request, res: Response): Promise
   }
 });
 
-// Outer client-url validate route
-// Validate URL by companyId or userName
+// Validate URL by companyId or userName and return branding assets
 // Usage: GET /auth/validate-url?companyId=<id>  OR  /auth/validate-url?userName=<name>
 router.get("/client/validate-url",
   async (req: Request, res: Response): Promise<void> => {
@@ -2412,32 +2678,19 @@ router.get("/client/validate-url",
         return;
       }
 
-      // Use isActive instead of isDeleted
-      const whereClause: any = { isActive: true };
+      // Use handler to validate and get branding assets
+      const result = await validateCompanyUrlAndBranding(companyId, userName);
 
-      if (companyId) {
-        whereClause.id = String(companyId).trim(); // primary key
-      }
-      if (userName) {
-        whereClause.userName = String(userName).trim(); // username column
-      }
-
-      const company: any = await Company.findOne({ where: whereClause });
-
-      if (!company) {
+      if (!result) {
         res.status(404).json({ success: false, message: "Not found or invalid URL", data: { isValid: false } });
         return;
       }
 
-      // Return both companyId and userName (may be null)
+      // Return company branding assets along with companyId and userName
       res.status(200).json({
         success: true,
         message: "Valid URL",
-        data: {
-          companyId: company.id || null,
-          userName: company.userName || null,
-          isValid: true,
-        },
+        data: result,
       });
     } catch (error: any) {
       console.error("[/client/auth/validate-url] ERROR:", error);
@@ -2713,7 +2966,145 @@ router.post(
       console.error("[/clients/2fa/regenerate-backup-codes] ERROR:", error);
       ErrorLogger.write({ type: "clients 2fa regen backup codes error", error });
       serverError(res, error.message || "Failed to regenerate backup codes.");
-      return; 
+      return;
+    }
+  }
+);
+
+/**
+ * POST /clients/upload-profile/:clientId
+ * Upload client profile photo
+ */
+router.post(
+  "/upload-profile/:clientId",
+  tokenMiddleWare,
+  clientProfilePhotoUpload.single("file"),
+  async (req: Request, res: Response): Promise<any> => {
+    console.log(res.req.file, 'fileinfo');
+
+    const t = await dbInstance.transaction();
+    try {
+      let { clientId } = req.params;
+      if (Array.isArray(clientId)) clientId = clientId[0];
+      const userId: any = (req as any).user?.id;
+
+      if (!clientId || !userId) {
+        await t.rollback();
+        return serverError(res, "Client ID and User ID are required");
+      }
+
+      if (!req.file) {
+        await t.rollback();
+        return serverError(res, "Profile image file is required");
+      }
+
+      // Verify client exists
+      const client = await Clients.findByPk(clientId);
+      if (!client) {
+        await t.rollback();
+        return notFound(res, "Client not found");
+      }
+
+      // Construct the relative path for storage
+      const profilePath = `/client/profile/${req.file.filename}`;
+
+      // Update client with profile image path
+      await Clients.update(
+        { profile: profilePath },
+        { where: { id: clientId }, transaction: t }
+      );
+
+      await t.commit();
+
+      return res.status(200).json({
+        success: true,
+        message: "Profile image uploaded successfully",
+        data: {
+          clientId,
+          profile: profilePath,
+          filename: req.file.filename,
+        },
+      });
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "uploadClientProfile error", error });
+      return serverError(
+        res,
+        error?.message || "Failed to upload profile image"
+      );
+    }
+  }
+);
+
+/**
+ * PATCH /clients/remove-profile/:clientId
+ * Remove client profile photo (Admin/Owner only)
+ */
+router.patch(
+  "/remove-profile/:clientId",
+  tokenMiddleWare,
+  async (req: Request, res: Response): Promise<any> => {
+    const t = await dbInstance.transaction();
+    try {
+      let { clientId } = req.params;
+      if (Array.isArray(clientId)) clientId = clientId[0];
+      const userId: any = (req as any).user?.id;
+
+      if (!clientId || !userId) {
+        await t.rollback();
+        return serverError(res, "Client ID and User ID are required");
+      }
+
+      // Get client to verify it exists and get current profile path
+      const client = await Clients.findByPk(clientId);
+      if (!client) {
+        await t.rollback();
+        return notFound(res, "Client not found");
+      }
+
+      // Get current profile path for file deletion
+      const currentProfilePath = client.dataValues.profile;
+
+      // Update client to remove the profile image
+      await Clients.update(
+        { profile: null },
+        { where: { id: clientId }, transaction: t }
+      );
+
+      // Delete file from disk if it exists
+      if (currentProfilePath) {
+        try {
+          const fs = require("fs").promises;
+          const path = require("path");
+          const filePath = path.join(
+            process.cwd(),
+            "src",
+            "public",
+            currentProfilePath.replace(/^\//, "")
+          );
+          await fs.unlink(filePath).catch(() => { }); // Silently ignore if file doesn't exist
+        } catch (err) {
+          console.warn(`Failed to delete file at ${currentProfilePath}:`, err);
+        }
+      }
+
+      await t.commit();
+
+      return res.status(200).json({
+        success: true,
+        message: "Profile image removed successfully",
+        data: {
+          clientId,
+          removed: true,
+        },
+      });
+    } catch (error: any) {
+      await t.rollback();
+      ErrorLogger.write({ type: "removeClientProfile error", error });
+      return serverError(
+        res,
+        error?.message || "Failed to remove profile image"
+      );
     }
   }
 );

@@ -12,7 +12,7 @@ export class Clients extends Model<
     InferAttributes<Clients>,
     InferCreationAttributes<Clients>
 > {
-    declare id: CreationOptional<number>;
+    declare id: CreationOptional<string>;
     //   declare icon: string | null;
     // Basic business info
     declare userId: string | null; // UUID FK to User
@@ -55,6 +55,9 @@ export class Clients extends Model<
     declare accountType: string | null;
     declare currency: string | null;
     declare taxVatId: string | null;
+    
+    // Accounting
+    declare openingBalance: CreationOptional<number>;
 
     // Flags
     declare isVip: boolean;
@@ -66,11 +69,13 @@ export class Clients extends Model<
     declare profileStatus: boolean;
     declare logo: string | null;
     declare payment: string | null;
+    declare profile: string | null;
     declare isEmailVerified: boolean;
     declare isRegistering: boolean;
     declare registrationStep: number;
     declare isMobileVerified: boolean;
     declare isFirstLogin: boolean;
+    declare isassigned: boolean;
 
     // Timestamps
     declare createdAt: CreationOptional<Date>;
@@ -90,10 +95,10 @@ export class Clients extends Model<
         Clients.init(
             {
                 id: {
-                    type: DataTypes.INTEGER,
+                    type: DataTypes.UUID,
                     primaryKey: true,
-                    autoIncrement: true,
                     allowNull: false,
+                    defaultValue: DataTypes.UUIDV4,
                     unique: true,
                 },
                 userId: {
@@ -281,6 +286,13 @@ export class Clients extends Model<
                     allowNull: true,
                     defaultValue: null,
                 },
+                
+                // Accounting
+                openingBalance: {
+                    type: DataTypes.DECIMAL(18, 2),
+                    allowNull: false,
+                    defaultValue: 0,
+                },
 
                 // Flags / extra info
                 isVip: {
@@ -328,6 +340,11 @@ export class Clients extends Model<
                     allowNull: true,
                     defaultValue: null,
                 },
+                profile: {
+                    type: DataTypes.STRING(255),
+                    allowNull: true,
+                    defaultValue: null,
+                },
                 isEmailVerified: {
                     type: DataTypes.BOOLEAN,
                     defaultValue: false,
@@ -350,6 +367,11 @@ export class Clients extends Model<
                     type: DataTypes.BOOLEAN,
                     allowNull: false,
                     defaultValue: true,
+                },
+                isassigned: {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false,
                 },
 
                 // timestamps

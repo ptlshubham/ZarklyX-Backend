@@ -7,6 +7,7 @@ import {
     Sequelize,
 } from "sequelize";
 import { checkPassword, hashPassword } from "../../../../services/password-service";
+import { Role } from "../../../api-webapp/roles/role-model";
 
 export class User extends Model<
     InferAttributes<User>,
@@ -15,6 +16,7 @@ export class User extends Model<
     declare id: CreationOptional<string>; // UUID
     declare referId: string;
     declare companyId: string | null;
+    declare roleId: string | null;
     declare firstName: string;
     declare lastName: string;
     declare email: string | null;
@@ -23,18 +25,17 @@ export class User extends Model<
     declare secretCode: string | null;
     declare isThemeDark: boolean;
     declare password: string;
-    declare countryCode: string | null;
-    // declare categories: "food" | "healthCare" | "NGos";
-    // categories is stored as JSON; it can be a single category id (string),
-    // an array of category ids, or null.
-    declare categories: string | string[] | null;
+    declare isdCode: string | null;
+    declare isoCode: string | null;
+    // categories is stored as a single category ID string
+    declare categories: string | null;
 
-     // Two-factor authentication
+    // Two-factor authentication
     declare twofactorEnabled: boolean;
     declare twofactorSecret: string | null;
     declare twofactorVerified: boolean;
     declare twofactorBackupCodes: string[] | null;
-    
+
     // Temporary 2FA setup fields
     declare temp2FACode: string | null;
     declare temp2FACodeExpiry: Date | null;
@@ -43,7 +44,6 @@ export class User extends Model<
 
     declare isDeleted: boolean;
     declare deletedAt: CreationOptional<Date | null>;
-    // declare deletedAt: CreationOptional<Date>;
     declare isEmailVerified: boolean;
     declare isRegistering: boolean;
     declare registrationStep: number;
@@ -73,6 +73,15 @@ export class User extends Model<
                     type: DataTypes.UUID,
                     allowNull: true,
                     defaultValue: null,
+                },
+                roleId: {
+                    type: DataTypes.UUID,
+                    allowNull: true,
+                    defaultValue: null,
+                    references:{
+                        model: Role,
+                        key: "id",
+                    }
                 },
                 referId: {
                     type: DataTypes.STRING,
@@ -123,14 +132,19 @@ export class User extends Model<
                     },
                     allowNull: true,
                 },
-                countryCode: {
+                isdCode: {
+                    type: DataTypes.STRING(10),
+                    allowNull: true,
+                    defaultValue: null,
+                },
+                isoCode: {
                     type: DataTypes.STRING(10),
                     allowNull: true,
                     defaultValue: null,
                 },
 
                 categories: {
-                    type: DataTypes.JSON,
+                    type: DataTypes.STRING(255),
                     allowNull: true,
                     defaultValue: null,
                 },
