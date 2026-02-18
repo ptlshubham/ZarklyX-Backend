@@ -67,13 +67,13 @@ export class ExpenseLineItem extends Model<
                 allowNull: false,
             },
             unitId: {
-                type: DataTypes.STRING,
+                type: DataTypes.UUID,
                 references: {
                     model: "unit",
                     key: "id",
                 },
                 onDelete: "CASCADE",
-                allowNull: false,
+                allowNull: true,
             },
             quantity: {
                 type: DataTypes.DECIMAL(10, 2),

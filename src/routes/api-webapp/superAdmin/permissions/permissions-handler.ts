@@ -13,6 +13,7 @@ export const createPermission = async (fields: {
   isDeleted?: boolean;
   isSystemPermission?: boolean;
   isSubscriptionExempt?: boolean;
+  isFreeForAll?: boolean;
 }, t: Transaction) => {
   return await Permissions.create({
     ...fields,
@@ -20,6 +21,7 @@ export const createPermission = async (fields: {
     isDeleted: fields.isDeleted !== undefined ? fields.isDeleted : false,
     isSystemPermission: fields.isSystemPermission !== undefined ? fields.isSystemPermission : false,
     isSubscriptionExempt: fields.isSubscriptionExempt !== undefined ? fields.isSubscriptionExempt : false,
+    isFreeForAll: fields.isFreeForAll !== undefined ? fields.isFreeForAll : false,
   }, { transaction: t });
 };
 
@@ -35,6 +37,7 @@ export const createPermissions = async (
     isDeleted?: boolean;
     isSystemPermission?: boolean;
     isSubscriptionExempt?: boolean;
+    isFreeForAll?: boolean;
   }>,
   t: Transaction
 ) => {
@@ -49,6 +52,7 @@ export const createPermissions = async (
         isDeleted: fields.isDeleted !== undefined ? fields.isDeleted : false,
         isSystemPermission: fields.isSystemPermission !== undefined ? fields.isSystemPermission : false,
         isSubscriptionExempt: fields.isSubscriptionExempt !== undefined ? fields.isSubscriptionExempt : false,
+        isFreeForAll: fields.isFreeForAll !== undefined ? fields.isFreeForAll : false,
       }, { transaction: t });
       createdPermissions.push(permission);
     } catch (error: any) {
@@ -70,7 +74,14 @@ export const createPermissions = async (
 
 // Get all permissions
 export const getAllPermissions = async () => {
-  return await Permissions.findAll();
+  return await Permissions.findAll({
+    include: [
+      {
+        model: Modules,
+        as: "module"
+      }
+    ]
+  });
 };
 
 export const getActivePermissions = async () => {
@@ -115,5 +126,22 @@ export const deletePermission = async (id: string, t: Transaction) => {
   const permission = await Permissions.findByPk(id);
   if (!permission) return false;
   await permission.update({ isActive: false, isDeleted: true }, { transaction: t });
+  return true;
+};
+
+// Toggle permission active status
+export const togglePermissionActive = async (id: string, t: Transaction) => {
+  const permission = await Permissions.findByPk(id);
+  if (!permission) return null;
+  permission.isActive = !permission.isActive;
+  await permission.save({ transaction: t });
+  return permission;
+};
+
+// Hard delete permission (permanent deletion from database)
+export const hardDeletePermission = async (id: string, t: Transaction) => {
+  const permission = await Permissions.findByPk(id);
+  if (!permission) return false;
+  await permission.destroy({ transaction: t });
   return true;
 };

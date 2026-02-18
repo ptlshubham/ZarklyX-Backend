@@ -14,12 +14,16 @@ import {
   getUserPermissionOverrideStats,
   validateOverrideAuthorization,
 } from "../../api-webapp/user-permission-overrides/user-permission-overrides-handler";
+import { assignRoleToUser } from "../../api-webapp/roles/role-handler";
+import { getRolePermissions } from "../../api-webapp/role-permissions/role-permissions-handler";
+import { User } from "../../api-webapp/authentication/user/user-model";
+import { Role } from "../../api-webapp/roles/role-model";
 
 const router = Router();
 
 // Create a permission override for a user
 router.post("/createOverride", async (req: Request, res: Response) => {
-  const { userId, permissionId, effect, reason, expiresAt, grantedByUserId } = req.body;
+  const { userId, permissionId, effect, reason, expiresAt, grantedByUserId, roleId } = req.body;
 
   if (!userId || !permissionId || !effect) {
     return res.status(400).json({
@@ -54,6 +58,18 @@ router.post("/createOverride", async (req: Request, res: Response) => {
 
   const t = await dbInstance.transaction();
   try {
+    // Assign role to user if roleId is provided
+    if (roleId) {
+      const roleResult = await assignRoleToUser(userId, roleId, t);
+      if (!roleResult.success) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: roleResult.message,
+        });
+      }
+    }
+
     const override = await createUserPermissionOverride(
       {
         userId,
@@ -65,11 +81,14 @@ router.post("/createOverride", async (req: Request, res: Response) => {
       },
       t
     );
+
     await t.commit();
     return res.status(201).json({
       success: true,
       data: override,
-      message: "Permission override created successfully",
+      message: roleId
+        ? "Permission override created and role assigned successfully"
+        : "Permission override created successfully",
     });
   } catch (error: any) {
     await t.rollback();
@@ -151,7 +170,7 @@ router.post("/createOverrides", async (req: Request, res: Response) => {
 // Get all permission overrides for a user
 router.get("/getUserOverrides/:userId", async (req: Request, res: Response) => {
   let { userId } = req.params;
-  if(Array.isArray(userId)) userId = userId[0];
+  if (Array.isArray(userId)) userId = userId[0];
   const { includeExpired } = req.query;
 
   try {
@@ -175,7 +194,7 @@ router.get("/getUserOverrides/:userId", async (req: Request, res: Response) => {
 // Get active (non-expired) permission overrides for a user
 router.get("/getActiveUserOverrides/:userId", async (req: Request, res: Response) => {
   let { userId } = req.params;
-  if(Array.isArray(userId)) userId = userId[0];
+  if (Array.isArray(userId)) userId = userId[0];
 
   try {
     const overrides = await getActiveUserPermissionOverrides(userId);
@@ -245,14 +264,14 @@ router.get("/checkOverride", async (req: Request, res: Response) => {
       userId as string,
       permissionId as string
     );
-    
+
     const hasOverride = !!override;
     const result = {
       hasOverride,
       effect: override?.effect,
       isExpired: override?.expiresAt ? override.expiresAt < new Date() : false,
     };
-    
+
     return res.status(200).json({
       success: true,
       data: result,
@@ -308,7 +327,7 @@ router.delete("/removeOverride", async (req: Request, res: Response) => {
 // Remove all permission overrides for a user
 router.delete("/removeAllOverrides/:userId", async (req: Request, res: Response) => {
   let { userId } = req.params;
-  if(Array.isArray(userId)) userId = userId[0];
+  if (Array.isArray(userId)) userId = userId[0];
 
   const t = await dbInstance.transaction();
   try {
@@ -370,6 +389,187 @@ router.put("/updateExpiration", async (req: Request, res: Response) => {
   }
 });
 
+// Update user role
+router.put("/updateUserRole", async (req: Request, res: Response) => {
+  const { userId, roleId } = req.body;
+
+  if (!userId || !roleId) {
+    return res.status(400).json({
+      success: false,
+      message: "userId and roleId are required",
+    });
+  }
+
+  const t = await dbInstance.transaction();
+  try {
+    const result = await assignRoleToUser(userId, roleId, t);
+
+    if (!result.success) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    await t.commit();
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error updating user role",
+    });
+  }
+});
+
+// Get user role, permissions, and overrides
+router.get("/getUserRoleAndPermissions/:userId", async (req: Request, res: Response) => {
+  let { userId } = req.params;
+  if (Array.isArray(userId)) userId = userId[0];
+
+  try {
+    // Get user with role
+    const user = await User.findOne({
+      where: { id: userId, isDeleted: false },
+      include: [{ model: Role, as: "role" }],
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const role = (user as any).role;
+    let rolePermissions: any[] = [];
+    if (role) {
+      rolePermissions = await getRolePermissions(role.id);
+    }
+
+    // Get user permission overrides
+    const overrides = await getActiveUserPermissionOverrides(userId);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        userId,
+        role: role ? {
+          id: role.id,
+          name: role.name,
+          permissions: rolePermissions,
+        } : null,
+        overrides,
+      },
+      message: "User role and permissions fetched successfully",
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching user role and permissions",
+    });
+  }
+});
+
+// Get users without role assignment by company
+router.get("/getUsersWithoutRole/:companyId", async (req: Request, res: Response) => {
+  let { companyId } = req.params;
+  if (Array.isArray(companyId)) companyId = companyId[0];
+
+  try {
+    const users = await User.findAll({
+      where: {
+        companyId,
+        roleId: null,
+        isDeleted: false,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: users,
+      message: `${users.length} users without role assignment found`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching users without role",
+    });
+  }
+});
+
+// Get all users by company (with and without roles)
+router.get("/getAllUsersByCompany/:companyId", async (req: Request, res: Response) => {
+  let { companyId } = req.params;
+  if (Array.isArray(companyId)) companyId = companyId[0];
+
+  try {
+    const users = await User.findAll({
+      where: {
+        companyId,
+        isDeleted: false,
+      },
+      include: [{ model: Role, as: "role" }],
+    });
+
+    const usersWithRole = users.filter(u => (u as any).role !== null);
+    const usersWithoutRole = users.filter(u => (u as any).role === null);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalUsers: users.length,
+        usersWithRole: usersWithRole.map(u => ({
+          ...u.toJSON(),
+          role: (u as any).role,
+        })),
+        usersWithoutRole: usersWithoutRole.map(u => u.toJSON()),
+      },
+      message: `${users.length} total users found (${usersWithRole.length} with role, ${usersWithoutRole.length} without role)`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching users by company",
+    });
+  }
+});
+
+// Get users with assigned roles by company
+router.get("/getUsersWithRole/:companyId", async (req: Request, res: Response) => {
+  let { companyId } = req.params;
+  if (Array.isArray(companyId)) companyId = companyId[0];
+
+  try {
+    const users = await User.findAll({
+      where: {
+        companyId,
+        roleId: { [require('sequelize').Op.ne]: null },
+        isDeleted: false,
+      },
+      include: [{ model: Role, as: "role" }],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: users.map(u => ({
+        ...u.toJSON(),
+        role: (u as any).role,
+      })),
+      message: `${users.length} users with assigned roles found`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching users with roles",
+    });
+  }
+});
+
 // Cleanup expired overrides
 router.delete("/cleanupExpired", async (req: Request, res: Response) => {
   const { userId } = req.query;
@@ -398,7 +598,7 @@ router.delete("/cleanupExpired", async (req: Request, res: Response) => {
 // Get users with a specific permission override
 router.get("/getUsersWithOverride/:permissionId", async (req: Request, res: Response) => {
   let { permissionId } = req.params;
-  if(Array.isArray(permissionId)) permissionId = permissionId[0];
+  if (Array.isArray(permissionId)) permissionId = permissionId[0];
 
   try {
     const users = await getUsersWithPermissionOverride(permissionId);
@@ -418,7 +618,7 @@ router.get("/getUsersWithOverride/:permissionId", async (req: Request, res: Resp
 // Get permission override statistics for a user
 router.get("/getOverrideStats/:userId", async (req: Request, res: Response) => {
   let { userId } = req.params;
-  if(Array.isArray(userId)) userId = userId[0];
+  if (Array.isArray(userId)) userId = userId[0];
 
   try {
     const stats = await getUserPermissionOverrideStats(userId);

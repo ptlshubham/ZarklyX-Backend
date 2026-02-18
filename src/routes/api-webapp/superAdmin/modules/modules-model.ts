@@ -75,6 +75,16 @@ export class Modules extends Model<
         modelName: "modules",
         tableName: "modules",
         timestamps: true,
+        indexes: [
+          {
+            fields: ["isFreeForAll"],
+            name: "idx_modules_isFreeForAll",
+          },
+          {
+            fields: ["isActive", "isDeleted"],
+            name: "idx_modules_active_deleted",
+          },
+        ],
       }
     );
 

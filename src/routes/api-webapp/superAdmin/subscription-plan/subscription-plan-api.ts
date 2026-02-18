@@ -7,12 +7,14 @@ import {
   updateSubscriptionPlan,
   deleteSubscriptionPlan,
   calculateSubscriptionPrice,
+  setSubscriptionPlanStatus,
 } from "../../../api-webapp/superAdmin/subscription-plan/subscription-plan-handler";
 import dbInstance from "../../../../db/core/control-db";
 
 const router = Router();
 
 // Create subscription plan
+
 router.post("/createSubscriptionPlan", async (req, res) => {
   const t = await dbInstance.transaction();
   try {
@@ -34,7 +36,6 @@ router.post("/createSubscriptionPlan", async (req, res) => {
       status,
       is_popular,
       modules, // Array of module IDs (full module access)
-      permissions, // Array of permission IDs (feature-level access)
     } = req.body;
 
     if (
@@ -75,14 +76,6 @@ router.post("/createSubscriptionPlan", async (req, res) => {
       });
     }
 
-    // Validate permissions array if provided
-    if (permissions !== undefined && (!Array.isArray(permissions) || permissions.some((id: any) => typeof id !== 'string'))) {
-      await t.rollback();
-      return res.status(400).json({
-        error: "permissions must be an array of valid permission IDs",
-      });
-    }
-
     const plan = await createSubscriptionPlan(
       {
         name,
@@ -102,26 +95,20 @@ router.post("/createSubscriptionPlan", async (req, res) => {
         status,
         is_popular,
         modules,
-        permissions,
       },
       t
     );
 
     await t.commit();
-    
+
     const modulesCount = modules?.length || 0;
-    const permissionsCount = permissions?.length || 0;
     let message = "Subscription plan created successfully";
-    if (modulesCount > 0 && permissionsCount > 0) {
-      message = `Subscription plan created with ${modulesCount} module(s) and ${permissionsCount} permission(s)`;
-    } else if (modulesCount > 0) {
-      message = `Subscription plan created with ${modulesCount} module(s)`;
-    } else if (permissionsCount > 0) {
-      message = `Subscription plan created with ${permissionsCount} permission(s)`;
+    if (modulesCount > 0) {
+      message = `Subscription plan created with ${modulesCount} module(s) `;
     }
 
-    return res.status(201).json({ 
-      success: true, 
+    return res.status(201).json({
+      success: true,
       data: plan,
       message: message
     });
@@ -156,6 +143,23 @@ router.get("/getSubscriptionPlans", async (_req, res) => {
   } catch {
     return res.status(500).json({
       error: "Failed to fetch subscription plans",
+    });
+  }
+});
+
+// Get only active subscription plans
+router.get("/getOnlyActivePlans", async (_req, res) => {
+  try {
+    const plans = await getActiveSubscriptionPlans();
+    return res.status(200).json({
+      success: true,
+      data: plans,
+      message: "Active subscription plans retrieved successfully"
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      error: "Failed to fetch active subscription plans",
+      details: error?.message,
     });
   }
 });
@@ -215,6 +219,7 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
       display_order,
       status,
       is_popular,
+      modules,
     } = req.body;
 
     if (typeof name === "string" && name.trim()) updateFields.name = name;
@@ -234,10 +239,21 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
     if (["active", "inactive"].includes(status)) updateFields.status = status;
     if (typeof is_popular === "boolean") updateFields.is_popular = is_popular;
 
+    // Validate modules array if provided
+    if (modules !== undefined) {
+      if (!Array.isArray(modules) || modules.some((id: any) => typeof id !== 'string')) {
+        await t.rollback();
+        return res.status(400).json({
+          error: "modules must be an array of valid module IDs",
+        });
+      }
+      updateFields.modules = modules;
+    }
+
     // Validate min_users and max_users relationship
     const finalMinUsers = updateFields.min_users !== undefined ? updateFields.min_users : null;
     const finalMaxUsers = updateFields.max_users !== undefined ? updateFields.max_users : null;
-    
+
     if (finalMinUsers !== null && finalMaxUsers !== null && finalMinUsers > finalMaxUsers) {
       await t.rollback();
       return res.status(400).json({
@@ -278,6 +294,40 @@ router.patch("/updateSubscriptionPlan/:id", async (req, res) => {
 
     return res.status(500).json({
       error: "Failed to update subscription plan",
+    });
+  }
+});
+
+// Change subscription plan status (activate/deactivate)
+router.patch("/changeSubscriptionPlanStatus/:id", async (req, res) => {
+  const t = await dbInstance.transaction();
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { status } = req.body;
+
+    if (!["active", "inactive"].includes(status)) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "status must be 'active' or 'inactive'",
+      });
+    }
+
+    const plan = await setSubscriptionPlanStatus(id, status, t);
+
+    if (!plan) {
+      await t.rollback();
+      return res.status(404).json({
+        error: "Subscription plan not found",
+      });
+    }
+
+    await t.commit();
+    return res.status(200).json({ success: true, data: plan, message: `Subscription plan ${status} successfully` });
+  } catch (error: any) {
+    await t.rollback();
+    return res.status(500).json({
+      error: "Failed to update subscription plan status",
+      details: error?.message,
     });
   }
 });

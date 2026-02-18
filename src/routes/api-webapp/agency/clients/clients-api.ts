@@ -38,6 +38,7 @@ import { sendMobileOTP } from "../../../../services/otp-service";
 import { OAuth2Client } from "google-auth-library";
 import * as speakeasy from "speakeasy";
 import QRCode from "qrcode";
+import { requirePermission } from "../../../../middleware/permission.middleware";
 
 const router = express.Router();
 
@@ -1058,7 +1059,7 @@ router.post("/clientSignup/verify-otp",
 );
 
 // add agency client 
-router.post("/clients/add", async (req: Request, res: Response): Promise<void> => {
+router.post("/clients/add", tokenMiddleWare, requirePermission("client;create"), async (req: Request, res: Response): Promise<void> => {
   const t = await dbInstance.transaction();
 
   try {

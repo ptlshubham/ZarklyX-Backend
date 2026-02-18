@@ -6,8 +6,13 @@ import {
 } from "./rbac-check-handler";
 import { User } from "../../api-webapp/authentication/user/user-model";
 import { Role } from "../../api-webapp/roles/role-model";
+import { getUserAccessSnapshot } from "../../api-webapp/rbac/rbac-check-handler";
+import { tokenMiddleWare } from "../../../services/jwtToken-service";
 
 const router = Router();
+
+// Apply authentication middleware to all routes
+router.use(tokenMiddleWare);
 
 /**
  * IMPROVEMENT 1: Effective permissions snapshot endpoint
@@ -22,7 +27,7 @@ const router = Router();
  */
 router.get("/effective-permissions/:userId", async (req: Request, res: Response) => {
   let { userId } = req.params;
-  if(Array.isArray(userId))  userId = userId[0];
+  if (Array.isArray(userId)) userId = userId[0];
 
   if (!userId) {
     return res.status(400).json({
@@ -141,7 +146,7 @@ router.post("/check-permission", async (req: Request, res: Response) => {
  */
 router.get("/accessible-modules/:userId", async (req: Request, res: Response) => {
   let { userId } = req.params;
-  if(Array.isArray(userId))  userId = userId[0];
+  if (Array.isArray(userId)) userId = userId[0];
 
   if (!userId) {
     return res.status(400).json({
@@ -167,6 +172,33 @@ router.get("/accessible-modules/:userId", async (req: Request, res: Response) =>
     return res.status(500).json({
       success: false,
       message: error.message || "Error retrieving accessible modules",
+    });
+  }
+});
+
+// Efficient user access snapshot endpoint
+router.get("/my-access", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id; // Use authenticated user
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const snapshot = await getUserAccessSnapshot(userId);
+
+    return res.status(200).json({
+      success: true,
+      data: snapshot,
+      message: "User access snapshot retrieved successfully",
+    });
+  } catch (error: any) {
+    console.error("Error generating access snapshot:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to generate access snapshot",
     });
   }
 });

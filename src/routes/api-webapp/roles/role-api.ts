@@ -9,64 +9,34 @@ import {
   getRoleById,
   getRoleByName,
   updateRole,
+  updateRoleRestricted,
   deleteRole,
   roleNameExists,
   getAvailableRolesForCompany,
   cloneRoleToCompany,
-  initializeSystemRoles,
   getSystemRoleByName,
-  DEFAULT_SYSTEM_ROLES,
   validateRoleAssignment,
   assignRoleToUser,
 } from "../../api-webapp/roles/role-handler";
+import { assignBulkPermissionsToRole, getRolePermissions, syncRolePermissions } from "../role-permissions/role-permissions-handler";
 
 const router = Router();
-
-// Initialize default system roles
-router.post("/initializeSystemRoles", async (req: Request, res: Response) => {
-  const t = await dbInstance.transaction();
-  try {
-    const result = await initializeSystemRoles(t);
-    await t.commit();
-    
-    return res.status(201).json({
-      success: true,
-      data: result,
-      message: `System roles initialized: ${result.created.length} created, ${result.skipped.length} already existed`
-    });
-  } catch (error: any) {
-    await t.rollback();
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Error initializing system roles"
-    });
-  }
-});
-
-// Get default system roles definition
-router.get("/getDefaultSystemRoles", async (req: Request, res: Response) => {
-  return res.status(200).json({
-    success: true,
-    data: DEFAULT_SYSTEM_ROLES,
-    message: "Default system roles definition fetched successfully"
-  });
-});
 
 // Get a specific system role by name
 router.get("/getSystemRole/:name", async (req: Request, res: Response) => {
   let { name } = req.params;
-  if(Array.isArray(name)) name = name[0];
+  if (Array.isArray(name)) name = name[0];
 
   try {
     const role = await getSystemRoleByName(name);
-    
+
     if (!role) {
       return res.status(404).json({
         success: false,
         message: "System role not found"
       });
     }
-    
+
     return res.status(200).json({
       success: true,
       data: role,
@@ -82,26 +52,26 @@ router.get("/getSystemRole/:name", async (req: Request, res: Response) => {
 
 // Create a new role
 router.post("/createRole", async (req: Request, res: Response) => {
-  const { name, description, scope, companyId, isSystemRole, priority, level, isActive } = req.body;
+  const { name, description, scope, companyId, isSystemRole, priority, level, permissionIds, isActive } = req.body;
 
   if (!name || !scope) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Name and scope are required" 
+    return res.status(400).json({
+      success: false,
+      message: "Name and scope are required"
     });
   }
 
   if (!["platform", "company"].includes(scope)) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Scope must be 'platform' or 'company'" 
+    return res.status(400).json({
+      success: false,
+      message: "Scope must be 'platform' or 'company'"
     });
   }
 
   if (scope === "company" && !companyId) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "CompanyId is required for company-scoped roles" 
+    return res.status(400).json({
+      success: false,
+      message: "CompanyId is required for company-scoped roles"
     });
   }
 
@@ -113,15 +83,22 @@ router.post("/createRole", async (req: Request, res: Response) => {
     });
   }
 
+  if (permissionIds !== undefined && !Array.isArray(permissionIds)) {
+    return res.status(400).json({
+      success: false,
+      message: "permissionIds must be an array"
+    });
+  }
+
   const t = await dbInstance.transaction();
   try {
     // Check if role name already exists
     const exists = await roleNameExists(name, scope, companyId || null);
     if (exists) {
       await t.rollback();
-      return res.status(409).json({ 
-        success: false, 
-        message: "Role name already exists" 
+      return res.status(409).json({
+        success: false,
+        message: "Role name already exists"
       });
     }
 
@@ -129,25 +106,29 @@ router.post("/createRole", async (req: Request, res: Response) => {
       { name, description, scope, companyId, isSystemRole, priority, level, isActive },
       t
     );
+
+    // Add permissions to the created role
+    const permissions = await assignBulkPermissionsToRole(role.id, permissionIds, t);
+
     await t.commit();
-    return res.status(201).json({ 
-      success: true, 
-      data: role, 
-      message: "Role created successfully" 
+    return res.status(201).json({
+      success: true,
+      data: role, permissions,
+      message: "Role with permissions created successfully"
     });
   } catch (error: any) {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
       const field = error.errors?.[0]?.path || 'field';
-      return res.status(409).json({ 
-        success: false, 
+      return res.status(409).json({
+        success: false,
         message: `A role with this ${field} already exists`,
         field: field
       });
     }
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error creating role" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error creating role"
     });
   }
 });
@@ -156,22 +137,22 @@ router.post("/createRole", async (req: Request, res: Response) => {
 router.get("/getAllRoles", async (req: Request, res: Response) => {
   try {
     const { scope, companyId, isActive } = req.query;
-    
+
     const filters: any = {};
     if (scope) filters.scope = scope as "platform" | "company";
     if (companyId) filters.companyId = companyId as string;
     if (isActive !== undefined) filters.isActive = isActive === "true";
 
     const roles = await getRoles(filters);
-    return res.status(200).json({ 
-      success: true, 
-      data: roles, 
-      message: "Roles fetched successfully" 
+    return res.status(200).json({
+      success: true,
+      data: roles,
+      message: "Roles fetched successfully"
     });
   } catch (error: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error fetching roles" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching roles"
     });
   }
 });
@@ -180,21 +161,21 @@ router.get("/getAllRoles", async (req: Request, res: Response) => {
 router.get("/getActiveRoles", async (req: Request, res: Response) => {
   try {
     const { scope, companyId } = req.query;
-    
+
     const filters: any = {};
     if (scope) filters.scope = scope as "platform" | "company";
     if (companyId) filters.companyId = companyId as string;
 
     const roles = await getActiveRoles(filters);
-    return res.status(200).json({ 
-      success: true, 
-      data: roles, 
-      message: "Active roles fetched successfully" 
+    return res.status(200).json({
+      success: true,
+      data: roles,
+      message: "Active roles fetched successfully"
     });
   } catch (error: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error fetching active roles" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching active roles"
     });
   }
 });
@@ -203,15 +184,15 @@ router.get("/getActiveRoles", async (req: Request, res: Response) => {
 router.get("/getPlatformRoles", async (req: Request, res: Response) => {
   try {
     const roles = await getPlatformRoles();
-    return res.status(200).json({ 
-      success: true, 
-      data: roles, 
-      message: "Platform roles fetched successfully" 
+    return res.status(200).json({
+      success: true,
+      data: roles,
+      message: "Platform roles fetched successfully"
     });
   } catch (error: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error fetching platform roles" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching platform roles"
     });
   }
 });
@@ -219,19 +200,19 @@ router.get("/getPlatformRoles", async (req: Request, res: Response) => {
 // Get company-specific roles
 router.get("/getCompanyRoles/:companyId", async (req: Request, res: Response) => {
   let { companyId } = req.params;
-  if(Array.isArray(companyId)) companyId = companyId[0];
-  
+  if (Array.isArray(companyId)) companyId = companyId[0];
+
   try {
     const roles = await getCompanyRoles(companyId);
-    return res.status(200).json({ 
-      success: true, 
-      data: roles, 
-      message: "Company roles fetched successfully" 
+    return res.status(200).json({
+      success: true,
+      data: roles,
+      message: "Company roles fetched successfully"
     });
   } catch (error: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error fetching company roles" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching company roles"
     });
   }
 });
@@ -239,19 +220,19 @@ router.get("/getCompanyRoles/:companyId", async (req: Request, res: Response) =>
 // Get available roles for a company (platform + company-specific)
 router.get("/getAvailableRoles/:companyId", async (req: Request, res: Response) => {
   let { companyId } = req.params;
-  if(Array.isArray(companyId)) companyId = companyId[0];
-  
+  if (Array.isArray(companyId)) companyId = companyId[0];
+
   try {
     const roles = await getAvailableRolesForCompany(companyId);
-    return res.status(200).json({ 
-      success: true, 
-      data: roles, 
-      message: "Available roles fetched successfully" 
+    return res.status(200).json({
+      success: true,
+      data: roles,
+      message: "Available roles fetched successfully"
     });
   } catch (error: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error fetching available roles" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching available roles"
     });
   }
 });
@@ -259,25 +240,32 @@ router.get("/getAvailableRoles/:companyId", async (req: Request, res: Response) 
 // Get role by ID
 router.get("/getRoleById/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
-  if(Array.isArray(id)) id = id[0];
-  
+  if (Array.isArray(id)) id = id[0];
+
   try {
     const role = await getRoleById(id);
     if (!role) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Role not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
       });
     }
-    return res.status(200).json({ 
-      success: true, 
-      data: role, 
-      message: "Role fetched successfully" 
+
+    // Get permissions for the role
+    const permissions = await getRolePermissions(id);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...role.toJSON(),
+        permissions
+      },
+      message: "Role with permissions fetched successfully"
     });
   } catch (error: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error fetching role" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching role"
     });
   }
 });
@@ -285,37 +273,37 @@ router.get("/getRoleById/:id", async (req: Request, res: Response) => {
 // Get role by name
 router.get("/getRoleByName", async (req: Request, res: Response) => {
   const { name, scope, companyId } = req.query;
-  
+
   if (!name || !scope) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Name and scope are required" 
+    return res.status(400).json({
+      success: false,
+      message: "Name and scope are required"
     });
   }
 
   try {
     const role = await getRoleByName(
-      name as string, 
+      name as string,
       scope as "platform" | "company",
       companyId as string | undefined
     );
-    
+
     if (!role) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Role not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
       });
     }
-    
-    return res.status(200).json({ 
-      success: true, 
-      data: role, 
-      message: "Role fetched successfully" 
+
+    return res.status(200).json({
+      success: true,
+      data: role,
+      message: "Role fetched successfully"
     });
   } catch (error: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error fetching role" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching role"
     });
   }
 });
@@ -323,40 +311,233 @@ router.get("/getRoleByName", async (req: Request, res: Response) => {
 // Update role
 router.put("/updateRole/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
-  if(Array.isArray(id)) id = id[0];
-  const { name, description, isActive } = req.body;
+  if (Array.isArray(id)) id = id[0];
+  const { name, description, isActive, permissionIds, priority, level } = req.body;
+
+  if (permissionIds !== undefined && !Array.isArray(permissionIds)) {
+    return res.status(400).json({
+      success: false,
+      message: "permissionIds must be an array"
+    });
+  }
 
   const t = await dbInstance.transaction();
   try {
-    const role = await updateRole(id, { name, description, isActive }, t);
-    
+    const role = await updateRole(id, { name, description, isActive, priority, level }, t);
+
     if (!role) {
       await t.rollback();
-      return res.status(404).json({ 
-        success: false, 
-        message: "Role not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
       });
     }
-    
+
+    // Update permissions if provided
+    let permissions = null;
+    if (permissionIds !== undefined) {
+      await syncRolePermissions(role.id, permissionIds, t);
+      permissions = await getRolePermissions(id);
+    } else {
+      // Get current permissions
+      permissions = await getRolePermissions(id);
+    }
+
     await t.commit();
-    return res.status(200).json({ 
-      success: true, 
-      data: role, 
-      message: "Role updated successfully" 
+    return res.status(200).json({
+      success: true,
+      data: role, permissions,
+      message: "Role updated successfully"
     });
   } catch (error: any) {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
       const field = error.errors?.[0]?.path || 'field';
-      return res.status(409).json({ 
-        success: false, 
+      return res.status(409).json({
+        success: false,
         message: `A role with this ${field} already exists`,
         field: field
       });
     }
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error updating role" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error updating role"
+    });
+  }
+});
+
+// Update role with restrictions (cannot modify name of system roles)
+router.put("/updateRoleRestricted/:id", async (req: Request, res: Response) => {
+  let { id } = req.params;
+  if (Array.isArray(id)) id = id[0];
+  const { name, description, isActive, baseRoleId, permissionIds, priority, level } = req.body;
+
+  if (permissionIds !== undefined && !Array.isArray(permissionIds)) {
+    return res.status(400).json({
+      success: false,
+      message: "permissionIds must be an array"
+    });
+  }
+
+  // Validate baseRoleId if provided
+  if (baseRoleId !== undefined && typeof baseRoleId !== "string") {
+    return res.status(400).json({
+      success: false,
+      message: "baseRoleId must be a string"
+    });
+  }
+
+  const t = await dbInstance.transaction();
+  try {
+    // Verify baseRoleId exists and is a platform role
+    if (baseRoleId) {
+      const baseRole = await getRoleById(baseRoleId);
+
+      if (!baseRole) {
+        await t.rollback();
+        return res.status(404).json({
+          success: false,
+          message: "Base role not found"
+        });
+      }
+      if (baseRole.scope !== "platform") {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Base role must be a platform-scoped role"
+        });
+      }
+    }
+
+    const role = await updateRoleRestricted(id, { name, description, isActive, baseRoleId, priority, level }, t);
+
+    if (!role) {
+      await t.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
+      });
+    }
+
+    // Update permissions if provided
+    let permissions = null;
+    if (permissionIds !== undefined) {
+      await syncRolePermissions(role.id, permissionIds, t);
+      permissions = await getRolePermissions(id);
+    } else {
+      // Get current permissions
+      permissions = await getRolePermissions(id);
+    }
+
+    await t.commit();
+    return res.status(200).json({
+      success: true,
+      data: role, permissions,
+      message: "Role updated successfully"
+    });
+  } catch (error: any) {
+    await t.rollback();
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      const field = error.errors?.[0]?.path || 'field';
+      return res.status(409).json({
+        success: false,
+        message: `A role with this ${field} already exists`,
+        field: field
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error updating role"
+    });
+  }
+});
+
+// Update platform role active status (activate/deactivate)
+router.put("/updatePlatformRoleStatus/:id", async (req: Request, res: Response) => {
+  let { id } = req.params;
+  if (Array.isArray(id)) id = id[0];
+  const { isActive } = req.body;
+
+  if (typeof isActive !== "boolean") {
+    return res.status(400).json({
+      success: false,
+      message: "isActive must be a boolean value"
+    });
+  }
+
+  try {
+    const role = await getRoleById(id);
+
+    if (!role) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
+      });
+    }
+
+    if (role.scope !== "platform") {
+      return res.status(400).json({
+        success: false,
+        message: "This endpoint is only for platform-scoped roles"
+      });
+    }
+
+    const updatedRole = await updateRole(id, { isActive });
+
+    return res.status(200).json({
+      success: true,
+      data: updatedRole,
+      message: `Platform role ${isActive ? 'activated' : 'deactivated'} successfully`
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error updating platform role status"
+    });
+  }
+});
+
+// Update company role active status (activate/deactivate)
+router.put("/updateCompanyRoleStatus/:id", async (req: Request, res: Response) => {
+  let { id } = req.params;
+  if (Array.isArray(id)) id = id[0];
+  const { isActive } = req.body;
+
+  if (typeof isActive !== "boolean") {
+    return res.status(400).json({
+      success: false,
+      message: "isActive must be a boolean value"
+    });
+  }
+
+  try {
+    const role = await getRoleById(id);
+
+    if (!role) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
+      });
+    }
+
+    if (role.scope !== "company") {
+      return res.status(400).json({
+        success: false,
+        message: "This endpoint is only for company-scoped roles"
+      });
+    }
+
+    const updatedRole = await updateRole(id, { isActive });
+
+    return res.status(200).json({
+      success: true,
+      data: updatedRole,
+      message: `Company role ${isActive ? 'activated' : 'deactivated'} successfully`
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error updating company role status"
     });
   }
 });
@@ -364,31 +545,31 @@ router.put("/updateRole/:id", async (req: Request, res: Response) => {
 // Delete role (soft delete)
 router.delete("/deleteRole/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
-  if(Array.isArray(id)) id = id[0];
+  if (Array.isArray(id)) id = id[0];
 
   const t = await dbInstance.transaction();
   try {
     const deleted = await deleteRole(id, t);
-    
+
     if (!deleted) {
       await t.rollback();
-      return res.status(404).json({ 
-        success: false, 
-        message: "Role not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Role not found"
       });
     }
-    
+
     await t.commit();
-    return res.status(200).json({ 
-      success: true, 
-      data: null, 
-      message: "Role deleted successfully" 
+    return res.status(200).json({
+      success: true,
+      data: null,
+      message: "Role deleted successfully"
     });
   } catch (error: any) {
     await t.rollback();
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error deleting role" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error deleting role"
     });
   }
 });
@@ -398,9 +579,9 @@ router.post("/cloneRole", async (req: Request, res: Response) => {
   const { platformRoleId, companyId, newName, newDescription, permissionIds } = req.body;
 
   if (!platformRoleId || !companyId) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "PlatformRoleId and companyId are required" 
+    return res.status(400).json({
+      success: false,
+      message: "PlatformRoleId and companyId are required"
     });
   }
 
@@ -415,32 +596,32 @@ router.post("/cloneRole", async (req: Request, res: Response) => {
   const t = await dbInstance.transaction();
   try {
     const role = await cloneRoleToCompany(
-      platformRoleId, 
-      companyId, 
-      newName, 
-      newDescription, 
+      platformRoleId,
+      companyId,
+      newName,
+      newDescription,
       permissionIds,
       t
     );
     await t.commit();
-    return res.status(201).json({ 
-      success: true, 
-      data: role, 
-      message: "Role cloned successfully" 
+    return res.status(201).json({
+      success: true,
+      data: role,
+      message: "Role cloned successfully"
     });
   } catch (error: any) {
     await t.rollback();
     if (error.name === 'SequelizeUniqueConstraintError') {
       const field = error.errors?.[0]?.path || 'field';
-      return res.status(409).json({ 
-        success: false, 
+      return res.status(409).json({
+        success: false,
         message: `A role with this ${field} already exists`,
         field: field
       });
     }
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error cloning role" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error cloning role"
     });
   }
 });
@@ -450,9 +631,9 @@ router.get("/checkRoleName", async (req: Request, res: Response) => {
   const { name, scope, companyId, excludeRoleId } = req.query;
 
   if (!name || !scope) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Name and scope are required" 
+    return res.status(400).json({
+      success: false,
+      message: "Name and scope are required"
     });
   }
 
@@ -463,16 +644,16 @@ router.get("/checkRoleName", async (req: Request, res: Response) => {
       companyId as string | undefined,
       excludeRoleId as string | undefined
     );
-    
-    return res.status(200).json({ 
-      success: true, 
-      data: { exists }, 
-      message: exists ? "Role name already exists" : "Role name is available" 
+
+    return res.status(200).json({
+      success: true,
+      data: { exists },
+      message: exists ? "Role name already exists" : "Role name is available"
     });
   } catch (error: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Error checking role name" 
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error checking role name"
     });
   }
 });
@@ -490,7 +671,7 @@ router.post("/validateRoleAssignment", async (req: Request, res: Response) => {
 
   try {
     const validation = await validateRoleAssignment(userId, roleId);
-    
+
     return res.status(200).json({
       success: validation.valid,
       data: { valid: validation.valid, error: validation.error },
@@ -518,7 +699,7 @@ router.post("/assignRoleToUser", async (req: Request, res: Response) => {
   const t = await dbInstance.transaction();
   try {
     const result = await assignRoleToUser(userId, roleId, t);
-    
+
     if (!result.success) {
       await t.rollback();
       return res.status(400).json({

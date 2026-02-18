@@ -36,11 +36,11 @@ router.post("/createExpenseItem/", async (req: Request, res: Response): Promise<
     }
 });
 
-// GET /accounting/expenses/expense-item/getExpenseItemById/:id?companyId=
+// GET /accounting/expense-item/getExpenseItemById/:id?companyId=
 router.get("/getExpenseItemById/:id", async (req: Request, res: Response): Promise<any> => {
     try {
         const data = await getExpenseItemById(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string
         );
 
@@ -54,6 +54,26 @@ router.get("/getExpenseItemById/:id", async (req: Request, res: Response): Promi
         res.json({ success: true, data });
     } catch (err) {
         return serverError(res, "Failed to fetch Expense item.");
+    }
+});
+
+// GET /accounting/expense-item/getExpenseItemsByCompanyId?companyId=
+router.get("/getExpenseItemsByCompanyId", async (req: Request, res: Response): Promise<any> => {
+    try {
+        const companyId = req.query.companyId as string;
+        
+        if (!companyId) {
+            return res.status(400).json({
+                success: false,
+                message: "Company ID is required",
+            });
+        }
+        
+        const data = await getActiveExpenseItemsByCompany(companyId);
+        
+        res.json({ success: true, data });
+    } catch (err) {
+        return serverError(res, "Failed to fetch Expense items.");
     }
 });
 
@@ -111,7 +131,7 @@ router.patch("/updateExpenseItem/:id", async (req: Request, res: Response): Prom
     const t = await dbInstance.transaction();
     try {
         const [affectedRows] = await updateExpenseItem(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string,
             req.body,
             t
@@ -126,7 +146,7 @@ router.patch("/updateExpenseItem/:id", async (req: Request, res: Response): Prom
         }
 
         const updatedItem = await getExpenseItemById(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string
         );
 
@@ -147,7 +167,7 @@ router.patch("/deactivateExpenseItem/:id", async (req: Request, res: Response): 
     const t = await dbInstance.transaction();
     try {
         const [affectedRows] = await deactivateExpenseItem(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string,
             t
         );
@@ -176,7 +196,7 @@ router.patch("/activateExpenseItem/:id", async (req: Request, res: Response): Pr
     const t = await dbInstance.transaction();
     try {
         const [affectedRows] = await activateExpenseItem(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string,
             t
         );
@@ -205,7 +225,7 @@ router.delete("/deleteExpenseItem/:id", async (req: Request, res: Response): Pro
     const t = await dbInstance.transaction();
     try {
         const affectedRows = await deleteExpenseItem(
-            req.params.id,
+            req.params.id as string,
             req.query.companyId as string,
             t
         );

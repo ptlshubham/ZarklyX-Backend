@@ -6,11 +6,14 @@ import {
   getQuotesByClient,
   updateQuote,
   deleteQuote,
+  bulkDeleteQuotes,
   convertQuoteToInvoice,
-  getQuoteByPublicToken
+  getQuoteByPublicToken,
+  getPendingQuoteAmount
 } from "./quote-handler";
 import { serverError } from "../../../../utils/responseHandler";
 import dbInstance from "../../../../db/core/control-db";
+import ErrorLogger from "../../../../db/core/logger/error-logger";
 
 const router = express.Router();
 
@@ -199,6 +202,45 @@ router.delete("/deleteQuote/:id", async (req: Request, res: Response): Promise<a
   }
 });
 
+// POST /accounting/quote/bulkDelete?companyId=
+router.post("/bulkDelete", async (req: Request, res: Response): Promise<any> => {
+  const t = await dbInstance.transaction();
+  try {
+    const { companyId } = req.query;
+    const { ids } = req.body;
+
+    if (!companyId) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "companyId is required",
+      });
+    }
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "ids array is required and must not be empty",
+      });
+    }
+
+    const results = await bulkDeleteQuotes(ids, companyId as string, t);
+
+    await t.commit();
+
+    return res.json({
+      success: true,
+      message: `Bulk delete completed. ${results.successful.length} deleted, ${results.failed.length} failed.`,
+      data: results,
+    });
+  } catch (err: any) {
+    await t.rollback();
+    console.error("Bulk Delete Quote Error:", err);
+    return serverError(res, err.message || "Failed to bulk delete quotes");
+  }
+});
+
 // POST /accounting/quote/convertFromQuote/:quoteId?companyId=
 router.post("/convertFromQuote/:quoteId", async (req: Request, res: Response): Promise<any> => {
   const t = await dbInstance.transaction();
@@ -238,6 +280,46 @@ router.post("/convertFromQuote/:quoteId", async (req: Request, res: Response): P
   } catch (err: any) {
     await t.rollback();
     return serverError(res, err.message);
+  }
+});
+
+/**
+ * GET /accounting/quote/getQuotePendingAmount/:clientId?companyId=
+ * Calculate the pending quote amount of client in accounting
+ */
+router.get("/getQuotePendingAmount/:clientId", async (req: Request, res: Response): Promise<any> => {
+  let companyId = req.query.companyId;
+  if(Array.isArray(companyId)) companyId = companyId[0];
+  let clientId = req.params.clientId;
+  if(Array.isArray(clientId)) clientId = clientId[0];
+  
+  companyId = companyId as string;
+  clientId = clientId as string;
+  
+  if (!clientId || !companyId) {
+    return res.status(400).json({
+      success: false,
+      message: "clientId and companyId are required",
+    });
+  }
+  
+  const t = await dbInstance.transaction();
+  try {
+    const pendingAmount = await getPendingQuoteAmount(clientId, companyId);
+    
+    await t.commit();
+    return res.status(200).json({
+      success: true,
+      message: "Pending amount of client calculated successfully",
+      data: pendingAmount,
+    });
+  } catch (error: any) {
+    await t.rollback();
+    ErrorLogger.write({ type: "getPendingAmount for client error", error });
+    return serverError(
+      res,
+      error?.message || "Failed to get the pending amount for client"
+    );
   }
 });
 

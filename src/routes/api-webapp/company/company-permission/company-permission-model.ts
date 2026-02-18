@@ -104,6 +104,14 @@ export class CompanyPermission extends Model<
             fields: ["companyId", "permissionId"],
             name: "company_permission_unique",
           },
+          {
+            fields: ["companyId", "isActive", "isDeleted"],
+            name: "idx_company_permission_active",
+          },
+          {
+            fields: ["subscriptionId"],
+            name: "idx_company_permission_subscription",
+          },
         ],
       }
     );

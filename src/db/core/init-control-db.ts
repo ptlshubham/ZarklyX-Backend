@@ -62,7 +62,11 @@ import { PurchaseOrder } from "../../routes/api-webapp/accounting/purchaseOrder/
 import { PurchaseOrderItem } from "../../routes/api-webapp/accounting/purchaseOrder/purchase-order-item-model";
 import { Payments } from "../../routes/api-webapp/accounting/payments/payments-model";
 import { PaymentsDocuments } from "../../routes/api-webapp/accounting/payments/payments-documents-model";
+import { Expenses } from "../../routes/api-webapp/accounting/expenses/expenses-model";
+import { ExpenseItem } from "../../routes/api-webapp/accounting/expenses/expenses-item/expense-item-model";
+import { ExpenseLineItem } from "../../routes/api-webapp/accounting/expenses/expense-line-item-model";
 import { AccountingDocument } from "../../routes/api-webapp/accounting/accounting-document-model";
+import { ClientLedger } from "../../routes/api-webapp/accounting/client-ledger/client-ledger-model";
 import { Modules, initModulesModel } from "../../routes/api-webapp/superAdmin/modules/modules-model";
 import { Permissions, initPermissionsModel } from "../../routes/api-webapp/superAdmin/permissions/permissions-model";
 import { SubscriptionPlan, initSubscriptionPlanModel } from "../../routes/api-webapp/superAdmin/subscription-plan/subscription-plan-model";
@@ -82,6 +86,13 @@ import { initPostDetailsModel, PostDetails } from "../../routes/api-webapp/agenc
 import { initPostScheduleModel, PostSchedule } from "../../routes/api-webapp/agency/social-Integration/social-posting/post-schedule.model";
 import { initPostMediaFilesModel, PostMediaFiles } from "../../routes/api-webapp/agency/social-Integration/social-posting/post-media-files.model";
 import { initMetaSocialAccountModel } from "../../routes/api-webapp/agency/social-Integration/meta-social-account.model";
+import { ClientUserAssignment, initClientUserAssignmentModel } from "../../routes/api-webapp/agency/clients/client-assignment/client-assignment-model";
+
+import { Warehouse } from "../../routes/api-webapp/inventory-management/warehouse/warehouse-model";
+import { StockTransaction } from "../../routes/api-webapp/inventory-management/stock/stock-transaction/stock-transaction-model";
+import { StockBalance } from "../../routes/api-webapp/inventory-management/stock/stock-balance/stock-balance-model";
+import { SystemLog } from "../../routes/api-webapp/system-log/system-log-model";
+import { Todo } from "../../routes/api-webapp/todo/todo-model";
 
 export {
   User,
@@ -131,7 +142,11 @@ export {
   PurchaseOrderItem,
   Payments,
   PaymentsDocuments,
+  Expenses,
+  ExpenseItem,
+  ExpenseLineItem,
   AccountingDocument,
+  ClientLedger,
   Modules,
   Permissions,
   SubscriptionPlan,
@@ -155,6 +170,12 @@ export {
   PostDetails,
   PostSchedule,
   PostMediaFiles,
+  Warehouse,
+  StockTransaction,
+  StockBalance,
+  SystemLog,
+  Todo,
+
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -221,7 +242,11 @@ export function initControlDB(sequelize: Sequelize) {
   PurchaseOrderItem.initModel(sequelize);
   Payments.initModel(sequelize);
   PaymentsDocuments.initModel(sequelize);
+  Expenses.initModel(sequelize);
+  ExpenseItem.initModel(sequelize);
+  ExpenseLineItem.initModel(sequelize);
   AccountingDocument.initModel(sequelize);
+  ClientLedger.initModel(sequelize);
   initModulesModel(sequelize);
   initPermissionsModel(sequelize);
   initSubscriptionPlanModel(sequelize);
@@ -241,6 +266,18 @@ export function initControlDB(sequelize: Sequelize) {
   initPostDetailsModel(sequelize);
   initPostScheduleModel(sequelize);
   initPostMediaFilesModel(sequelize);
+  initClientUserAssignmentModel(sequelize);
+  Expenses.initModel(sequelize);
+  ExpenseLineItem.initModel(sequelize);
+  ExpenseItem.initModel(sequelize);
+
+  Warehouse.initModel(sequelize);
+  StockTransaction.initModel(sequelize);
+  StockBalance.initModel(sequelize);
+  SystemLog.initModel(sequelize);
+  Todo.initModel(sequelize);
+
+
 
   // Relations and associations
   /***user <-> company */
@@ -884,6 +921,12 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
+  /*** ClientLedger <-> Company */
+  Company.hasMany(ClientLedger, {
+    foreignKey: "companyId",
+    as: "clientLedgers",
+    constraints: false,
+  });
   /*** DebitNote <-> Company */
   Company.hasMany(DebitNote, {
     foreignKey: "companyId",
@@ -896,6 +939,12 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
+  /*** ClientLedger <-> Clients */
+  Clients.hasMany(ClientLedger, {
+    foreignKey: "clientId",
+    as: "ledgerEntries",
+    constraints: false,
+  });
   /*** DebitNote <-> Clients */
   Clients.hasMany(DebitNote, {
     foreignKey: "clientId",
@@ -907,6 +956,8 @@ export function initControlDB(sequelize: Sequelize) {
     as: "client",
     constraints: false,
   });
+
+
 
   /*** DebitNote <-> Vendor */
   Vendor.hasMany(DebitNote, {
@@ -1023,6 +1074,96 @@ export function initControlDB(sequelize: Sequelize) {
   ItemCategory.hasMany(ItAssetsManagement, {
     foreignKey: "categoryId",
     as: "assets",
+  });
+
+  /* Expenses <-> Company */
+  Company.hasMany(Expenses, {
+    foreignKey: "companyId",
+    as: "expenses",
+    constraints: false,
+  });
+  Expenses.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /* Expenses <-> Vendor */
+  Vendor.hasMany(Expenses, {
+    foreignKey: "vendorId",
+    as: "expenses",
+    constraints: false,
+  });
+  Expenses.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
+
+  /* Expenses <-> Clients */
+  Clients.hasMany(Expenses, {
+    foreignKey: "clientId",
+    as: "expenses",
+    constraints: false,
+  });
+  Expenses.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /* Expenses <-> ExpenseLineItem */
+  Expenses.hasMany(ExpenseLineItem, {
+    foreignKey: "expenseId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(Expenses, {
+    foreignKey: "expenseId",
+    as: "expense",
+  });
+
+  /* ExpenseItem <-> ExpenseLineItem */
+  ExpenseItem.hasMany(ExpenseLineItem, {
+    foreignKey: "expenseItemId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(ExpenseItem, {
+    foreignKey: "expenseItemId",
+    as: "expenseItem",
+  });
+
+  /* Company <-> ExpenseItem */
+  Company.hasMany(ExpenseItem, {
+    foreignKey: "companyId",
+    as: "expenseItems",
+  });
+  ExpenseItem.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /* Unit <-> ExpenseLineItem */
+  Unit.hasMany(ExpenseLineItem, {
+    foreignKey: "unitId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  });
+
+  /* Expenses <-> ExpenseItem (Many-to-Many through ExpenseLineItem) */
+  Expenses.belongsToMany(ExpenseItem, {
+    through: ExpenseLineItem,
+    foreignKey: "expenseId",
+    otherKey: "expenseItemId",
+    as: "expenseItems",
+  });
+  ExpenseItem.belongsToMany(Expenses, {
+    through: ExpenseLineItem,
+    foreignKey: "expenseItemId",
+    otherKey: "expenseId",
+    as: "expenses",
   });
 
   ItAssetsManagement.belongsTo(ItemCategory, {
@@ -1393,6 +1534,31 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "companyId",
     as: "company",
   });
+  // ClientUserAssignment <-> User
+  User.hasMany(ClientUserAssignment, {
+    foreignKey: "userId"
+  });
+  ClientUserAssignment.belongsTo(User, {
+    foreignKey: "userId"
+  });
+
+  // ClientUserAssignment <-> Clients
+  ClientUserAssignment.belongsTo(Clients, {
+    foreignKey: "clientId"
+  });
+  Clients.hasMany(ClientUserAssignment, {
+    foreignKey: "clientId"
+  });
+
+  //Compony <-> Warehouse
+  Company.hasMany(Warehouse, {
+    foreignKey: "companyId",
+    as: "warehouses",
+  });
+  Warehouse.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
 
   /*** Clients <-> MetaSocialAccount */
   Clients.hasMany(MetaSocialAccount, {
@@ -1422,6 +1588,90 @@ export function initControlDB(sequelize: Sequelize) {
     as: "postDetails",
   });
   PostDetails.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  //company <-> StockTransaction
+  Company.hasMany(StockTransaction, {
+    foreignKey: "companyId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  //Warehouse <-> StockTransaction
+  Warehouse.hasMany(StockTransaction, {
+    foreignKey: "warehouseId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Warehouse, {
+    foreignKey: "warehouseId",
+    as: "warehouse",
+  });
+  //Item <-> StockTransaction
+  Item.hasMany(StockTransaction, {
+    foreignKey: "itemId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+  //vendor <-> stockTransaction
+  Vendor.hasMany(StockTransaction, {
+    foreignKey: "vendorId",
+    as: "stockTransactions",
+  });
+  StockTransaction.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+  });
+
+  //Company <-> StockBalance
+  Company.hasMany(StockBalance, {
+    foreignKey: "companyId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  //Warehouse <-> StockBalance
+  Warehouse.hasMany(StockBalance, {
+    foreignKey: "warehouseId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Warehouse, {
+    foreignKey: "warehouseId",
+    as: "warehouse",
+  });
+  //Item <-> StockBalance
+  Item.hasMany(StockBalance, {
+    foreignKey: "itemId",
+    as: "stockBalances",
+  });
+  StockBalance.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
+
+  // SystemLog <-> User
+  User.hasMany(SystemLog, {
+    foreignKey: "userId",
+    as: "systemLogs",
+  });
+  SystemLog.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
+  // SystemLog <-> Company
+  Company.hasMany(SystemLog, {
+    foreignKey: "companyId",
+    as: "systemLogs",
+  });
+  SystemLog.belongsTo(Company, {
     foreignKey: "companyId",
     as: "company",
   });
@@ -1456,6 +1706,25 @@ export function initControlDB(sequelize: Sequelize) {
   //   foreignKey: "assignedClientId",
   //   as: "assignedClient",
   // });
+  // Todo <-> Company
+  Company.hasMany(Todo, {
+    foreignKey: "companyId",
+    as: "todos",
+  });
+  Todo.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  // Todo <-> User
+  User.hasMany(Todo, {
+    foreignKey: "userId",
+    as: "todos",
+  });
+  Todo.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+  });
+
   console.log("✅ ZarklyX RBAC associations initialized");
 
   // Role <-> SubRole
@@ -1535,5 +1804,14 @@ export function initControlDB(sequelize: Sequelize) {
     PostDetails,
     PostSchedule,
     PostMediaFiles,
+    ClientUserAssignment,
+    Expenses,
+    ExpenseLineItem,
+    ExpenseItem,
+    Warehouse,
+    StockTransaction,
+    StockBalance,
+    SystemLog,
+    Todo
   };
 }

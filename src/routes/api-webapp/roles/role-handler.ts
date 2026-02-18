@@ -29,11 +29,11 @@ export async function createRole(
 
   // EDGE CASE 2: Enforce priority floors by scope (prevent privilege escalation)
   const priority = data.priority !== undefined ? data.priority : 50;
-  
+
   if (data.scope === "company" && priority < 20) {
     throw new Error("Company roles cannot have priority lower than 20. Only platform roles can be admins.");
   }
-  
+
   if (data.scope === "platform" && !data.isSystemRole && priority < 10) {
     throw new Error("Custom platform roles cannot have priority lower than 10. Reserved for system roles.");
   }
@@ -148,6 +148,15 @@ export async function getRoleByName(
 }
 
 /**
+ * Get role by priority and scope
+ */
+export async function getRoleByPriorityAndScope(priority: number, scope: "platform" | "company") {
+  return await Role.findOne({
+    where: { priority, scope, isDeleted: false },
+  });
+}
+
+/**
  * Update role
  */
 export async function updateRole(
@@ -156,6 +165,36 @@ export async function updateRole(
     name?: string;
     description?: string | null;
     isActive?: boolean;
+    baseRoleId?: string | null;
+    priority?: number;
+    level?: number | null;
+  },
+  transaction?: Transaction
+) {
+  const role = await Role.findOne({
+    where: { id, isDeleted: false },
+  });
+
+  if (!role) {
+    return null;
+  }
+
+  await role.update(updates, { transaction });
+  return role;
+}
+
+/**
+ * Update role with restrictions (cannot modify name of system roles)
+ */
+export async function updateRoleRestricted(
+  id: string,
+  updates: {
+    name?: string;
+    description?: string | null;
+    isActive?: boolean;
+    baseRoleId?: string | null;
+    priority?: number;
+    level?: number | null;
   },
   transaction?: Transaction
 ) {
@@ -247,11 +286,10 @@ export async function getAvailableRolesForCompany(companyId: string) {
   return await Role.findAll({
     where: {
       [require("sequelize").Op.or]: [
-        { scope: "platform" },
+        { scope: "platform", isActive: true },
         { scope: "company", companyId },
       ],
       isDeleted: false,
-      isActive: true,
     },
     order: [
       ["scope", "ASC"], // platform first
@@ -317,11 +355,11 @@ export async function cloneRoleToCompany(
 
       // Check company has module access
       const hasModuleAccess = await checkCompanyModuleAccess(companyId, permission.moduleId);
-      
+
       if (!hasModuleAccess) {
         // Check company has specific permission access
         const hasPermissionAccess = await checkCompanyPermissionAccess(companyId, permission.id);
-        
+
         if (!hasPermissionAccess) {
           unauthorizedPermissions.push(`${permission.name} (${permission.action})`);
         }
@@ -346,7 +384,7 @@ export async function cloneRoleToCompany(
       baseRoleId: platformRoleId,
       level: platformRole.level,
       isSystemRole: false,
-      priority: platformRole.priority >= 20 ? platformRole.priority : 20, 
+      priority: platformRole.priority >= 20 ? platformRole.priority : 20,
       isActive: true,
       isDeleted: false,
     },
@@ -365,101 +403,6 @@ export async function cloneRoleToCompany(
   return customRole;
 }
 
-/**
- * Default system roles definition
- * Priority: Lower number = higher authority
- */
-export const DEFAULT_SYSTEM_ROLES = [
-  {
-    name: "Super Admin",
-    scope: "platform" as const,
-    isSystemRole: true,
-    priority: 0,
-    description: "Platform administrator with full system access across all companies"
-  },
-  {
-    name: "Company Admin",
-    scope: "platform" as const,
-    isSystemRole: true,
-    priority: 10,
-    description: "Company owner/administrator with full company access and management capabilities"
-  },
-  {
-    name: "Manager",
-    scope: "platform" as const,
-    isSystemRole: true,
-    priority: 20,
-    description: "Manager with team management, reporting, and oversight capabilities"
-  },
-  {
-    name: "Employee",
-    scope: "platform" as const,
-    isSystemRole: true,
-    priority: 30,
-    description: "Standard employee with access to assigned modules and features"
-  },
-  {
-    name: "Client",
-    scope: "platform" as const,
-    isSystemRole: true,
-    priority: 40,
-    description: "External client with limited view-only access to specific resources"
-  }
-];
-
-/**
- * Initialize default system roles
- * Creates platform-level system roles if they don't exist
- */
-export async function initializeSystemRoles(transaction?: Transaction) {
-  const createdRoles: Role[] = [];
-  const skippedRoles: string[] = [];
-
-  for (const roleData of DEFAULT_SYSTEM_ROLES) {
-    try {
-      // Check if role already exists
-      const existing = await Role.findOne({
-        where: {
-          name: roleData.name,
-          scope: "platform",
-          isDeleted: false,
-        },
-        transaction,
-      });
-
-      if (existing) {
-        skippedRoles.push(roleData.name);
-        continue;
-      }
-
-      // Create the system role
-      const role = await Role.create(
-        {
-          name: roleData.name,
-          description: roleData.description,
-          scope: "platform",
-          companyId: null,
-          isSystemRole: true,
-          priority: roleData.priority,
-          isActive: true,
-          isDeleted: false,
-        },
-        { transaction }
-      );
-
-      createdRoles.push(role);
-    } catch (error) {
-      console.error(`Error creating system role ${roleData.name}:`, error);
-      throw error;
-    }
-  }
-
-  return {
-    created: createdRoles,
-    skipped: skippedRoles,
-    total: DEFAULT_SYSTEM_ROLES.length,
-  };
-}
 
 /**
  * Get a system role by name

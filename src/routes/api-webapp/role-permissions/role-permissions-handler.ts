@@ -35,14 +35,39 @@ export async function assignBulkPermissionsToRole(
   permissionIds: string[],
   transaction: Transaction
 ) {
-  const assignments: RolePermissions[] = [];
+  if (permissionIds.length === 0) return [];
 
-  for (const permissionId of permissionIds) {
-    const assignment = await assignPermissionToRole(roleId, permissionId, transaction);
-    assignments.push(assignment);
+  const existingAssignments = await RolePermissions.findAll({
+    where: {
+      roleId,
+      permissionId: {
+        [Op.in]: permissionIds,
+      },
+    },
+    transaction,
+  });
+
+  const existingPermissionIds = new Set(
+    existingAssignments.map(a => a.permissionId)
+  );
+
+  const newAssignments = permissionIds
+    .filter(pid => !existingPermissionIds.has(pid))
+    .map(permissionId => ({
+      roleId,
+      permissionId,
+    }));
+
+  if (newAssignments.length === 0) {
+    return existingAssignments;
   }
 
-  return assignments;
+  const created = await RolePermissions.bulkCreate(newAssignments, {
+    transaction,
+    ignoreDuplicates: true,
+  });
+
+  return [...existingAssignments, ...created];
 }
 
 /**
