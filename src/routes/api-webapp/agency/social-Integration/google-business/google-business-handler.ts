@@ -1,6 +1,5 @@
 import { SocialToken } from "../social-token.model";
 import { GoogleBusinessAccount } from "./google-business-account.model";
-import { getUserProfile } from "../../../../../services/business-profile-service";
 import { executeWithRateLimit } from "../../../../../services/rate-limit.service";
 import axios from "axios";
 
@@ -57,15 +56,11 @@ export const getGMBConnectionStatus = async (companyId: string) => {
       if (socialToken.refreshToken) tokens.refresh_token = socialToken.refreshToken;
       if (socialToken.expiryDate) tokens.expiry_date = socialToken.expiryDate;
 
-      const userResponse = await getUserProfile(tokens);
-
       return {
         success: true,
         isConnected: true,
         gmbData: {
-          email: userResponse?.email || socialToken.accountEmail || 'Unknown',
-          name: userResponse?.displayName || socialToken.displayName || 'Unknown',
-          picture: userResponse?.picture || null,
+          email: socialToken.accountEmail || 'Unknown',
           accountId: socialToken.accountId || null,
           connectedAt: socialToken.createdAt
         }

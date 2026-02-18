@@ -98,7 +98,9 @@ export async function markPinterestAccountsAsAddedInDb(
             where: {
                 companyId,
                 platform: "pinterest",
-                pinterestAccountId: pinterestAccountIds,
+                pinterestAccountId: {
+                    [require("sequelize").Op.in]: pinterestAccountIds
+                }
             },
         }
     );
@@ -282,10 +284,10 @@ export async function getPinterestAccountByIdFromDb(
 export async function assignPinterestAccountToClientInDb(
     companyId: string,
     pinterestAccountId: string,
-    clientId: number
+    clientId: string | null
 ) {
     const [updatedCount] = await MetaSocialAccount.update(
-        { assignedClientId: clientId || null, updatedAt: new Date() },
+        { assignedClientId: clientId ?? null, updatedAt: new Date() },
         {
             where: {
                 companyId,
@@ -306,7 +308,7 @@ export async function assignPinterestAccountToClientInDb(
  */
 export async function getPinterestAccountsByClientIdFromDb(
     companyId: string,
-    clientId: number
+    clientId: string
 ) {
     if (!companyId || !clientId) return [];
 

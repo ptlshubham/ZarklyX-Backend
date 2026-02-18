@@ -21,6 +21,11 @@ import { ItTicketsTimeline } from "../../routes/api-webapp/it-Management/it-Tick
 // import { SubRole } from "../../routes/api-webapp/roles/subrole-model";
 // Use a relative path to the route-local Google token model to avoid module alias issues
 import { SocialToken } from "../../routes/api-webapp/agency/social-Integration/social-token.model";
+import { LinkedInAccount } from "../../routes/api-webapp/agency/social-Integration/linkedin/linkedin-account.model";
+import { MetaSocialAccount } from "../../routes/api-webapp/agency/social-Integration/meta-social-account.model";
+import { FacebookAssignment } from "../../routes/api-webapp/agency/social-Integration/facebook/facebook-assignment.model";
+import { PinterestAssignment } from "../../routes/api-webapp/agency/social-Integration/pinterest/pinterest-assignment.model";
+import { GoogleBusinessAccount } from "../../routes/api-webapp/agency/social-Integration/google-business/google-business-account.model";
 import { Employee } from "../../routes/api-webapp/agency/employee/employee-model";
 import { EmployeeDocument } from "../../routes/api-webapp/agency/employee/employee-documents.model";
 
@@ -33,6 +38,9 @@ import { InfluencerCategory } from "../../routes/api-webapp/superAdmin/influence
 import { Influencer } from "../../routes/api-webapp/influencer/influencer-model";
 import { Industry } from "../../routes/api-webapp/superAdmin/influencer/industry/influencerIndustry-models";
 import { Platform } from "../../routes/api-webapp/superAdmin/influencer/platform/influencerPlatform-model";
+import { InfluencerCategoryMapping } from "../../routes/api-webapp/superAdmin/influencer/category/influencerCategoryMapping-model";
+import { InfluencerIndustryMapping } from "../../routes/api-webapp/superAdmin/influencer/industry/influencerIndustryMapping-model";
+import { InfluencerPlatformMapping } from "../../routes/api-webapp/superAdmin/influencer/platform/influencerPlatformMapping-model";
 import { ItemCategory } from "../../routes/api-webapp/accounting/item-Category/item-Category-model";
 import { Unit } from "../../routes/api-webapp/accounting/unit/unit-model";
 import { Item } from "../../routes/api-webapp/accounting/item/item-model";
@@ -70,10 +78,10 @@ import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/rbac/roles/roles
 import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permissions/permissions-model";
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
-import { initMetaSocialAccountModel, MetaSocialAccount } from "../../routes/api-webapp/agency/social-Integration/meta-social-account.model";
 import { initPostDetailsModel, PostDetails } from "../../routes/api-webapp/agency/social-Integration/social-posting/post-details.model";
 import { initPostScheduleModel, PostSchedule } from "../../routes/api-webapp/agency/social-Integration/social-posting/post-schedule.model";
 import { initPostMediaFilesModel, PostMediaFiles } from "../../routes/api-webapp/agency/social-Integration/social-posting/post-media-files.model";
+import { initMetaSocialAccountModel } from "../../routes/api-webapp/agency/social-Integration/meta-social-account.model";
 
 export {
   User,
@@ -86,6 +94,11 @@ export {
   BusinessType,
   BusinessSubcategory,
   SocialToken,
+  LinkedInAccount,
+  MetaSocialAccount,
+  FacebookAssignment,
+  PinterestAssignment,
+  GoogleBusinessAccount,
   Employee,
   EmployeeDocument,
   ItTickets,
@@ -94,6 +107,9 @@ export {
   Influencer,
   Industry,
   Platform,
+  InfluencerCategoryMapping,
+  InfluencerIndustryMapping,
+  InfluencerPlatformMapping,
   ItemCategory,
   Unit,
   Item,
@@ -136,7 +152,6 @@ export {
   ItTicketsAttachments,
   ItAssetsAttachments,
   ItTicketsTimeline,
-  MetaSocialAccount,
   PostDetails,
   PostSchedule,
   PostMediaFiles,
@@ -147,6 +162,7 @@ export function initControlDB(sequelize: Sequelize) {
   Company.initModel(sequelize);
   initRoleModel(sequelize);
   User.initModel(sequelize);
+  Company.initModel(sequelize);
   PremiumModule.initModel(sequelize);
   Category.initModel(sequelize);
   Clients.initModel(sequelize);
@@ -165,6 +181,11 @@ export function initControlDB(sequelize: Sequelize) {
   // Role.initModel(sequelize);
   // SubRole.initModel(sequelize);
   SocialToken.initModel(sequelize);
+  LinkedInAccount.initModel(sequelize);
+  MetaSocialAccount.initModel(sequelize);
+  FacebookAssignment.initModel(sequelize);
+  PinterestAssignment.initModel(sequelize);
+  GoogleBusinessAccount.initModel(sequelize);
   BusinessType.initModel(sequelize);
   BusinessSubcategory.initModel(sequelize);
   // GoogleToken.initModel(sequelize); 
@@ -175,6 +196,9 @@ export function initControlDB(sequelize: Sequelize) {
   Influencer.initModel(sequelize);
   Industry.initModel(sequelize);
   Platform.initModel(sequelize);
+  InfluencerCategoryMapping.initModel(sequelize);
+  InfluencerIndustryMapping.initModel(sequelize);
+  InfluencerPlatformMapping.initModel(sequelize);
 
   ItemCategory.initModel(sequelize);
   Unit.initModel(sequelize);
@@ -1457,12 +1481,20 @@ export function initControlDB(sequelize: Sequelize) {
     BusinessType,
     BusinessSubcategory,
     SocialToken,
+    LinkedInAccount,
+    MetaSocialAccount,
+    FacebookAssignment,
+    PinterestAssignment,
+    GoogleBusinessAccount,
     Employee,
     ItTickets,
     Influencer,
     InfluencerCategory,
     Industry,
     Platform,
+    InfluencerCategoryMapping,
+    InfluencerIndustryMapping,
+    InfluencerPlatformMapping,
     ItemCategory,
     ItAssetsManagement,
     ItTicketsAttachments,
@@ -1500,5 +1532,8 @@ export function initControlDB(sequelize: Sequelize) {
     Role,
     RolePermissions,
     UserPermissionOverrides,
+    PostDetails,
+    PostSchedule,
+    PostMediaFiles,
   };
 }
