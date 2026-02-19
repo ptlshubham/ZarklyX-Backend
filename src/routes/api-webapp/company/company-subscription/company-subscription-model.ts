@@ -65,63 +65,63 @@ export class CompanySubscription extends Model<
           comment: "Number of user seats purchased (for per-seat pricing plans)",
         },
         startDate: {
-            type: DataTypes.DATE,
-            allowNull: false,
-            defaultValue: DataTypes.NOW,
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
         },
         endDate: {
-            type: DataTypes.DATE,
-            allowNull: true,
+          type: DataTypes.DATE,
+          allowNull: true,
         },
         originalPrice: {
-            type: DataTypes.DECIMAL(10, 2),
-            allowNull: false,
-            comment: "Price before discount (base plan + addon modules)",
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: false,
+          comment: "Price before discount (base plan + addon modules)",
         },
         discountType: {
-            type: DataTypes.ENUM("percentage", "fixed"),
-            allowNull: true,
-            defaultValue: null,
-            comment: "Type of discount: percentage (0-100) or fixed amount",
+          type: DataTypes.ENUM("percentage", "fixed"),
+          allowNull: true,
+          defaultValue: null,
+          comment: "Type of discount: percentage (0-100) or fixed amount",
         },
         discountValue: {
-            type: DataTypes.DECIMAL(10, 2),
-            allowNull: true,
-            defaultValue: null,
-            comment: "Discount percentage (0-100) or fixed amount value",
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: true,
+          defaultValue: null,
+          comment: "Discount percentage (0-100) or fixed amount value",
         },
         discountAmount: {
-            type: DataTypes.DECIMAL(10, 2),
-            allowNull: false,
-            defaultValue: 0.00,
-            comment: "Calculated discount amount deducted from originalPrice",
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: false,
+          defaultValue: 0.00,
+          comment: "Calculated discount amount deducted from originalPrice",
         },
         addonModuleCost: {
-            type: DataTypes.DECIMAL(10, 2),
-            allowNull: false,
-            defaultValue: 0.00,
-            comment: "Total cost of addon modules purchased with this subscription",
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: false,
+          defaultValue: 0.00,
+          comment: "Total cost of addon modules purchased with this subscription",
         },
         addonPermissionCost: {
-            type: DataTypes.DECIMAL(10, 2),
-            allowNull: false,
-            defaultValue: 0.00,
-            comment: "Total cost of addon permissions purchased with this subscription",
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: false,
+          defaultValue: 0.00,
+          comment: "Total cost of addon permissions purchased with this subscription",
         },
         price: {
-            type: DataTypes.DECIMAL(10, 2),
-            allowNull: false,
-            comment: "Final price paid by company (originalPrice - discountAmount)",
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: false,
+          comment: "Final price paid by company (originalPrice - discountAmount)",
         },
         status: {
-            type: DataTypes.ENUM("active","expired","cancelled"),
-            allowNull: true,
-            defaultValue: "active",
+          type: DataTypes.ENUM("active", "expired", "cancelled"),
+          allowNull: true,
+          defaultValue: "active",
         },
         isCurrent: {
-            type: DataTypes.BOOLEAN,
-            allowNull: false,
-            defaultValue: true,
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: true,
         },
         isActive: {
           type: DataTypes.BOOLEAN,
@@ -134,14 +134,14 @@ export class CompanySubscription extends Model<
           defaultValue: false,
         },
         createdAt: {
-            type: DataTypes.DATE,
-            allowNull: false,
-            defaultValue: DataTypes.NOW,
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
         },
         updatedAt: {
-            type: DataTypes.DATE,
-            allowNull: false,
-            defaultValue: DataTypes.NOW,
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
         },
       },
       {
@@ -170,10 +170,12 @@ export class CompanySubscription extends Model<
         ],
         validate: {
           priceCalculation() {
-            // Validate that price = originalPrice - discountAmount
-            const calculatedPrice = parseFloat(this.originalPrice as any) - parseFloat(this.discountAmount as any);
+            // Validate that price = (originalPrice - discountAmount) + addonModuleCost + addonPermissionCost
+            const basePrice = parseFloat(this.originalPrice as any) - parseFloat(this.discountAmount as any);
+            const totalAddons = parseFloat(this.addonModuleCost as any) + parseFloat(this.addonPermissionCost as any);
+            const calculatedPrice = basePrice + totalAddons;
             if (Math.abs(calculatedPrice - parseFloat(this.price as any)) > 0.01) {
-              throw new Error("Price must equal originalPrice minus discountAmount");
+              throw new Error("Price must equal (originalPrice - discountAmount) + addonModuleCost + addonPermissionCost");
             }
           },
           discountValidation() {

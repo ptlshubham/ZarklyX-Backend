@@ -36,7 +36,7 @@ router.post("/createExpenseItem/", async (req: Request, res: Response): Promise<
     }
 });
 
-// GET /accounting/expenses/expense-item/getExpenseItemById/:id?companyId=
+// GET /accounting/expense-item/getExpenseItemById/:id?companyId=
 router.get("/getExpenseItemById/:id", async (req: Request, res: Response): Promise<any> => {
     try {
         const data = await getExpenseItemById(
@@ -54,6 +54,26 @@ router.get("/getExpenseItemById/:id", async (req: Request, res: Response): Promi
         res.json({ success: true, data });
     } catch (err) {
         return serverError(res, "Failed to fetch Expense item.");
+    }
+});
+
+// GET /accounting/expense-item/getExpenseItemsByCompanyId?companyId=
+router.get("/getExpenseItemsByCompanyId", async (req: Request, res: Response): Promise<any> => {
+    try {
+        const companyId = req.query.companyId as string;
+        
+        if (!companyId) {
+            return res.status(400).json({
+                success: false,
+                message: "Company ID is required",
+            });
+        }
+        
+        const data = await getActiveExpenseItemsByCompany(companyId);
+        
+        res.json({ success: true, data });
+    } catch (err) {
+        return serverError(res, "Failed to fetch Expense items.");
     }
 });
 

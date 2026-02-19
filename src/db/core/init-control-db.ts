@@ -54,6 +54,9 @@ import { PurchaseOrder } from "../../routes/api-webapp/accounting/purchaseOrder/
 import { PurchaseOrderItem } from "../../routes/api-webapp/accounting/purchaseOrder/purchase-order-item-model";
 import { Payments } from "../../routes/api-webapp/accounting/payments/payments-model";
 import { PaymentsDocuments } from "../../routes/api-webapp/accounting/payments/payments-documents-model";
+import { Expenses } from "../../routes/api-webapp/accounting/expenses/expenses-model";
+import { ExpenseItem } from "../../routes/api-webapp/accounting/expenses/expenses-item/expense-item-model";
+import { ExpenseLineItem } from "../../routes/api-webapp/accounting/expenses/expense-line-item-model";
 import { AccountingDocument } from "../../routes/api-webapp/accounting/accounting-document-model";
 import { ClientLedger } from "../../routes/api-webapp/accounting/client-ledger/client-ledger-model";
 import { Modules, initModulesModel } from "../../routes/api-webapp/superAdmin/modules/modules-model";
@@ -72,9 +75,6 @@ import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permi
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
 import { ClientUserAssignment, initClientUserAssignmentModel } from "../../routes/api-webapp/agency/clients/client-assignment/client-assignment-model";
-import { Expenses } from "../../routes/api-webapp/accounting/expenses/expenses-model";
-import { ExpenseLineItem } from "../../routes/api-webapp/accounting/expenses/expense-line-item-model";
-import { ExpenseItem } from "../../routes/api-webapp/accounting/expenses/expenses-item/expense-item-model";
 
 import { Warehouse } from "../../routes/api-webapp/inventory-management/warehouse/warehouse-model";
 import { StockTransaction } from "../../routes/api-webapp/inventory-management/stock/stock-transaction/stock-transaction-model";
@@ -122,6 +122,9 @@ export {
   PurchaseOrderItem,
   Payments,
   PaymentsDocuments,
+  Expenses,
+  ExpenseItem,
+  ExpenseLineItem,
   AccountingDocument,
   ClientLedger,
   Modules,
@@ -144,9 +147,6 @@ export {
   ItTicketsAttachments,
   ItAssetsAttachments,
   ItTicketsTimeline,
-  Expenses,
-  ExpenseLineItem,
-  ExpenseItem,
   Warehouse,
   StockTransaction,
   StockBalance,
@@ -210,6 +210,9 @@ export function initControlDB(sequelize: Sequelize) {
   PurchaseOrderItem.initModel(sequelize);
   Payments.initModel(sequelize);
   PaymentsDocuments.initModel(sequelize);
+  Expenses.initModel(sequelize);
+  ExpenseItem.initModel(sequelize);
+  ExpenseLineItem.initModel(sequelize);
   AccountingDocument.initModel(sequelize);
   ClientLedger.initModel(sequelize);
   initModulesModel(sequelize);
@@ -1047,6 +1050,96 @@ export function initControlDB(sequelize: Sequelize) {
     as: "assets",
   });
 
+  /* Expenses <-> Company */
+  Company.hasMany(Expenses, {
+    foreignKey: "companyId",
+    as: "expenses",
+    constraints: false,
+  });
+  Expenses.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
+
+  /* Expenses <-> Vendor */
+  Vendor.hasMany(Expenses, {
+    foreignKey: "vendorId",
+    as: "expenses",
+    constraints: false,
+  });
+  Expenses.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
+
+  /* Expenses <-> Clients */
+  Clients.hasMany(Expenses, {
+    foreignKey: "clientId",
+    as: "expenses",
+    constraints: false,
+  });
+  Expenses.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
+
+  /* Expenses <-> ExpenseLineItem */
+  Expenses.hasMany(ExpenseLineItem, {
+    foreignKey: "expenseId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(Expenses, {
+    foreignKey: "expenseId",
+    as: "expense",
+  });
+
+  /* ExpenseItem <-> ExpenseLineItem */
+  ExpenseItem.hasMany(ExpenseLineItem, {
+    foreignKey: "expenseItemId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(ExpenseItem, {
+    foreignKey: "expenseItemId",
+    as: "expenseItem",
+  });
+
+  /* Company <-> ExpenseItem */
+  Company.hasMany(ExpenseItem, {
+    foreignKey: "companyId",
+    as: "expenseItems",
+  });
+  ExpenseItem.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+
+  /* Unit <-> ExpenseLineItem */
+  Unit.hasMany(ExpenseLineItem, {
+    foreignKey: "unitId",
+    as: "expenseLineItems",
+  });
+  ExpenseLineItem.belongsTo(Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  });
+
+  /* Expenses <-> ExpenseItem (Many-to-Many through ExpenseLineItem) */
+  Expenses.belongsToMany(ExpenseItem, {
+    through: ExpenseLineItem,
+    foreignKey: "expenseId",
+    otherKey: "expenseItemId",
+    as: "expenseItems",
+  });
+  ExpenseItem.belongsToMany(Expenses, {
+    through: ExpenseLineItem,
+    foreignKey: "expenseItemId",
+    otherKey: "expenseId",
+    as: "expenses",
+  });
+
   ItAssetsManagement.belongsTo(ItemCategory, {
     foreignKey: "categoryId",
     as: "category",
@@ -1387,104 +1480,21 @@ export function initControlDB(sequelize: Sequelize) {
   });
 
   // ClientUserAssignment <-> User
-  User.hasMany(ClientUserAssignment, { 
-    foreignKey: "userId" 
+  User.hasMany(ClientUserAssignment, {
+    foreignKey: "userId"
   });
-  ClientUserAssignment.belongsTo(User, { 
-    foreignKey: "userId" 
+  ClientUserAssignment.belongsTo(User, {
+    foreignKey: "userId"
   });
 
   // ClientUserAssignment <-> Clients
-  ClientUserAssignment.belongsTo(Clients, { 
-    foreignKey: "clientId" 
+  ClientUserAssignment.belongsTo(Clients, {
+    foreignKey: "clientId"
   });
-  Clients.hasMany(ClientUserAssignment, { 
-    foreignKey: "clientId" 
-  });
-
-  /*** Expenses <-> Company */
-  Company.hasMany(Expenses, {
-    foreignKey: "companyId",
-    as: "expenses",
-  });
-  Expenses.belongsTo(Company, {
-    foreignKey: "companyId",
-    as: "company",
+  Clients.hasMany(ClientUserAssignment, {
+    foreignKey: "clientId"
   });
 
-  /*** Expenses <-> Vendor */
-  Vendor.hasMany(Expenses, {
-    foreignKey: "vendorId",
-    as: "expenses",
-    constraints: false,
-  });
-  Expenses.belongsTo(Vendor, {
-    foreignKey: "vendorId",
-    as: "vendor",
-    constraints: false,
-  });
-
-  /*** Expenses <-> Clients */
-  Clients.hasMany(Expenses, {
-    foreignKey: "clientId",
-    as: "expenses",
-    constraints: false,
-  });
-  Expenses.belongsTo(Clients, {
-    foreignKey: "clientId",
-    as: "client",
-    constraints: false,
-  });
-
-  /*** ExpenseItem <-> Company */
-  Company.hasMany(ExpenseItem, {
-    foreignKey: "companyId",
-    as: "expenseItems",
-  });
-  ExpenseItem.belongsTo(Company, {
-    foreignKey: "companyId",
-    as: "company",
-  });
-
-  /*** Expenses <-> ExpenseLineItem */
-  Expenses.hasMany(ExpenseLineItem, {
-    foreignKey: "expenseId",
-    as: "expenseLineItems",
-  });
-  ExpenseLineItem.belongsTo(Expenses, {
-    foreignKey: "expenseId",
-    as: "expense",
-  });
-
-  /*** ExpenseItem <-> ExpenseLineItem */
-  ExpenseItem.hasMany(ExpenseLineItem, {
-    foreignKey: "expenseItemId",
-    as: "lineItems",
-  });
-  ExpenseLineItem.belongsTo(ExpenseItem, {
-    foreignKey: "expenseItemId",
-    as: "expenseItem",
-  });
-
-  /*** Unit <-> ExpenseLineItem */
-  Unit.hasMany(ExpenseLineItem, {
-    foreignKey: "unitId",
-    as: "expenseLineItems",
-  });
-  ExpenseLineItem.belongsTo(Unit, {
-    foreignKey: "unitId",
-    as: "unit",
-  });
-
-  /*** Company <-> ExpenseLineItem */
-  Company.hasMany(ExpenseLineItem, {
-    foreignKey: "companyId",
-    as: "expenseLineItems",
-  });
-  ExpenseLineItem.belongsTo(Company, {
-    foreignKey: "companyId",
-    as: "company",
-  });
   //Compony <-> Warehouse
   Company.hasMany(Warehouse, {
     foreignKey: "companyId",

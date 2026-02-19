@@ -36,6 +36,7 @@ import { Op } from "sequelize";
 import ErrorLogger from "../../../../db/core/logger/error-logger";
 import { detectCountryCode } from "../../../../services/phone-service";
 import { createLoginHistory, recordFailedLogin } from "../../../../services/loginHistory-service";
+import { getRoleByPriorityAndScope } from "../../roles/role-handler";
 
 
 const ZARKLYX_API_KEY =
@@ -1053,6 +1054,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
         success: false,
         message: "userId, noOfClientsRange and non-empty selectedModules[] are required",
       });
+      return;
     }
 
     // Load user
@@ -1098,6 +1100,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
         message:
           "Invalid noOfClientsRange. Expected like '0-5', '5-15', '15-20' or '50+'.",
       });
+      return;
     }
 
     //  Build  premium modules
@@ -1174,6 +1177,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
         success: false,
         message: "No valid premium provided.",
       });
+      return;
     }
 
     //Save on company (only IDs, comma separated)
@@ -1182,7 +1186,19 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     company.accountType = user.userType; // Set accountType from user's userType
     await company.save({ transaction: t });
 
+    // Get the Super Admin role (priority 0, platform scope)
+    const superAdminRole = await getRoleByPriorityAndScope(0, "platform");
+    if (!superAdminRole) {
+      await t.rollback();
+      res.status(500).json({
+        success: false,
+        message: "Super admin role not found"
+      });
+      return;
+    }
+
     // Finish user registration
+    user.roleId = superAdminRole.id;
     user.isRegistering = false;
     user.isActive = true;
     user.registrationStep = 6;
@@ -1191,7 +1207,7 @@ router.post("/register/final", async (req: Request, res: Response): Promise<void
     // -------- Generate Auth Token (Login Activation) --------
     const token = await generateToken(
       {
-        userId: user.id,
+        id: user.id,
         companyId: company.id,
         role: "user",
       },
@@ -2394,6 +2410,8 @@ router.post("/login/verify-otp", async (req: Request, res: Response): Promise<vo
         lastName: user.lastName,
         secretCode: user.secretCode || null,
         companyId: user.companyId || null,
+        userType: user.userType || null,
+        roleId: user.roleId || null,
         ...(user.isRegistering ? {} : { token }),
         isRegistering: user.isRegistering,
       },

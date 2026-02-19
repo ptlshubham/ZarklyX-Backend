@@ -108,7 +108,7 @@ export async function bulkCreateCompanyPermissions(
         isActive: true,
         isDeleted: false,
       })),
-      { transaction }
+      { transaction, ignoreDuplicates: true }
     );
 
     return companyPermissions;

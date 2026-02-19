@@ -5,6 +5,7 @@ import { SubscriptionPlanModule } from "../../../api-webapp/superAdmin/subscript
 import { SubscriptionPlanPermission } from "../../../api-webapp/superAdmin/subscription-plan-permission/subscription-plan-permission-model";
 import { CompanyModule } from "../../../api-webapp/company/company-module/company-module-model";
 import { CompanyPermission } from "../../../api-webapp/company/company-permission/company-permission-model";
+import { Permissions } from "../../../api-webapp/superAdmin/permissions/permissions-model";
 
 // Create a new company subscription
 export const createCompanySubscription = async (fields: {
@@ -35,7 +36,7 @@ export const createCompanySubscription = async (fields: {
   // Calculate endDate based on startDate + duration
   const startDate = fields.startDate || new Date();
   const endDate = new Date(startDate);
-  
+
   if (subscriptionPlan.timing_unit === "month") {
     endDate.setMonth(endDate.getMonth() + subscriptionPlan.timing);
   } else if (subscriptionPlan.timing_unit === "year") {
@@ -64,6 +65,14 @@ export const createCompanySubscription = async (fields: {
     isDeleted: fields.isDeleted ?? false,
   }, { transaction: t });
 
+  // Get existing permissionIds for the company to avoid duplicates
+  const existingPermissions = await CompanyPermission.findAll({
+    where: { companyId: fields.companyId },
+    attributes: ['permissionId'],
+    transaction: t
+  });
+  const existingPermissionIds = new Set(existingPermissions.map(cp => cp.permissionId));
+
   // Copy plan modules to company_modules (source: "plan")
   const planModules = await SubscriptionPlanModule.findAll({
     where: {
@@ -85,6 +94,31 @@ export const createCompanySubscription = async (fields: {
       isDeleted: false
     }));
     await CompanyModule.bulkCreate(companyModules, { transaction: t });
+
+    // Add permissions for plan modules
+    const moduleIds = planModules.map(pm => pm.moduleId);
+    const modulePermissions = await Permissions.findAll({
+      where: { moduleId: moduleIds, isActive: true, isDeleted: false },
+      transaction: t,
+    });
+
+    if (modulePermissions.length > 0) {
+      const planModulePermissionEntries = modulePermissions
+        .filter(p => !existingPermissionIds.has(p.id))
+        .map(p => ({
+          companyId: fields.companyId,
+          permissionId: p.id,
+          subscriptionId: subscription.id,
+          source: "plan" as const,
+          purchaseDate: startDate,
+          price: 0, // Included in plan
+          isActive: true,
+          isDeleted: false
+        }));
+      if (planModulePermissionEntries.length > 0) {
+        await CompanyPermission.bulkCreate(planModulePermissionEntries, { transaction: t, ignoreDuplicates: true });
+      }
+    }
   }
 
   // Copy plan permissions to company_permissions (source: "plan")
@@ -97,17 +131,21 @@ export const createCompanySubscription = async (fields: {
   });
 
   if (planPermissions.length > 0) {
-    const companyPermissions = planPermissions.map(pp => ({
-      companyId: fields.companyId,
-      permissionId: pp.permissionId,
-      subscriptionId: subscription.id, // Link to subscription
-      source: "plan" as const,
-      purchaseDate: startDate,
-      price: 0, // Included in subscription
-      isActive: true,
-      isDeleted: false
-    }));
-    await CompanyPermission.bulkCreate(companyPermissions, { transaction: t });
+    const companyPermissions = planPermissions
+      .filter(pp => !existingPermissionIds.has(pp.permissionId))
+      .map(pp => ({
+        companyId: fields.companyId,
+        permissionId: pp.permissionId,
+        subscriptionId: subscription.id, // Link to subscription
+        source: "plan" as const,
+        purchaseDate: startDate,
+        price: 0, // Included in subscription
+        isActive: true,
+        isDeleted: false
+      }));
+    if (companyPermissions.length > 0) {
+      await CompanyPermission.bulkCreate(companyPermissions, { transaction: t, ignoreDuplicates: true });
+    }
   }
 
   // Add addon modules purchased during subscription (source: "addon")
@@ -123,21 +161,50 @@ export const createCompanySubscription = async (fields: {
       isDeleted: false
     }));
     await CompanyModule.bulkCreate(addonModuleEntries, { transaction: t });
+
+    // Add permissions for addon modules
+    const moduleIds = fields.addonModules.map(am => am.moduleId);
+    const modulePermissions = await Permissions.findAll({
+      where: { moduleId: moduleIds, isActive: true, isDeleted: false },
+      transaction: t,
+    });
+
+    if (modulePermissions.length > 0) {
+      const addonModulePermissionEntries = modulePermissions
+        .filter(p => !existingPermissionIds.has(p.id))
+        .map(p => ({
+          companyId: fields.companyId,
+          permissionId: p.id,
+          subscriptionId: subscription.id,
+          source: "addon" as const,
+          purchaseDate: startDate,
+          price: 0, // Included with module
+          isActive: true,
+          isDeleted: false
+        }));
+      if (addonModulePermissionEntries.length > 0) {
+        await CompanyPermission.bulkCreate(addonModulePermissionEntries, { transaction: t, ignoreDuplicates: true });
+      }
+    }
   }
 
   // Add addon permissions purchased during subscription (source: "addon")
   if (fields.addonPermissions && fields.addonPermissions.length > 0) {
-    const addonPermissionEntries = fields.addonPermissions.map(addon => ({
-      companyId: fields.companyId,
-      permissionId: addon.permissionId,
-      subscriptionId: subscription.id, // Link to subscription (purchased WITH subscription)
-      source: "addon" as const,
-      purchaseDate: startDate,
-      price: addon.price,
-      isActive: true,
-      isDeleted: false
-    }));
-    await CompanyPermission.bulkCreate(addonPermissionEntries, { transaction: t });
+    const addonPermissionEntries = fields.addonPermissions
+      .filter(addon => !existingPermissionIds.has(addon.permissionId))
+      .map(addon => ({
+        companyId: fields.companyId,
+        permissionId: addon.permissionId,
+        subscriptionId: subscription.id, // Link to subscription (purchased WITH subscription)
+        source: "addon" as const,
+        purchaseDate: startDate,
+        price: addon.price,
+        isActive: true,
+        isDeleted: false
+      }));
+    if (addonPermissionEntries.length > 0) {
+      await CompanyPermission.bulkCreate(addonPermissionEntries, { transaction: t, ignoreDuplicates: true });
+    }
   }
 
   return subscription;

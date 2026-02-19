@@ -1,5 +1,8 @@
 import { Transaction } from "sequelize";
 import { CompanyModule } from "../../../api-webapp/company/company-module/company-module-model";
+import { Modules } from "../../../api-webapp/superAdmin/modules/modules-model";
+import { CompanyPermission } from "../../../api-webapp/company/company-permission/company-permission-model";
+import { Permissions } from "../../../api-webapp/superAdmin/permissions/permissions-model";
 
 // Create a new company module mapping
 export const createCompanyModule = async (fields: {
@@ -24,7 +27,7 @@ export const createCompanyModule = async (fields: {
 
 // Bulk create company modules (for subscription plan modules or addon purchases)
 export const bulkCreateCompanyModules = async (
-  companyId: string, 
+  companyId: string,
   modules: Array<{ moduleId: string; subscriptionId?: string | null; source?: "plan" | "addon"; price?: number }>,
   t: Transaction
 ) => {
@@ -100,4 +103,60 @@ export const disableAllCompanyModules = async (companyId: string, t: Transaction
     { where: { companyId }, transaction: t }
   );
   return true;
+};
+
+// Get company modules with their associated permissions
+export const getCompanyModulesWithPermissions = async (companyId: string) => {
+  // Get all active company modules
+  const companyModules = await CompanyModule.findAll({
+    where: { companyId, isActive: true, isDeleted: false },
+    include: [{
+      model: Modules,
+      as: "module",
+      attributes: ['id', 'name', 'description', 'price'],
+    }],
+  });
+
+  // Get all active company permissions
+  const companyPermissions = await CompanyPermission.findAll({
+    where: { companyId, isActive: true, isDeleted: false },
+    include: [{
+      model: Permissions,
+      as: "permission",
+      attributes: ['id', 'name', 'description', 'action', 'moduleId', 'price'],
+    }],
+  });
+
+  // Group permissions by moduleId
+  const permissionsByModule = companyPermissions.reduce((acc, cp) => {
+    const moduleId = (cp as any).permission?.moduleId;
+    if (moduleId) {
+      if (!acc[moduleId]) acc[moduleId] = [];
+      acc[moduleId].push({
+        id: cp.id,
+        permissionId: cp.permissionId,
+        permissionName: (cp as any).permission?.name,
+        permissionDescription: (cp as any).permission?.description,
+        action: (cp as any).permission?.action,
+        source: cp.source,
+        purchaseDate: cp.purchaseDate,
+        price: cp.price,
+      });
+    }
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  // Combine modules with their permissions
+  const modulesWithPermissions = companyModules.map(cm => ({
+    id: cm.id,
+    moduleId: cm.moduleId,
+    moduleName: (cm as any).module?.name,
+    moduleDescription: (cm as any).module?.description,
+    source: cm.source,
+    purchaseDate: cm.purchaseDate,
+    price: cm.price,
+    permissions: permissionsByModule[cm.moduleId] || [],
+  }));
+
+  return modulesWithPermissions;
 };

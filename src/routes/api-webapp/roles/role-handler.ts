@@ -198,6 +198,15 @@ export async function getRoleByName(
 }
 
 /**
+ * Get role by priority and scope
+ */
+export async function getRoleByPriorityAndScope(priority: number, scope: "platform" | "company") {
+  return await Role.findOne({
+    where: { priority, scope, isDeleted: false },
+  });
+}
+
+/**
  * Update role
  */
 export async function updateRole(
@@ -207,6 +216,8 @@ export async function updateRole(
     description?: string | null;
     isActive?: boolean;
     baseRoleId?: string | null;
+    priority?: number;
+    level?: number | null;
   },
   transaction?: Transaction
 ) {
@@ -232,6 +243,8 @@ export async function updateRoleRestricted(
     description?: string | null;
     isActive?: boolean;
     baseRoleId?: string | null;
+    priority?: number;
+    level?: number | null;
   },
   transaction?: Transaction
 ) {

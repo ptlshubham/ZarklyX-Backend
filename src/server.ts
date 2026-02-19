@@ -56,6 +56,7 @@ import itAssetsManagementRoutes from './routes/api-webapp/it-Management/it-Asset
 // import './cron/warranty-reminder.cron';
 import paymentsRouter from './routes/api-webapp/accounting/payments/payments-api'
 import debitNoteRouter from './routes/api-webapp/accounting/debtit-Note/debit-note-api';
+import expensesRouter from './routes/api-webapp/accounting/expenses/expenses-api';
 import modulesRouter from './routes/api-webapp/superAdmin/modules/module-api';
 import permissionsRouter from './routes/api-webapp/superAdmin/permissions/permissions-api';
 import subscriptionPlanRouter from './routes/api-webapp/superAdmin/subscription-plan/subscription-plan-api';
@@ -167,8 +168,8 @@ app.use("/accounting/purchaseOrder",purchaseOrderRouter);
 app.use("/itManagement/itAssetsManagement", itAssetsManagementRoutes);
 app.use("/accounting/payments",paymentsRouter);
 app.use("/accounting/debit-note",debitNoteRouter);
-app.use("/accounting/expenseItem",expenseItemRouter);
-app.use("accounting/expense",expenseRouter);
+app.use("/accounting/expense",expensesRouter);
+app.use("/accounting/expense-item",expenseItemRouter);
 app.use("/superAdmin/modules",modulesRouter);
 app.use("/superAdmin/permissions",permissionsRouter);
 app.use("/superAdmin/subscription-plan",subscriptionPlanRouter);

@@ -73,7 +73,7 @@ export class ExpenseLineItem extends Model<
                     key: "id",
                 },
                 onDelete: "CASCADE",
-                allowNull: false,
+                allowNull: true,
             },
             quantity: {
                 type: DataTypes.DECIMAL(10, 2),

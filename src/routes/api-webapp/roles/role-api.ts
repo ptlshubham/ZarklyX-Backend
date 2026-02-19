@@ -312,7 +312,7 @@ router.get("/getRoleByName", async (req: Request, res: Response) => {
 router.put("/updateRole/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
   if (Array.isArray(id)) id = id[0];
-  const { name, description, isActive, permissionIds } = req.body;
+  const { name, description, isActive, permissionIds, priority, level } = req.body;
 
   if (permissionIds !== undefined && !Array.isArray(permissionIds)) {
     return res.status(400).json({
@@ -323,7 +323,7 @@ router.put("/updateRole/:id", async (req: Request, res: Response) => {
 
   const t = await dbInstance.transaction();
   try {
-    const role = await updateRole(id, { name, description, isActive }, t);
+    const role = await updateRole(id, { name, description, isActive, priority, level }, t);
 
     if (!role) {
       await t.rollback();
@@ -370,7 +370,7 @@ router.put("/updateRole/:id", async (req: Request, res: Response) => {
 router.put("/updateRoleRestricted/:id", async (req: Request, res: Response) => {
   let { id } = req.params;
   if (Array.isArray(id)) id = id[0];
-  const { name, description, isActive, baseRoleId, permissionIds } = req.body;
+  const { name, description, isActive, baseRoleId, permissionIds, priority, level } = req.body;
 
   if (permissionIds !== undefined && !Array.isArray(permissionIds)) {
     return res.status(400).json({
@@ -409,7 +409,7 @@ router.put("/updateRoleRestricted/:id", async (req: Request, res: Response) => {
       }
     }
 
-    const role = await updateRoleRestricted(id, { name, description, isActive, baseRoleId }, t);
+    const role = await updateRoleRestricted(id, { name, description, isActive, baseRoleId, priority, level }, t);
 
     if (!role) {
       await t.rollback();
