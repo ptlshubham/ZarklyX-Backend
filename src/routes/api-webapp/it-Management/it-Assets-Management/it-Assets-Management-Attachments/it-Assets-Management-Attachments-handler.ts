@@ -45,7 +45,6 @@ export async function removeItAssetsAttachmentByUser(
 
   if (!attachment) return null;
 
-  // delete file
   const absolutePath = path.join(
     process.cwd(),
     "src",
@@ -58,5 +57,5 @@ export async function removeItAssetsAttachmentByUser(
   }
 
   await attachment.destroy({ transaction: t });
-  return true;
+  return {id:attachmentId};
 }

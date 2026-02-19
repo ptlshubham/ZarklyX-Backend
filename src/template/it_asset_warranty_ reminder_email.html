@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>IT Asset Warranty Reminder</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+</head>
+
+<body style="margin:0; padding:0; background:#f4f6f8; font-family:Arial, sans-serif; color:#0f2d2f;">
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8; padding:30px 0;">
+        <tr>
+            <td align="center">
+
+                <!-- ================= SINGLE WRAPPER ================= -->
+                <table width="100%" cellpadding="0" cellspacing="0" style="
+                    max-width:600px;
+                    background:#ffffff;
+                    border-radius:12px 12px 0 0;
+                    box-shadow:0 10px 25px rgba(0,0,0,0.08);
+                    overflow:hidden;
+                ">
+
+                    <!-- ================= MAIN CONTENT ================= -->
+                    <tr>
+                        <td style="padding:36px;">
+
+                            <!-- HEADER -->
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td align="left">
+                                        <img src="https://zarklyx.com/assets/img/logo-dark@2x.png" alt="Company Logo"
+                                            width="180" style="display:block;">
+                                    </td>
+                                    <td align="right">
+                                        <a href="#" style="margin-left:10px; color:#0f2d2f; font-size:18px;"><i
+                                                class="fab fa-facebook-f"></i></a>
+                                        <a href="#" style="margin-left:10px; color:#0f2d2f; font-size:18px;"><i
+                                                class="fab fa-x-twitter"></i></a>
+                                        <a href="#" style="margin-left:10px; color:#0f2d2f; font-size:18px;"><i
+                                                class="fab fa-instagram"></i></a>
+                                        <a href="#" style="margin-left:10px; color:#0f2d2f; font-size:18px;"><i
+                                                class="fab fa-linkedin-in"></i></a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- TITLE -->
+                            <h2 style="margin:24px 0 12px;">IT Asset Warranty Reminder</h2>
+
+                            <!-- GREETING -->
+                            {{#if isCompanyAsset}}
+                            <p style="font-size:20px;">Dear IT Team,</p>
+                            {{else}}
+                            <p style="font-size:20px;">Hi {{ClientName}},</p>
+                            {{/if}}
+
+                            <!-- MESSAGE -->
+                            <p style="font-size:18px; line-height:1.6;">
+                                This is an automated reminder from <strong>{{CompanyName}}</strong> regarding
+                                the warranty status of one of your IT assets.
+                            </p>
+
+                            <!-- DETAILS BOX -->
+                            <table width="100%" cellpadding="0" cellspacing="0" style="
+                                margin:26px 0;
+                                background:#f7f9fb;
+                                border-radius:12px;
+                            ">
+                                <tr>
+                                    <td style="padding:20px; font-size:17px; line-height:1.8;">
+                                        <strong>Asset Name:</strong> {{AssetName}}<br>
+                                        <strong>Warranty End Date:</strong> {{WarrantyEndDate}}<br>
+                                        <strong>Days Left:</strong> {{DaysLeft}}<br>
+                                        <strong>Status:</strong> {{WarrantyStatus}}
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- STATUS MESSAGE -->
+                            <p style="font-size:18px; line-height:1.6;">
+                                {{StatusMessage}}
+                            </p>
+
+                            <!-- INFO -->
+                            <p style="font-size:18px; line-height:1.6;">
+                                We recommend taking necessary action to ensure uninterrupted support
+                                and maintenance of your asset.
+                            </p>
+
+                            <!-- SIGN OFF -->
+                            <p style="font-size:16px; margin-top:22px;">
+                                Thanks,<br>
+                                <strong>The {{CompanyName}} Team</strong>
+                            </p>
+
+                            <p style="font-size:14px; margin-top:26px;">
+                                Download our app for Google & Mac
+                            </p>
+
+                            <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
+                                width="120" style="display:inline-block;">
+                            &nbsp;
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
+                                width="120" style="display:inline-block;">
+
+                        </td>
+                    </tr>
+
+                    <!-- ================= FOOTER ================= -->
+                    <tr>
+                        <td style="
+                            background:#000000;
+                            padding:32px 20px;
+                            text-align:center;
+                            border-radius:16px 16px 0 0;
+                        ">
+
+                            <p style="margin:0 0 14px; font-size:13px; color:#cccccc;">
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Our Work</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Services</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">About Us</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Insights</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Careers</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Privacy Policy</a> ·
+                                <a href="#" style="color:#cccccc; text-decoration:underline;">Terms of Service</a>
+                            </p>
+
+                            <p style="margin:0 0 6px; font-size:13px; color:#cccccc;">
+                                If you have any questions, contact us at
+                                <a href="mailto:zarklyx@gmail.com" style="color:#ffffff; text-decoration:underline;">
+                                    zarklyx@gmail.com
+                                </a>
+                            </p>
+
+                            <p style="margin:0 0 18px; font-size:13px;">
+                                <a href="#" style="color:#ffffff; text-decoration:underline;">Unsubscribe</a>
+                                <span style="color:#cccccc;"> from this type of email.</span>
+                            </p>
+
+                            <p style="margin:0; font-size:13px; color:#888888;">
+                                © ZarklyX Your Company {{currentYear}}.
+                            </p>
+
+                        </td>
+                    </tr>
+
+                </table>
+                <!-- ================= END WRAPPER ================= -->
+
+            </td>
+        </tr>
+    </table>
+
+</body>
+
+</html>

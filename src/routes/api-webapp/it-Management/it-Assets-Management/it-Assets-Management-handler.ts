@@ -1,8 +1,34 @@
 import { Op, Transaction } from "sequelize";
 import { ItAssetsManagement } from "./it-Assets-Management-model";
 import { ItemCategory } from "../../accounting/item-Category/item-Category-model";
+import { Clients } from "../../agency/clients/clients-model";
+import { Employee } from "../../agency/employee/employee-model";
+import { User } from "../../authentication/user/user-model";
+const ASSET_TYPE = ["Product", "Service"]
+const PAYMENT_MODES = ["UPI", "Cash", "Card", "Cheque", "Net Banking", "RTGS", "Bank Transfer", "NEFT", "Other"]
+const PAYMENT_STATUS = ["Paid", "Pending"]
+const PURCHASED_BY = ["Company", "Client"]
+const PAID_BY = ["Company", "Client"]
 
+export function throwValidation(msg: string): never {
+    const e = new Error(msg);
+    e.name = "ValidationError";
+    throw e;
+}
 
+export function validateEnum(value: any, validValues: string[], fieldName: string) {
+    if (value && !validValues.includes(value)) {
+        throwValidation(`Invalid ${fieldName}. Must be one of: ${validValues.join(", ")}`);
+    }
+}
+
+export function validateAssetEnum(data: any) {
+    validateEnum(data.assetType, ASSET_TYPE, "assetType");
+    validateEnum(data.paymentMode, PAYMENT_MODES, "paymentMode");
+    validateEnum(data.paymentStatus, PAYMENT_STATUS, "paymentStatus");
+    validateEnum(data.purchasedBy, PURCHASED_BY, "purchasedBy");
+    validateEnum(data.paidBy, PAID_BY, "paidBy");
+}
 function calculateRenewalReminderDate(
     expiryDate: Date,
     daysBefore = 30
@@ -22,43 +48,41 @@ function validateAssetDates(data: any, existing?: any) {
     const warrantyEndDate = data.warrantyEndDate ? new Date(data.warrantyEndDate) : existing?.warrantyEndDate;
 
     const renewalReminderDate = data.renewalReminderDate ? new Date(data.renewalReminderDate) : existing?.renewalReminderDate;
-   
+
 
     if (assetType === "Service") {
         if (!startDate || !endDate) {
-            throw new Error("Start date and End date are required for service assets.");
+            throwValidation("Start date and End date are required for service assets.");
         }
     }
 
     if (assetType === "Product") {
         if (!startDate || !endDate || !purchaseDate || !warrantyStartDate || !warrantyEndDate) {
-            throw new Error(
+            throwValidation(
                 "Start date, End date, Purchase date, Warranty start date and Warranty end date are required for product assets."
             );
         }
     }
 
     if (purchaseDate && startDate && purchaseDate > startDate) {
-        throw new Error("Purchase date cannot be after start date.");
+        throwValidation("Purchase date cannot be after start date.");
     }
 
     if (startDate && endDate && startDate > endDate) {
-        throw new Error("Start date cannot be after end date.");
+        throwValidation("Start date cannot be after end date.");
     }
     if (assetType === "Product") {
         if (warrantyStartDate && warrantyEndDate && warrantyStartDate > warrantyEndDate) {
-            throw new Error("WarrantyStartDate cannot be after WarrantyEndDate.");
+            throwValidation("WarrantyStartDate cannot be after WarrantyEndDate.");
         }
         if (renewalReminderDate && warrantyEndDate && renewalReminderDate >= warrantyEndDate) {
-            throw new Error("RenewalReminderDate cannot be after WarrantyEndDate.");
+            throwValidation("RenewalReminderDate cannot be after WarrantyEndDate.");
         }
-        
-        // Allow warranty extension: if ONLY warrantyEndDate is being updated (renewal scenario)
-        // Skip endDate validation when endDate is not being updated
+
         const isWarrantyOnlyUpdate = data.warrantyEndDate && !data.endDate;
-        
+
         if (!isWarrantyOnlyUpdate && endDate && warrantyEndDate && warrantyEndDate > endDate) {
-            throw new Error("Warranty end date cannot exceed asset end date.");
+            throwValidation("Warranty end date cannot exceed asset end date.");
         }
 
     }
@@ -123,6 +147,19 @@ function enforceAssetTypeRulesOnUpdate(asset: any, allowedData: any) {
 
 //create a new asset
 export async function createItAssets(assetData: any, t: any) {
+    if (!assetData.assetName || String(assetData.assetName).trim() === "") {
+        throwValidation("Asset name is required");
+    }
+    if (!assetData.categoryId) {
+        throwValidation("Category is required");
+    }
+    if (assetData.price !== undefined && assetData.price !== null) {
+        const priceNum = Number(assetData.price);
+        if (isNaN(priceNum) || priceNum < 0) {
+            throwValidation("Price must be a valid positive number");
+        }
+    }
+    validateAssetEnum(assetData);
     const category = await ItemCategory.findOne({
         where: {
             id: assetData.categoryId,
@@ -134,15 +171,44 @@ export async function createItAssets(assetData: any, t: any) {
     });
 
     if (!category) {
-        throw new Error("Invalid or inactive category");
+        throwValidation("Invalid or inactive category");
     }
 
-    if (assetData.assetType === "Product" && category.categoryName !== "Product") {
-        throw new Error("Product asset must use Product category");
+    const userType = String(assetData.userType || "").toLowerCase();
+
+    if (userType === "client") {
+        const client = await Clients.findOne({
+            where: { userId: assetData.userId, companyId: assetData.companyId, isDeleted: false },
+            transaction: t,
+        });
+        if (!client) throwValidation("Client not found for given userId and companyId");
+        assetData.clientId = client.id;
+    } else if (userType === "employee") {
+        const employee = await Employee.findOne({
+            where: { userId: assetData.userId, companyId: assetData.companyId, isDeleted: false },
+            transaction: t,
+        });
+        if (!employee) throwValidation("Employee not found for given userId and companyId");
+        assetData.employeeId = employee.id;
+        assetData.clientId = null;
+    } else if (userType === "agency" ) {
+        const user = await User.findOne({
+            where: { id: assetData.userId, companyId: assetData.companyId, isDeleted: false },
+            transaction: t,
+        });
+        if (!user) throwValidation("Agency user not found for given userId and companyId");
+        assetData.clientId = null;
+    } else if(userType === "freelancer") {
+        throwValidation("Unsupported userType");
     }
-    if (assetData.assetType === "Service" && category.categoryName !== "Service") {
-        throw new Error("Service asset must use Service category");
+
+    if (assetData.assetType === "Product" && category.categoryType !== "Product") {
+        throwValidation("Product asset must use Product category");
     }
+    if (assetData.assetType === "Service" && category.categoryType !== "Service") {
+        throwValidation("Service asset must use Service category");
+    }
+
     validateAssetDates(assetData);
 
     assetData = enforceAssetTypeRules(assetData.assetType, assetData);
@@ -152,7 +218,7 @@ export async function createItAssets(assetData: any, t: any) {
     if (assetData.assetType === "Product") {
         quantity = Number(assetData.quantity || 0);
         if (quantity <= 0) {
-            throw new Error("Quantity is required for product assets.");
+            throwValidation("Quantity is required for product assets.");
         }
     }
 
@@ -221,17 +287,15 @@ export async function getAllItAssetsByCompanyAndClientId(filters: { companyId: s
 
 //update asset details
 export async function updateItAssetsDetails(id: string, companyId: string, assetData: any, t: any, clientId?: string,) {
-
+    validateAssetEnum(assetData);
     const asset = await ItAssetsManagement.findOne({
         where: { id, companyId, isDeleted: false },
         transaction: t,
     });
     if (!asset) return null;
-   
-    // Validate final date consistency using merged incoming + existing values
+
 
     validateAssetDates(assetData, asset);
-    // Build allowedData without date fields first — dates handled explicitly below
     const allowedData: any = {
         assetName: assetData.assetName,
         paymentMode: assetData.paymentMode,
@@ -243,7 +307,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
     };
 
     if (Object.keys(allowedData).length === 0) {
-        throw new Error("No valid fields provided for update");
+        throwValidation("No valid fields provided for update");
     }
 
     if (typeof assetData.isClientPaymentReceived === "string") {
@@ -258,11 +322,11 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
     if ("isClientPaymentReceived" in assetData) {
 
         if (typeof assetData.isClientPaymentReceived !== "boolean") {
-            throw new Error("Invalid value for client payment status");
+            throwValidation("Invalid value for client payment status");
         }
 
         if (!asset.clientId) {
-            throw new Error(
+            throwValidation(
                 "Client payment status can only be updated for client assets."
             );
         }
@@ -271,7 +335,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
             asset.purchasedBy !== "Company" ||
             asset.paidBy !== "Client"
         ) {
-            throw new Error(
+            throwValidation(
                 "Client payment status can only be updated when purchasedBy is Company and paidBy is Client."
             );
         }
@@ -304,7 +368,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
                     : Number(asset.quantity || 0);
 
             if (finalQuantity <= 0) {
-                throw new Error("Quantity is required for product assets");
+                throwValidation("Quantity is required for product assets");
             }
         }
 
@@ -317,10 +381,9 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
             typeof assetData.currencyCode !== "string" ||
             assetData.currencyCode.length !== 3
         ) {
-            throw new Error("Invalid currency code");
+            throwValidation("Invalid currency code");
         }
     }
-    // Explicit date parsing only (NO rule enforcement here)
     if (asset.assetType === "Product") {
         if ('endDate' in assetData) {
             if (assetData.endDate === "" || assetData.endDate === null) {
@@ -328,7 +391,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
             } else {
                 const end = new Date(assetData.endDate);
                 if (isNaN(end.getTime())) {
-                    throw new Error("Invalid endDate");
+                    throwValidation("Invalid endDate");
                 }
                 allowedData.endDate = end;
             }
@@ -340,7 +403,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
             } else {
                 const wEnd = new Date(assetData.warrantyEndDate);
                 if (isNaN(wEnd.getTime())) {
-                    throw new Error("Invalid warrantyEndDate");
+                    throwValidation("Invalid warrantyEndDate");
                 }
                 allowedData.warrantyEndDate = wEnd;
             }
@@ -353,7 +416,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
                     : new Date(assetData.purchaseDate);
 
             if (allowedData.purchaseDate && isNaN(allowedData.purchaseDate.getTime())) {
-                throw new Error("Invalid purchaseDate");
+                throwValidation("Invalid purchaseDate");
             }
         }
 
@@ -367,7 +430,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
                 allowedData.warrantyStartDate &&
                 isNaN(allowedData.warrantyStartDate.getTime())
             ) {
-                throw new Error("Invalid warrantyStartDate");
+                throwValidation("Invalid warrantyStartDate");
             }
         }
     }
@@ -379,7 +442,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
             } else {
                 const start = new Date(assetData.startDate);
                 if (isNaN(start.getTime())) {
-                    throw new Error("Invalid startDate");
+                    throwValidation("Invalid startDate");
                 }
                 allowedData.startDate = start;
             }
@@ -391,7 +454,7 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
             } else {
                 const end = new Date(assetData.endDate);
                 if (isNaN(end.getTime())) {
-                    throw new Error("Invalid endDate");
+                    throwValidation("Invalid endDate");
                 }
                 allowedData.endDate = end;
             }
@@ -399,31 +462,27 @@ export async function updateItAssetsDetails(id: string, companyId: string, asset
     }
 
 
-    // Reset reminder flags if expiry date is extended
     if (asset.assetType === "Product" && allowedData.warrantyEndDate) {
         const oldWarrantyEnd = asset.warrantyEndDate ? new Date(asset.warrantyEndDate).getTime() : 0;
         const newWarrantyEnd = new Date(allowedData.warrantyEndDate).getTime();
-        
+
         if (newWarrantyEnd > oldWarrantyEnd) {
             allowedData.lastReminderSentAt = null;
             allowedData.isRenewalReminderSent = false;
-            console.log("✅ Product warranty extended - resetting reminder state");
-        }
-    }
-    
-    if (asset.assetType === "Service" && allowedData.endDate) {
-        const oldEndDate = asset.endDate ? new Date(asset.endDate).getTime() : 0;
-        const newEndDate = new Date(allowedData.endDate).getTime();
-        
-   
-        if (newEndDate > oldEndDate) {
-            allowedData.lastReminderSentAt = null;
-            allowedData.isRenewalReminderSent = false;
-            console.log("✅ Service expiry extended - resetting reminder state");
         }
     }
 
-    // enforce/update any remaining asset-type rules now
+    if (asset.assetType === "Service" && allowedData.endDate) {
+        const oldEndDate = asset.endDate ? new Date(asset.endDate).getTime() : 0;
+        const newEndDate = new Date(allowedData.endDate).getTime();
+
+
+        if (newEndDate > oldEndDate) {
+            allowedData.lastReminderSentAt = null;
+            allowedData.isRenewalReminderSent = false;
+        }
+    }
+
     enforceAssetTypeRulesOnUpdate(asset, allowedData);
 
     await asset.update(allowedData, { transaction: t });

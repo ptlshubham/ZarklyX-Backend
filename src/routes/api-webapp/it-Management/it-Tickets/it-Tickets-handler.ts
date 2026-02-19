@@ -1,16 +1,62 @@
 
 import { Op, Transaction } from "sequelize";
 import { ItTickets } from "./it-Tickets-model";
-import fs from "fs";
-import path from "path";
+import { Employee } from "../../agency/employee/employee-model";
 
+
+const PRIORITY = ["Low", "Medium", "High"];
+const STATUS = ["Pending", "In Progress", "Hold", "Completed", "Rejected"];
+
+function throwValidation(msg: string): never {
+    const e = new Error(msg);
+    e.name = "ValidationError";
+    throw e;
+}
+function validateEnum(value: any, validValues: string[], fieldName: string) {
+    if (value && !validValues.includes(value)) {
+        throwValidation(`Invalid ${fieldName}. Must be one of: ${validValues.join(", ")}`);
+    }
+}
+
+export function validateItTicketsEnum(data: any) {
+    validateEnum(data.priority, PRIORITY, "priority");
+    validateEnum(data.status, STATUS, "status");
+}
 //create a new ticket
 export async function createItTickets(ticketData: any, t: any) {
+    if (!ticketData.subject || String(ticketData.subject).trim() === "") {
+        throwValidation("Subject is required");
+    }
+    if (!ticketData.description || String(ticketData.description).trim() === "") {
+        throwValidation("Description is required");
+    }
+    validateItTicketsEnum(ticketData);
+
+    if (typeof ticketData.userType !== "string" || ticketData.userType.toLowerCase() !== "employee") {
+        const e = new Error("Only employees are allowed to create it tickets.");
+        e.name = "UnauthorizedError";
+        throw e;
+    }
+    const employee = await Employee.findOne({
+        where: {
+            userId: ticketData.userId, companyId: ticketData.companyId, isDeleted: false
+        },
+        transaction: t,
+
+    });
+
+    if (!employee) {
+        throwValidation("Employee not found.");
+    }
+    ticketData.employeeId = employee.id;
+
+    ticketData.priority = ticketData.priority || "Low";
     return await ItTickets.create(ticketData, { transaction: t });
 }
 
 
-//get individual ticket by id
+
+//get individual ticket by ticket id
 export async function getItTicketsById(id: string) {
     return await ItTickets.findOne({
         where: { id },
@@ -48,7 +94,7 @@ export async function getItTicketsById(id: string) {
     })
 }
 
-//get all tickets by user id
+//get all tickets by employee id
 export async function getAllItTicketsByEmployeeId(employeeId: string) {
     return await ItTickets.findAll({
         where: {
@@ -107,6 +153,32 @@ export async function updateItTicketsDetailsByEmployee(id: string, employeeId: s
         (key) => allowedData[key] === undefined && delete allowedData[key]
     );
 
+    if ('subject' in allowedData) {
+        if (allowedData.subject === null || String(allowedData.subject).trim() === '') {
+            throwValidation('Subject cannot be empty');
+        }
+    }
+
+    if ('description' in allowedData) {
+        if (allowedData.description === null || String(allowedData.description).trim() === '') {
+            throwValidation('Description cannot be empty');
+        }
+    }
+
+    if ('preferredDate' in allowedData) {
+        if (allowedData.preferredDate === null) {
+            allowedData.preferredDate = null;
+        } else {
+            if (String(allowedData.preferredDate).trim() === '') {
+                throwValidation('preferredDate cannot be empty');
+            }
+            const pd = new Date(allowedData.preferredDate);
+            if (isNaN(pd.getTime())) {
+                throwValidation('Invalid preferredDate');
+            }
+            allowedData.preferredDate = pd;
+        }
+    }
 
     await ItTickets.update(allowedData, {
         where: {
@@ -116,7 +188,6 @@ export async function updateItTicketsDetailsByEmployee(id: string, employeeId: s
         },
         transaction: t,
     })
-    // Fetch the updated ticket again
     const updatedTicket = await ItTickets.findOne({
         where: { id, employeeId, isDeleted: false },
         transaction: t,
@@ -172,16 +243,16 @@ export async function getAllItTicketsByCompanyId(companyId: string) {
 
 //update ticket status
 export async function updateItTicketsStatus(id: string, companyId: string, status: string, t: Transaction) {
+    validateItTicketsEnum({ status });
     const updatedRows = await ItTickets.update(
         { status },
         {
-            where: { id, companyId },
+            where: { id, companyId, isDeleted: false },
             transaction: t,
         },
     );
-    if (!updatedRows) return null;
-
-    const updatedTicket = await ItTickets.findOne({ where: { id, companyId }, transaction: t });
+    if (updatedRows[0] === 0) return null;
+    const updatedTicket = await ItTickets.findOne({ where: { id, companyId, isDeleted: false }, transaction: t });
     return updatedTicket;
 }
 
@@ -209,15 +280,24 @@ export async function deleteItTickets(id: string, companyId: string, t: Transact
 export async function updateItTicketsPriority(
     id: string,
     companyId: string,
-    priority: "Low" | "Medium" | "High",
+    priority: string,
     t: Transaction
 ) {
-    return await ItTickets.update(
+    validateItTicketsEnum({ priority });
+    const updatedRows = await ItTickets.update(
         { priority },
         {
             where: { id, companyId, isDeleted: false },
             transaction: t,
         }
     );
+
+    if (updatedRows[0] === 0) return null;
+
+    const updatedTicket = await ItTickets.findOne({
+        where: { id, companyId },
+        transaction: t
+    });
+    return updatedTicket;
 }
 

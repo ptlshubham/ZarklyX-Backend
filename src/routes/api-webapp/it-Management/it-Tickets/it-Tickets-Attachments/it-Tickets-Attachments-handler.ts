@@ -46,7 +46,6 @@ export async function removeItTicketsAttachmentByEmployee(
 
   if (!attachment) return null;
 
-  // delete file
   const absolutePath = path.join(
     process.cwd(),
     "src",
@@ -59,5 +58,5 @@ export async function removeItTicketsAttachmentByEmployee(
   }
 
   await attachment.destroy({ transaction: t });
-  return true;
+  return {id:attachmentId};
 }

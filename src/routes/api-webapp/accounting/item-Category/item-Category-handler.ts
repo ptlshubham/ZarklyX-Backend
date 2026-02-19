@@ -1,15 +1,14 @@
 import { Op, Transaction } from "sequelize";
 import { ItemCategory } from "./item-Category-model";
-import fs from "fs";
-import path from "path";
+import {throwValidation,validateEnum} from "../../it-Management/it-Assets-Management/it-Assets-Management-handler";
 
+const CATEGORY_TYPES = ["Product", "Service"];
+export function validateCategoryTypeEnum(body:any){
+    validateEnum(body.categoryType, CATEGORY_TYPES, "categoryType");
+}
 //create a new item category
 export async function createItemCategory(body: any,t: any) {
-  // Validate category type - only Product or Service allowed for IT Asset Management
-  if(!["Product","Service"].includes(body.categoryType))
-  {
-    throw new Error("Invalid Category Type. Must be product or service.")
-  }
+  validateCategoryTypeEnum(body);
   return await ItemCategory.create(
     {
       ...body,

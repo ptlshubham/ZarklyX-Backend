@@ -1,5 +1,4 @@
 import express, { Request, Response } from 'express';
-import { ItAssetsManagement } from './it-Assets-Management-model';
 import {
     createItAssets,
     getItAssetsById,
@@ -7,15 +6,14 @@ import {
     updateItAssetsDetails,
     deleteItAssetsById,
 } from './it-Assets-Management-handler';
-import { serverError, success, unauthorized } from "../../../../utils/responseHandler";
 import { convertToRelativePath } from '../../../../services/multer';
 import { createItAssetsAttachments, removeItAssetsAttachmentByUser } from "./it-Assets-Management-Attachments/it-Assets-Management-Attachments-handler";
 // import { tokenMiddleWare } from 'src/services/jwtToken-service';
 import dbInstance from '../../../../db/core/control-db';
-import {Clients} from "../../agency/clients/clients-model";
 import { assetAttachmentUpload } from '../../../../services/multer';
+import {serverError,successResponse, errorResponse,unauthorized} from '../../../../utils/responseHandler';
 import { runAssetExpiryReminder } from './it-Assets-Management-warranty-cron';
-import path from "path";
+
 
 const router = express.Router();
 
@@ -27,82 +25,17 @@ router.post("/createItAssets", assetAttachmentUpload.array("attachments", 100), 
         let clientId: string | null = null;
         if (!userId || !companyId || !userType) {
             await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "userId, companyId and userType are required."
-            })
+            return errorResponse(res, "userId, companyId and userType are required", null, 400);
         }
-        if(typeof userType !== "string" ){
+        if (typeof userType !== "string") {
             await t.rollback();
-            return res.status(400).json({
-                success:false,
-                message:"Invalid userType value."
-            });
+            return errorResponse(res, "Invalid userType value.", null, 400);
         }
-        if(userType === "client")
-        {
-            const client =await Clients.findOne({
-                where: {userId, companyId, isDeleted: false},
-                transaction: t
-            });
-            if(!client)
-            {
-                await t.rollback();
-                return res.status(404).json({
-                    success: false,
-                    message: "Client not found for the given userId and companyId."
-
-                });
-            }
-            clientId= String(client.id);
-        }
-       const attachments = convertToRelativePath(
+        const attachments = convertToRelativePath(
             req.files as Express.Multer.File[]
         );
 
-      
-        const ASSET_TYPE = ["Product", "Service"]
-        if (req.body.assetType && !ASSET_TYPE.includes(req.body.assetType)) {
-            await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "Invalid assetType value",
-            });
-        }
-        const PAYMENT_MODE = ["UPI", "Cash", "Card", "Cheque", "Net Banking", "RTGS", "Bank Transfer", "NEFT", "Other"];
-        if (req.body.paymentMode && !PAYMENT_MODE.includes(req.body.paymentMode)) {
-            await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "Invalid paymentMode value",
-            });
-        }
-        const PAYMENT_STATUS = ["Paid", "Pending"];
-        if (req.body.paymentStatus && !PAYMENT_STATUS.includes(req.body.paymentStatus)) {
-            await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "Invalid paymentStatus value",
-            });
-        }
-        const PURCHASED_BY = ["Company", "Client"];
-        if (req.body.purchasedBy && !PURCHASED_BY.includes(req.body.purchasedBy)) {
-            await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "Invalid purchasedBy value",
-            });
-        }
-        const PAID_BY = ["Company", "Client"];
-        if (req.body.paidBy && !PAID_BY.includes(req.body.paidBy)) {
-            await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "Invalid paidBy value",
-            });
-        }
-
-        const assetPayload={
+        const assetPayload = {
             ...req.body,
             companyId,
             clientId,
@@ -110,26 +43,25 @@ router.post("/createItAssets", assetAttachmentUpload.array("attachments", 100), 
         }
         const data = await createItAssets(assetPayload, t);
         if (!data) {
-            return res.status(400).json({
-                success: true,
-                message: "Asset not created",
-                data,
-            });
+            await t.rollback();
+            return errorResponse(res, "Asset not created", JSON.stringify(data), 400);
         }
         if (attachments.length > 0) {
             await createItAssetsAttachments(data.id, attachments, t);
         }
 
         await t.commit();
-        return res.status(200).json({
-            success: true,
-            message: "Asset created successfully",
-            data,
-        });
-    } catch (error) {
-        console.error("[CREATE ASSET ERROR]", error);
+        return successResponse(res, "Asset created successfully", data);
+    } catch (error: any) {
         await t.rollback();
-        return serverError(res, "Failed to create asset.", (error as any)?.message || String(error));
+        const msg = error?.message || "Unknown error";
+        if (error?.name === "ValidationError") {
+            return res.status(400).json({ success: false, message: msg, error: null });
+        }
+        if (error?.name === "UnauthorizedError") {
+            return unauthorized(res, msg);
+        }
+        return serverError(res,"Failed to create asset.", msg);
     }
 }
 );
@@ -142,27 +74,18 @@ router.get("/getItAssetsById/:id", async (req, res): Promise<any> => {
         const { companyId } = req.query;
 
         if (!companyId) {
-            return res.status(400).json({
-                success: false,
-                message: "companyId is required",
-            });
+            return errorResponse(res, "companyId is required", null, 400)
         }
 
         const data = await getItAssetsById(id, companyId as string);
 
         if (!data) {
-            return res.status(404).json({
-                success: false,
-                message: "Asset not found",
-            });
+            return errorResponse(res, "Asset not found", null, 404);
         }
 
-        return res.status(200).json({
-            success: true,
-            data,
-        })
-    } catch (err) {
-        return serverError(res, "Failed to get asset by id.");
+        return successResponse(res, "Asset retrieved successfully", data);
+    } catch (err: any) {
+        return serverError(res,"Failed to get asset by id.", err.message);
     }
 })
 
@@ -179,12 +102,9 @@ router.get("/getAllItAssetsByCompanyAndClientId/", async (req, res): Promise<any
             categoryId: categoryId as string,
         });
 
-        return res.status(200).json({
-            success: true,
-            data,
-        });
-    } catch (err) {
-        return serverError(res, "Failed to get assets by company and client id.");
+        return successResponse(res, "Assets retrieved successfully", data);
+    } catch (err: any) {
+        return serverError(res,"Failed to get assets by company and client id.", err.message);
     }
 });
 
@@ -193,8 +113,8 @@ router.patch("/updateItAssetsDetails/:id/:companyId", assetAttachmentUpload.arra
 
     const t = await dbInstance.transaction();
     try {
-        let id= req.params.id;
-        let companyId= req.params.companyId;
+        let id = req.params.id;
+        let companyId = req.params.companyId;
         if (Array.isArray(id)) id = id[0];
         if (Array.isArray(companyId)) companyId = companyId[0];
         const {
@@ -221,43 +141,8 @@ router.patch("/updateItAssetsDetails/:id/:companyId", assetAttachmentUpload.arra
 
         if (!req.params.id || !req.params.companyId) {
             await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "Asset id and companyId are required.",
-            });
+            return errorResponse(res, "Asset id and companyId are required", null, 400);
         }
-
-        const PAYMENT_MODE = ["UPI", "Cash", "Card", "Cheque", "Net Banking", "RTGS", "Bank Transfer", "NEFT", "Other"];
-        if (req.body.paymentMode && !PAYMENT_MODE.includes(req.body.paymentMode)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid paymentMode value",
-            });
-        }
-
-        const PAYMENT_STATUS = ["Paid","Pending"];
-        if (req.body.paymentStatus && !PAYMENT_STATUS.includes(req.body.paymentStatus)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid paymentStatus value",
-            });
-        }
-
-        const PURCHASED_BY = ["Company", "Client"];
-        if (req.body.purchasedBy && !PURCHASED_BY.includes(req.body.purchasedBy)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid purchasedBy value",
-            });
-        }
-        const PAID_BY = ["Company", "Client"];
-        if (req.body.paidBy && !PAID_BY.includes(req.body.paidBy)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid paidBy value",
-            });
-        }
-
 
         if (
             assetName === undefined &&
@@ -278,34 +163,28 @@ router.patch("/updateItAssetsDetails/:id/:companyId", assetAttachmentUpload.arra
             newAttachments.length === 0
         ) {
             await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "At least one field is required to update.",
-            });
+            return errorResponse(res, "At least one field is required to update.", null, 400);
         }
 
 
         const updatedItAsset = await updateItAssetsDetails(id, companyId, req.body, t);
         if (!updatedItAsset) {
             await t.rollback();
-            return res.status(404).json({
-                success: false,
-                message: "Asset not found or unauthorized update",
-            });
+            return errorResponse(res, "Asset not found or unauthorized update", null, 404);
         }
         if (newAttachments.length > 0) {
             await createItAssetsAttachments(updatedItAsset.id, newAttachments, t);
         }
 
         await t.commit();
-        return res.status(200).json({
-            success: true,
-            message: "Asset updated successfully",
-            data: updatedItAsset,
-        });
-    } catch (error) {
+        return successResponse(res, "Asset updated successfully", updatedItAsset);
+    } catch (error: any) {
         await t.rollback();
-        return serverError(res, "Failed to update asset.");
+        const msg = error?.message || "Unknown error";
+        if (error?.name === "ValidationError") {
+            return res.status(400).json({ success: false, message: msg });
+        }
+        return serverError(res,"Failed to update asset details.", msg);
     }
 });
 
@@ -313,28 +192,21 @@ router.patch("/updateItAssetsDetails/:id/:companyId", assetAttachmentUpload.arra
 router.delete("/deleteItAssetsById/:id/:companyId", async (req, res): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
-        let id= req.params.id;
-        let companyId= req.params.companyId;
+        let id = req.params.id;
+        let companyId = req.params.companyId;
         if (Array.isArray(id)) id = id[0];
         if (Array.isArray(companyId)) companyId = companyId[0];
         const asset = await deleteItAssetsById(id, companyId, t);
         if (!asset) {
             await t.rollback();
-            return res.status(404).json({
-                success: false,
-                message: "Asset not found",
-            });
+            return errorResponse(res, "Asset not found or unauthorized delete", null, 404);
         }
         await t.commit();
-        return res.status(200).json({
-            success: true,
-            message: "Asset deleted successfully",
-            id: asset.id,
-        });
+        return successResponse(res, "Asset deleted successfully", asset.id);
     }
-    catch (error) {
+    catch (error: any) {
         await t.rollback();
-        return serverError(res, "Failed to delete asset.");
+        return serverError(res,"Failed to delete asset.", error?.message || null);
     }
 });
 
@@ -342,64 +214,27 @@ router.delete("/deleteItAssetsById/:id/:companyId", async (req, res): Promise<an
 router.patch("/removeItAssetsAttachmentsByUser/:id/:companyId", async (req, res): Promise<any> => {
     const t = await dbInstance.transaction();
     try {
-        // const { id, companyId } = req.params;
-        let id= req.params.id;
-        let companyId= req.params.companyId;
+        let id = req.params.id;
+        let companyId = req.params.companyId;
         if (Array.isArray(id)) id = id[0];
         if (Array.isArray(companyId)) companyId = companyId[0];
         const { attachmentId } = req.body;
         if (!id || !companyId || !attachmentId) {
             await t.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "id, companyId and  attachmentId is required",
-            });
+            return errorResponse(res, "id, companyId and  attachmentId is required", null, 400);
         }
         const result = await removeItAssetsAttachmentByUser(id, companyId, attachmentId, t);
         if (!result) {
             await t.rollback();
-            return res.status(404).json({
-                success: false,
-                message: "Attachment not found",
-            });
+            return errorResponse(res, "Attachment not found", null, 404);
         }
         await t.commit();
-        return res.status(200).json({
-            success: true,
-            message: "Attachment removed successfully",
-            result,
-        });
+        return successResponse(res, "Attachment removed successfully", result);
     }
-    catch (error) {
+    catch (error: any) {
         await t.rollback();
-        return serverError(res, "Failed to remove attachment.");
+        return serverError(res,"Failed to remove attachment.", error?.message || null);
     }
 });
-
-//  TEST ROUTE - For development/manual testing only
-// Uncomment if needed for testing warranty reminder emails in dev environment
-
-// router.post(
-//     "/test/asset-expiry-reminder",
-//     async (req, res): Promise<any> => {
-//         try {
-//             console.log("[DEV API] Asset expiry reminder test triggered");
-
-//             await runAssetExpiryReminder();
-
-//             return res.status(200).json({
-//                 success: true,
-//                 message: "Asset expiry reminder executed (LOG ONLY)",
-//             });
-//         } catch (error: any) {
-//             console.error("[DEV API] Asset expiry reminder error", error);
-//             return res.status(500).json({
-//                 success: false,
-//                 error: error?.message || "Internal error",
-//             });
-//         }
-//     }
-// );
-
 
 export default router;

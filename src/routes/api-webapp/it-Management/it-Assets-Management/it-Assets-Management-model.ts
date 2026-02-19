@@ -6,9 +6,6 @@ import {
     Model,
     Sequelize,
 } from "sequelize";
-// import { Clients } from "../../../../routes/api-webapp/superAdmin/agency/clients/clients-model";
-// import { Company } from "../../../../routes/api-webapp/company/company-model";
-// import {ItemCategory} from "../../../../routes/api-webapp/accounting/item-Category/item-Category-model"
 export class ItAssetsManagement extends Model<
     InferAttributes<ItAssetsManagement>,
     InferCreationAttributes<ItAssetsManagement>

@@ -45,9 +45,9 @@ type emailargs = {
   text: String;
   replacements: any;
   htmlFile: String;
-  attachments: any;
-  html: any;
-  cc:any;
+  attachments: any ;
+  html: any ;
+  cc: any;
   replyTo: any;
 };
 
@@ -70,13 +70,18 @@ export const sendEmail = async (mailData: emailargs) => {
     if(mailData.replyTo) {
       mailOptions = { ...mailOptions, replyTo: mailData.replyTo };
     }
-
     // email with FILE/template
     if (mailData.htmlFile) {
       const filePath = `${config.templatePath}/${mailData.htmlFile}.html`;
       try {
         const hbHtml = await fs.promises.readFile(filePath, { encoding: "utf8" });
         mailOptions.html = handleBars.compile(hbHtml)(mailData.replacements || {});
+        if (mailData?.cc) {
+          mailOptions.cc = mailData.cc;
+        }
+        if (mailData?.replyTo) {
+          mailOptions.replyTo = mailData.replyTo;
+        }
         res = await nodemailerTransporter.sendMail(mailOptions);
         let { htmlFile, attachments, html, replacements, ...rest } = mailData;
         logSmsEmail(JSON.stringify({ ...rest, res }), "success");
@@ -94,6 +99,9 @@ export const sendEmail = async (mailData: emailargs) => {
       }
       if (mailData?.cc) {
         mailOptions.cc = mailData.cc;
+      }
+      if (mailData?.replyTo) {
+        mailOptions.replyTo = mailData.replyTo;
       }
       res = await nodemailerTransporter.sendMail(mailOptions);
       let { htmlFile, html, attachments, replacements, ...rest } = mailData;

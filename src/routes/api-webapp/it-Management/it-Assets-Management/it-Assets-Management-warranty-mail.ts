@@ -10,42 +10,74 @@ export type ReminderMailType =
 
 export async function sendWarrantyEmail(email: string,
     userName: string,
+    companyName: string,
+    companyEmail: string | null,
+    isCompanyAsset: boolean,
     asset: any,
     type: ReminderMailType) {
-    const mailData = buildWarrantyMailData(email, userName, asset, type);
+    const mailData = buildWarrantyMailData(email, userName, companyName, companyEmail, isCompanyAsset, asset, type);
     // await sendEmail(mailData);
     console.log("[WARRANTY EMAIL]", mailData);
 
 }
 
-export function buildWarrantyMailData(email:string, userName:string, asset: any, type: ReminderMailType) {
+export function buildWarrantyMailData(
+    email: string,
+    userName: string,
+    companyName: string,
+    companyEmail: string | null,
+    isCompanyAsset: boolean,
+    asset: any,
+    type: ReminderMailType
+) {
     const daysLeftMap = {
         DAYS_30: 30,
         DAYS_15: 15,
         DAILY: 7,
         EXPIRED: 0
     }
-    return {
-        from: "" as any,
+
+    const statusMap = {
+        DAYS_30: "Expiring Soon",
+        DAYS_15: "Action Required",
+        DAILY: "Urgent - Expiring Very Soon",
+        EXPIRED: "Expired"
+    }
+
+    const statusMessageMap = {
+        DAYS_30: "Your asset warranty will expire in 30 days. Please plan for renewal or extension.",
+        DAYS_15: "Your asset warranty will expire in 15 days. Immediate action recommended.",
+        DAILY: "Your asset warranty is expiring within a week. Please renew immediately to avoid service interruption.",
+        EXPIRED: "Your asset warranty has expired. Please contact us to renew and restore coverage."
+    }
+
+    const mail: any = {
+        from: companyEmail || "" as any,
         to: email,
         subject: buildWarrantyMailSubject(asset, type),
-        htmlFile: "warranty-reminder",
+        htmlFile: "it_asset_warranty_ reminder_email",
         replacements: {
-            emailTitle: "ZarklyX Warranty Renewal Reminder",
-            userName: userName  || "User",
-            assetName: asset.assetName,
-            expiryDate: formatDate( asset.warrantyEndDate),
-            expiryLabel: "warranty",
-            daysLeft: daysLeftMap[type],
-            isExpired: type === "EXPIRED",
+            ClientName: userName || "User",
+            CompanyName: companyName || "ZarklyX",
+            AssetName: asset.assetName,
+            WarrantyEndDate: formatDate(asset.warrantyEndDate),
+            DaysLeft: daysLeftMap[type],
+            WarrantyStatus: statusMap[type],
+            StatusMessage: statusMessageMap[type],
+            isCompanyAsset: isCompanyAsset,
             currentYear: new Date().getFullYear(),
         },
         html: null,
-        text: "",
         attachments: null,
-        cc: null,
-        replyTo: null,
+        text: "",
     };
+
+    if (!isCompanyAsset && companyEmail) {
+        mail.cc = companyEmail;
+        mail.replyTo = companyEmail;
+    }
+
+    return mail;
 };
 
 
@@ -64,42 +96,74 @@ export function buildWarrantyMailSubject(asset: any, type: ReminderMailType) {
 
 export async function sendServiceExpiryEmail(email: string,
     userName: string,
+    companyName: string,
+    companyEmail: string | null,
+    isCompanyAsset: boolean,
     asset: any,
     type: ReminderMailType) {
-    const mailData = buildServiceExpiryMailData(email, userName, asset, type);
+    const mailData = buildServiceExpiryMailData(email, userName, companyName, companyEmail, isCompanyAsset, asset, type);
     // await sendEmail(mailData);
     console.log("[SERVICE EXPIRY EMAIL]", mailData);
 
 }
 
-export function buildServiceExpiryMailData(email:string, userName:string, asset: any, type: ReminderMailType) {
+export function buildServiceExpiryMailData(
+    email: string,
+    userName: string,
+    companyName: string,
+    companyEmail: string | null,
+    isCompanyAsset: boolean,
+    asset: any,
+    type: ReminderMailType
+) {
     const daysLeftMap = {
         DAYS_30: 30,
         DAYS_15: 15,
         DAILY: 7,
         EXPIRED: 0
     }
-    return {
-        from: "" as any,
+
+    const statusMap = {
+        DAYS_30: "Expiring Soon",
+        DAYS_15: "Action Required",
+        DAILY: "Urgent - Expiring Very Soon",
+        EXPIRED: "Expired"
+    }
+
+    const statusMessageMap = {
+        DAYS_30: "Your service subscription will expire in 30 days. Please plan for renewal to maintain uninterrupted service.",
+        DAYS_15: "Your service subscription will expire in 15 days. Immediate action recommended.",
+        DAILY: "Your service subscription is expiring within a week. Please renew immediately to avoid service interruption.",
+        EXPIRED: "Your service subscription has expired. Please contact us to renew and restore access."
+    }
+
+    const mail: any = {
+        from: companyEmail || "" as any,
         to: email,
         subject: buildServiceExpiryMailSubject(asset, type),
-        htmlFile: "warranty-reminder",
+        htmlFile: "Service_Expiry_Subscription_Reminder_Email",
         replacements: {
-            emailTitle: "ZarklyX Service Expiry Reminder",
-            userName: userName  || "User",
-            assetName: asset.assetName,
-            expiryDate: formatDate(asset.endDate),
-            expiryLabel: "service",
-            daysLeft: daysLeftMap[type],
-            isExpired: type === "EXPIRED",
+            ClientName: userName || "User",
+            CompanyName: companyName || "ZarklyX",
+            ServiceName: asset.assetName,
+            ServiceEndDate: formatDate(asset.endDate),
+            DaysLeft: daysLeftMap[type],
+            ServiceStatus: statusMap[type],
+            StatusMessage: statusMessageMap[type],
+            isCompanyAsset: isCompanyAsset,
             currentYear: new Date().getFullYear(),
         },
         html: null,
-        text: "",
         attachments: null,
-        cc: null,
-        replyTo: null,
+        text: "",
     };
+
+    if (!isCompanyAsset && companyEmail) {
+        mail.cc = companyEmail;
+        mail.replyTo = companyEmail;
+    }
+
+    return mail;
 };
 
 

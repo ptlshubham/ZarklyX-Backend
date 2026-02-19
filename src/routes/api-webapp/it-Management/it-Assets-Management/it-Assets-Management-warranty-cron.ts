@@ -7,31 +7,39 @@ import {
   ReminderMailType,
   sendServiceExpiryEmail,
 } from "./it-Assets-Management-warranty-mail";
+import { infoLog, warningLog, errorLog } from "../../../../services/logging-service";
 
 export async function runAssetExpiryReminder() {
-  console.log("[Asset expiry] Started at", new Date().toISOString());
+  infoLog(`[Asset expiry] Started at ${new Date().toISOString()}`);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Fetch eligible assets based on reminder date
   const assets = await ItAssetsManagement.findAll({
     where: {
       isDeleted: false,
       renewalReminderDate: {
         [Op.lte]: today
       }
-    }
+    },
+    include: [
+      {
+        model: Company,
+        as: "company",
+        attributes: ["email", "name"]
+      },
+      {
+        model: Clients,
+        as: "client",
+        attributes: ["businessEmail", "email", "businessName", "clientfirstName"]
+      }
+    ]
   });
 
-  console.log("[Asset expiry] Assets fetched:", assets.length);
-
-  // Process each asset
   for (const asset of assets) {
-    // Determine expiry date based on asset type
+    try {
     const expiryDate = asset.assetType === "Product" ? asset.warrantyEndDate : asset.endDate;
     if (!expiryDate) {
-      console.log("[Asset expiry CRON] No expiry date found, skipping", asset.id);
       continue;
     }
     const expiry = new Date(expiryDate);
@@ -48,44 +56,37 @@ export async function runAssetExpiryReminder() {
     else if (daysLeft < 0) reminderType = "EXPIRED";
     else continue;
 
-    // Prevent duplicate reminder on same day
     if (asset.lastReminderSentAt) {
       const lastSent = new Date(asset.lastReminderSentAt);
       lastSent.setHours(0, 0, 0, 0);
 
       if (lastSent.getTime() === today.getTime()) {
-        console.log("[ASSET EXPIRY CRON] Already sent today, skipping", asset.id);
         continue;
       }
     }
 
-    // Resolve recipient (BUSINESS CONTACT)
+    const company = (asset as any).company;
+    const client = (asset as any).client;
+
     let email: string | null = null;
-    let userName = "User";
+    let userName = "Customer";
+    let companyName = company?.name ?? "";
+    let companyEmail = company?.email ?? null;
+    let isCompanyAsset = false;
 
-    if (asset.clientId) {
-      const client = await Clients.findByPk(asset.clientId, {
-        attributes: ["businessEmail", "email", "clientfirstName"]
-      });
-
-      email = client?.businessEmail || client?.email || null;
-      userName = client?.clientfirstName ?? "Client";
+    if (asset.clientId && client) {
+      email = client.businessEmail || client.email || null;
+      userName = client.businessName || client.clientfirstName || "Customer";
+      isCompanyAsset = false;
+    }
+    else if (asset.companyId && company) {
+      email = company.email || null;
+      userName = "Team"; 
+      isCompanyAsset = true;
     }
 
-    else if (asset.companyId) {
-      const company = await Company.findByPk(asset.companyId, {
-        attributes: ["email", "name"]
-      });
-
-      email = company?.email || null;
-      userName = company?.name ?? "Company";
-    }
     if (!email) {
-      console.warn("[Asset expiry CRON] No recipient email found", {
-        assetId: asset.id,
-        companyId: asset.companyId,
-        clientId: asset.clientId
-      });
+      warningLog(`[Asset expiry CRON] No recipient email found ${JSON.stringify({ assetId: asset.id, companyId: asset.companyId, clientId: asset.clientId })}`);
       continue;
     }
 
@@ -94,6 +95,9 @@ export async function runAssetExpiryReminder() {
       await sendWarrantyEmail(
         email,
         userName,
+        companyName,
+        companyEmail,
+        isCompanyAsset,
         asset,
         reminderType
       );
@@ -101,33 +105,31 @@ export async function runAssetExpiryReminder() {
       await sendServiceExpiryEmail(
         email,
         userName,
+        companyName,
+        companyEmail,
+        isCompanyAsset,
         asset,
         reminderType
       );
     }
 
-    // Update asset
-    // await asset.update({
-    //   lastReminderSentAt: new Date(),
-    //   isRenewalReminderSent: true
-    // });
 
-    await asset.update({
-      lastReminderSentAt: new Date(),
+    const updateData: any = {
+      lastReminderSentAt: new Date()
+    };
 
-    });
     if (reminderType === "EXPIRED") {
-      await asset.update({
-        isRenewalReminderSent: true
-      });
+      updateData.isRenewalReminderSent = true;
     }
 
-    console.log("[Asset expiry UPDATED]", {
-      assetId: asset.id,
-      reminderType,
-      email
-    });
+    await asset.update(updateData);
+
+    infoLog(`[Asset expiry UPDATED] ${JSON.stringify({ assetId: asset.id, reminderType, email })}`);
+  } catch (error) {
+    errorLog(`[Asset expiry CRON] Error processing asset ${asset.id} - ${String(error)}`);
+    continue; 
+  }
   }
 
-  console.log("[Asset expiry CRON] Finished");
+  infoLog("[Asset expiry CRON] Finished");
 }
