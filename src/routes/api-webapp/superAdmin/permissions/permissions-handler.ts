@@ -157,3 +157,109 @@ export const hardDeletePermission = async (id: string, t: Transaction) => {
   await permission.destroy({ transaction: t });
   return true;
 };
+
+// Get all permissions grouped by modules in hierarchical structure
+export const getPermissionsByModules = async () => {
+  // Fetch all modules with their permissions
+  const modules = await Modules.findAll({
+    where: { isDeleted: false },
+    include: [
+      {
+        model: Permissions,
+        as: "permissions",
+        where: { isDeleted: false },
+        required: false,
+        attributes: ["id", "name", "description", "displayName", "action", "price", "isSystemPermission", "isSubscriptionExempt", "isFreeForAll", "isActive"],
+      }
+    ],
+    order: [
+      ["name", "ASC"],
+      [{ model: Permissions, as: "permissions" }, "action", "ASC"]
+    ],
+    raw: false, // Need nested objects
+  });
+
+  // Convert to plain objects and build hierarchy
+  const modulesData = modules.map(m => m.toJSON());
+  
+  // Create a map for quick lookup
+  const moduleMap = new Map();
+  const rootModules: any[] = [];
+
+  // First pass: Create module objects with children arrays
+  modulesData.forEach((module: any) => {
+    moduleMap.set(module.id, { ...module, children: [] });
+  });
+
+  // Second pass: Build hierarchy
+  modulesData.forEach((module: any) => {
+    const moduleWithChildren = moduleMap.get(module.id);
+    if (module.parentModuleId) {
+      const parent = moduleMap.get(module.parentModuleId);
+      if (parent) {
+        parent.children.push(moduleWithChildren);
+      } else {
+        // If parent not found, treat as root
+        rootModules.push(moduleWithChildren);
+      }
+    } else {
+      // Root module (no parent)
+      rootModules.push(moduleWithChildren);
+    }
+  });
+
+  return rootModules;
+};
+
+// Get active permissions grouped by active modules in hierarchical structure
+export const getActivePermissionsByModules = async () => {
+  // Fetch all active modules with their active permissions
+  const modules = await Modules.findAll({
+    where: { isActive: true, isDeleted: false },
+    include: [
+      {
+        model: Permissions,
+        as: "permissions",
+        where: { isActive: true, isDeleted: false },
+        required: false,
+        attributes: ["id", "name", "description", "displayName", "action", "price", "isSystemPermission", "isSubscriptionExempt", "isFreeForAll", "isActive"],
+      }
+    ],
+    order: [
+      ["name", "ASC"],
+      [{ model: Permissions, as: "permissions" }, "action", "ASC"]
+    ],
+    raw: false, // Need nested objects
+  });
+
+  // Convert to plain objects and build hierarchy
+  const modulesData = modules.map(m => m.toJSON());
+  
+  // Create a map for quick lookup
+  const moduleMap = new Map();
+  const rootModules: any[] = [];
+
+  // First pass: Create module objects with children arrays
+  modulesData.forEach((module: any) => {
+    moduleMap.set(module.id, { ...module, children: [] });
+  });
+
+  // Second pass: Build hierarchy
+  modulesData.forEach((module: any) => {
+    const moduleWithChildren = moduleMap.get(module.id);
+    if (module.parentModuleId) {
+      const parent = moduleMap.get(module.parentModuleId);
+      if (parent) {
+        parent.children.push(moduleWithChildren);
+      } else {
+        // If parent not found, treat as root
+        rootModules.push(moduleWithChildren);
+      }
+    } else {
+      // Root module (no parent)
+      rootModules.push(moduleWithChildren);
+    }
+  });
+
+  return rootModules;
+};

@@ -5,6 +5,8 @@ import {
   getAllPermissions,
   getPermissionById,
   getPermissionsByModuleId,
+  getPermissionsByModules,
+  getActivePermissionsByModules,
   updatePermission,
   deletePermission,
   getActivePermissions,
@@ -138,6 +140,42 @@ router.get("/getPermissionsByModuleId/:moduleId", async (req: Request, res: Resp
     return res.status(200).json({ success: true, data: permissions });
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch permissions by module ID", details: error });
+  }
+});
+
+// Get all permissions grouped by modules | get /superAdmin/permissions/getPermissionsByModules
+router.get("/getPermissionsByModules", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const modulesWithPermissions = await getPermissionsByModules();
+    return res.status(200).json({
+      success: true,
+      data: modulesWithPermissions,
+      message: "Permissions grouped by modules in hierarchical structure fetched successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch permissions by modules",
+      details: error
+    });
+  }
+});
+
+// Get active permissions grouped by active modules | get /superAdmin/permissions/getActivePermissionsByModules
+router.get("/getActivePermissionsByModules", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const modulesWithPermissions = await getActivePermissionsByModules();
+    return res.status(200).json({
+      success: true,
+      data: modulesWithPermissions,
+      message: "Active permissions grouped by modules in hierarchical structure fetched successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch active permissions by modules",
+      details: error
+    });
   }
 });
 

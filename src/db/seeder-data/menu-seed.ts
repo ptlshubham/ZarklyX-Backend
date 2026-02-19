@@ -57,9 +57,13 @@ function loadMenuFromJSON(fileName: string): MenuItem[] {
 /**
  * Extracts module and permission data from menu items
  * Handles nested subItems as submodules
+ * 
+ * @param menuItems - Menu items to extract
+ * @param parentPath - Array of parent module names for building hierarchical permission names
  */
 function extractModulesFromMenu(
-  menuItems: MenuItem[]
+  menuItems: MenuItem[],
+  parentPath: string[] = []
 ): ModulePermissionMap[] {
   const modules: ModulePermissionMap[] = [];
 
@@ -75,36 +79,38 @@ function extractModulesFromMenu(
     };
 
     // Generate CRUD + Manage permissions for this module
-    // Format: resource.action (e.g., client_management.view)
-    const resource = moduleName.replace(/\s+/g, "_").toLowerCase();
+    // Format: module.subModule.action (e.g., accounting_finance.dashboard.view)
+    const currentModulePart = moduleName.replace(/\s+/g, "_").toLowerCase();
+    const fullPath = [...parentPath, currentModulePart];
+    const permissionPrefix = fullPath.join(".");
 
     moduleData.permissions.push(
       {
-        name: `${resource}.view`,
+        name: `${permissionPrefix}.view`,
         description: `View ${moduleName}`,
         displayName: `View ${moduleName}`,
         action: "view",
       },
       {
-        name: `${resource}.create`,
+        name: `${permissionPrefix}.create`,
         description: `Create ${moduleName}`,
         displayName: `Create ${moduleName}`,
         action: "create",
       },
       {
-        name: `${resource}.update`,
+        name: `${permissionPrefix}.update`,
         description: `Update ${moduleName}`,
         displayName: `Update ${moduleName}`,
         action: "update",
       },
       {
-        name: `${resource}.delete`,
+        name: `${permissionPrefix}.delete`,
         description: `Delete ${moduleName}`,
         displayName: `Delete ${moduleName}`,
         action: "delete",
       },
       {
-        name: `${resource}.manage`,
+        name: `${permissionPrefix}.manage`,
         description: `Full management access to ${moduleName} (includes create, update, delete)`,
         displayName: `Manage ${moduleName}`,
         action: "manage",
@@ -113,7 +119,7 @@ function extractModulesFromMenu(
 
     // Process subItems recursively (if they exist)
     if (item.subItems && item.subItems.length > 0) {
-      const subModules = extractModulesFromMenu(item.subItems);
+      const subModules = extractModulesFromMenu(item.subItems, fullPath);
 
       if (subModules.length > 0) {
         moduleData.subModules = subModules;
@@ -139,9 +145,13 @@ async function seedModuleRecursive(
   sequelize: Sequelize,
   parentModuleId?: string
 ): Promise<string> {
-  // Check if module already exists
+  // Check if module already exists with the same name AND parent
+  // This allows multiple modules with same name under different parents
   let module = await Modules.findOne({
-    where: { name: moduleData.moduleName },
+    where: { 
+      name: moduleData.moduleName,
+      parentModuleId: parentModuleId || null
+    },
   });
 
   if (!module) {
@@ -155,13 +165,6 @@ async function seedModuleRecursive(
       isActive: true,
       isDeleted: false,
     });
-    
-    // ...existing code...
-  } else {
-    // Update parentModuleId if module exists but parent changed
-    if (module.parentModuleId !== (parentModuleId || null)) {
-      await module.update({ parentModuleId: parentModuleId || null });
-    }
   }
 
   // Seed permissions for this module
