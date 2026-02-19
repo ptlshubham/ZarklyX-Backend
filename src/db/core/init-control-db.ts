@@ -69,6 +69,14 @@ import { ZarklyXRole } from "../../routes/api-webapp/superAdmin/rbac/roles/roles
 import { ZarklyXPermission } from "../../routes/api-webapp/superAdmin/rbac/permissions/permissions-model";
 import { ZarklyXRolePermission } from "../../routes/api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../routes/api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
+import { Ticket } from "../../routes/api-webapp/tickets/ticket/ticket-model";
+import { TicketAssignment } from "../../routes/api-webapp/tickets/ticket-assignment/ticket-assignment-model";
+import { TicketAttachment } from "../../routes/api-webapp/tickets/ticket-attachments/ticket-attachments-model";
+import { TicketChanges } from "../../routes/api-webapp/tickets/ticket-changes/ticket-changes-model";
+import { TicketTimeline } from "../../routes/api-webapp/tickets/ticket-timeline/ticket-timeline-model";
+import { ManagerHandover } from "../../routes/api-webapp/tickets/manager-handover/manager-handover-model";
+import { ChangeAssignment } from "../../routes/api-webapp/tickets/ticket-changes/change-assignment-model";
+import { ClientUserAssignment, initClientUserAssignmentModel } from "../../routes/api-webapp/agency/client-assignment/client-assignment-model";
 
 export {
   User,
@@ -129,7 +137,14 @@ export {
   ItAssetsManagement,
   ItTicketsAttachments,
   ItAssetsAttachments,
-  ItTicketsTimeline
+  ItTicketsTimeline,
+  Ticket,
+  TicketAssignment,
+  TicketAttachment,
+  TicketChanges,
+  TicketTimeline,
+  ManagerHandover,
+  ChangeAssignment,
 };
 export function initControlDB(sequelize: Sequelize) {
   // For web App
@@ -149,6 +164,14 @@ export function initControlDB(sequelize: Sequelize) {
   ItTicketsAttachments.initModel(sequelize);
   ItTicketsTimeline.initModel(sequelize);
   ItAssetsAttachments.initModel(sequelize);
+  Ticket.initModel(sequelize);
+  TicketAssignment.initModel(sequelize);
+  TicketAttachment.initModel(sequelize);
+  TicketChanges.initModel(sequelize);
+  TicketTimeline.initModel(sequelize);
+  ManagerHandover.initModel(sequelize);
+  ChangeAssignment.initModel(sequelize);
+  initClientUserAssignmentModel(sequelize);
   // Roles
   // Role.initModel(sequelize);
   // SubRole.initModel(sequelize);
@@ -825,99 +848,99 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
-    /*** DebitNote <-> Company */
-    Company.hasMany(DebitNote, {
-      foreignKey: "companyId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Company, {
-      foreignKey: "companyId",
-      as: "company",
-      constraints: false,
-    });
+  /*** DebitNote <-> Company */
+  Company.hasMany(DebitNote, {
+    foreignKey: "companyId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Clients */
-    Clients.hasMany(DebitNote, {
-      foreignKey: "clientId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Clients, {
-      foreignKey: "clientId",
-      as: "client",
-      constraints: false,
-    });
+  /*** DebitNote <-> Clients */
+  Clients.hasMany(DebitNote, {
+    foreignKey: "clientId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Vendor */
-    Vendor.hasMany(DebitNote, {
-      foreignKey: "vendorId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Vendor, {
-      foreignKey: "vendorId",
-      as: "vendor",
-      constraints: false,
-    });
+  /*** DebitNote <-> Vendor */
+  Vendor.hasMany(DebitNote, {
+    foreignKey: "vendorId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Vendor, {
+    foreignKey: "vendorId",
+    as: "vendor",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Invoice */
-    Invoice.hasMany(DebitNote, {
-      foreignKey: "invoiceId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(Invoice, {
-      foreignKey: "invoiceId",
-      as: "invoice",
-      constraints: false,
-    });
+  /*** DebitNote <-> Invoice */
+  Invoice.hasMany(DebitNote, {
+    foreignKey: "invoiceId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(Invoice, {
+    foreignKey: "invoiceId",
+    as: "invoice",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> PurchaseBill */
-    PurchaseBill.hasMany(DebitNote, {
-      foreignKey: "purchaseBillId",
-      as: "debitNotes",
-      constraints: false,
-    });
-    DebitNote.belongsTo(PurchaseBill, {
-      foreignKey: "purchaseBillId",
-      as: "purchaseBill",
-      constraints: false,
-    });
+  /*** DebitNote <-> PurchaseBill */
+  PurchaseBill.hasMany(DebitNote, {
+    foreignKey: "purchaseBillId",
+    as: "debitNotes",
+    constraints: false,
+  });
+  DebitNote.belongsTo(PurchaseBill, {
+    foreignKey: "purchaseBillId",
+    as: "purchaseBill",
+    constraints: false,
+  });
 
-    /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
-    DebitNote.belongsToMany(Item, {
-      through: DebitNoteItem,
-      foreignKey: "debitNoteId",
-      otherKey: "itemId",
-      as: "items",
-    });
-    Item.belongsToMany(DebitNote, {
-      through: DebitNoteItem,
-      foreignKey: "itemId",
-      otherKey: "debitNoteId",
-      as: "debitNotes",
-    });
+  /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
+  DebitNote.belongsToMany(Item, {
+    through: DebitNoteItem,
+    foreignKey: "debitNoteId",
+    otherKey: "itemId",
+    as: "items",
+  });
+  Item.belongsToMany(DebitNote, {
+    through: DebitNoteItem,
+    foreignKey: "itemId",
+    otherKey: "debitNoteId",
+    as: "debitNotes",
+  });
 
-    /*** DebitNote <-> DebitNoteItem */
-    DebitNote.hasMany(DebitNoteItem, {
-      foreignKey: "debitNoteId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(DebitNote, {
-      foreignKey: "debitNoteId",
-      as: "debitNote",
-    });
+  /*** DebitNote <-> DebitNoteItem */
+  DebitNote.hasMany(DebitNoteItem, {
+    foreignKey: "debitNoteId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(DebitNote, {
+    foreignKey: "debitNoteId",
+    as: "debitNote",
+  });
 
-    /*** Item <-> DebitNoteItem */
-    Item.hasMany(DebitNoteItem, {
-      foreignKey: "itemId",
-      as: "debitNoteItems",
-    });
-    DebitNoteItem.belongsTo(Item, {
-      foreignKey: "itemId",
-      as: "item",
-    });
+  /*** Item <-> DebitNoteItem */
+  Item.hasMany(DebitNoteItem, {
+    foreignKey: "itemId",
+    as: "debitNoteItems",
+  });
+  DebitNoteItem.belongsTo(Item, {
+    foreignKey: "itemId",
+    as: "item",
+  });
 
   /*** InfluencerCategory <-> Influencer (Many-to-Many) */
   InfluencerCategory.belongsToMany(Influencer, {
@@ -960,7 +983,7 @@ export function initControlDB(sequelize: Sequelize) {
     otherKey: "platformId",
     as: "platforms",
   });
-      /*** ItemCategory <-> ItAssetsManagement */
+  /*** ItemCategory <-> ItAssetsManagement */
   ItemCategory.hasMany(ItAssetsManagement, {
     foreignKey: "categoryId",
     as: "assets",
@@ -971,8 +994,8 @@ export function initControlDB(sequelize: Sequelize) {
     as: "category",
   });
 
-    /*** Company <-> ItAssetsManagement */
-   Company.hasMany(ItAssetsManagement, {
+  /*** Company <-> ItAssetsManagement */
+  Company.hasMany(ItAssetsManagement, {
     foreignKey: "companyId",
     as: "assets",
   });
@@ -992,7 +1015,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "clientId",
     as: "client",
   });
-   /***ItTicketsAttachments<->ItTickets */
+  /***ItTicketsAttachments<->ItTickets */
   ItTickets.hasMany(ItTicketsAttachments, {
     foreignKey: "itTicketId",
     as: "attachments",
@@ -1002,7 +1025,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "itTicketId",
     as: "itTickets",
   });
-  
+
   //***ItAssetsAttachments<->ItAssetsManagement */
   ItAssetsManagement.hasMany(ItAssetsAttachments, {
     foreignKey: "itAssetId",
@@ -1013,7 +1036,7 @@ export function initControlDB(sequelize: Sequelize) {
     foreignKey: "itAssetId",
     as: "asset",
   });
-    /***ItTickets<->ItTicketsTimeline */
+  /***ItTickets<->ItTicketsTimeline */
   ItTickets.hasMany(ItTicketsTimeline, {
     foreignKey: "itTicketId",
     as: "timeline",
@@ -1042,6 +1065,212 @@ export function initControlDB(sequelize: Sequelize) {
   ItTicketsTimeline.belongsTo(Employee, {
     foreignKey: "employeeId", as: "assignedEmployee"
   });
+  // ClientUserAssignment <-> User
+  // The ClientUserAssignment model stores the assigned user's id in `assignedUserId`.
+  // Expose the relation from assignment -> user as `assignedUser` to match includes.
+  User.hasMany(ClientUserAssignment, {
+    foreignKey: "assignedUserId",
+    as: "clientAssignments",
+  });
+  ClientUserAssignment.belongsTo(User, {
+    foreignKey: "assignedUserId",
+    as: "assignedUser",
+  });
+
+  // ClientUserAssignment <-> Clients
+  ClientUserAssignment.belongsTo(Clients, {
+    foreignKey: "clientId"
+  });
+  Clients.hasMany(ClientUserAssignment, {
+    foreignKey: "clientId"
+  });
+
+  /***Ticket<->Company */
+  Ticket.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  Company.hasMany(Ticket, {
+    foreignKey: "companyId",
+    as: "tickets",
+  });
+
+  /***Ticket<->Clients */
+  Ticket.belongsTo(Clients, {
+    foreignKey: "clientId",
+    as: "client",
+  });
+  Clients.hasMany(Ticket, {
+    foreignKey: "clientId",
+    as: "tickets",
+  });
+
+  /***Ticket<->Employee */
+  Ticket.belongsTo(Employee, {
+    foreignKey: "assignedManagerId",
+    as: "assignedManager",
+  });
+  Employee.hasMany(Ticket, {
+    foreignKey: "assignedManagerId",
+    as: "assignedTickets",
+  });
+  /***Ticket<->User */
+  Ticket.belongsTo(User, {
+    foreignKey: "createdByUserId",
+    as: "createdBy",
+  });
+  User.hasMany(Ticket, {
+    foreignKey: "createdByUserId",
+    as: "createdTickets",
+  });
+
+  /***Ticket<->TicketAssignment */
+  TicketAssignment.belongsTo(Ticket, {
+    foreignKey: "ticketId",
+    as: "ticket",
+  });
+  Ticket.hasMany(TicketAssignment, {
+    foreignKey: "ticketId",
+    as: "assignments",
+  });
+
+  /***TicketAssignment<->Employee */
+  TicketAssignment.belongsTo(Employee, {
+    foreignKey: "employeeId",
+    as: "employee",
+  });
+  Employee.hasMany(TicketAssignment, {
+    foreignKey: "employeeId",
+    as: "assignments",
+  });
+  /***TicketAssignment<->User */
+  TicketAssignment.belongsTo(User, {
+    foreignKey: "assignedBy",
+    as: "assignedByUser",
+  });
+  User.hasMany(TicketAssignment, {
+    foreignKey: "assignedBy",
+    as: "assignmentsMade",
+  });
+
+  /***TicketTimeline<->Ticket */
+  TicketTimeline.belongsTo(Ticket, {
+    foreignKey: "ticketId",
+    as: "ticket",
+  });
+  Ticket.hasMany(TicketTimeline, {
+    foreignKey: "ticketId",
+    as: "timelines",
+  });
+
+  TicketTimeline.belongsTo(User, {
+    foreignKey: "changedBy",
+    as: "changedByUser",
+  });
+  User.hasMany(TicketTimeline, {
+    foreignKey: "changedBy",
+    as: "ticketChanges",
+  });
+
+  /***TicketChanges<->Ticket */
+  TicketChanges.belongsTo(Ticket, {
+    foreignKey: "ticketId",
+    as: "ticket",
+  });
+  Ticket.hasMany(TicketChanges, {
+    foreignKey: "ticketId",
+    as: "changes",
+  });
+
+  TicketChanges.belongsTo(User, {
+    foreignKey: "requestedByUserId",
+    as: "requestedBy",
+  });
+  User.hasMany(TicketChanges, {
+    foreignKey: "requestedByUserId",
+    as: "requestedChanges",
+  });
+
+  /***TicketChanges<->Employee */
+  TicketChanges.belongsTo(Employee, {
+    foreignKey: "employeeId",
+    as: "assignedEmployee",
+  });
+  Employee.hasMany(TicketChanges, {
+    foreignKey: "employeeId",
+    as: "assignedChanges",
+  });
+
+  /***TicketChanges<->ChangeAssignment */
+  ChangeAssignment.belongsTo(TicketChanges, {
+    foreignKey: "changeId",
+    as: "change",
+  });
+  TicketChanges.hasMany(ChangeAssignment, {
+    foreignKey: "changeId",
+    as: "assignments",
+  });
+
+  /***TicketChanges<->ChangeAssignment */
+  ChangeAssignment.belongsTo(Employee, {
+    foreignKey: "employeeId",
+    as: "employee",
+  });
+  Employee.hasMany(ChangeAssignment, {
+    foreignKey: "employeeId",
+    as: "changeAssignments",
+  });
+  
+  /***TicketAttachment<->Ticket */
+  TicketAttachment.belongsTo(Ticket, {
+    foreignKey: "ticketId",
+    as: "ticket",
+  });
+  Ticket.hasMany(TicketAttachment, {
+    foreignKey: "ticketId",
+    as: "attachments",
+  });
+
+  /***TicketAttachment<->TicketChanges */
+  TicketAttachment.belongsTo(TicketChanges, {
+    foreignKey: "changeId",
+    as: "change",
+  });
+  TicketChanges.hasMany(TicketAttachment, {
+    foreignKey: "changeId",
+    as: "attachments",
+  });
+
+  /***ManagerHandover<->Employee */
+  ManagerHandover.belongsTo(Employee, {
+    foreignKey: "managerId",
+    as: "manager",
+  });
+
+  Employee.hasMany(ManagerHandover, {
+    foreignKey: "managerId",
+    as: "handovers",
+  });
+
+  Employee.hasMany(ManagerHandover, {
+    foreignKey: "backupManagerId",
+    as: "backupHandovers",
+  });
+
+  ManagerHandover.belongsTo(Employee, {
+    foreignKey: "backupManagerId",
+    as: "backupManager",
+  });
+  /***ManagerHandover<->Company */
+  ManagerHandover.belongsTo(Company, {
+    foreignKey: "companyId",
+    as: "company",
+  });
+  Company.hasMany(ManagerHandover, {
+    foreignKey: "companyId",
+    as: "managerHandovers",
+  });
+
 
   // Permissions <-> Modules association
   // Each permission belongs to a module (moduleId foreign key)
@@ -1236,7 +1465,7 @@ export function initControlDB(sequelize: Sequelize) {
   // ============================================================
   // ZarklyX RBAC Associations (Platform Admin System)
   // ============================================================
-  
+
   // ZarklyXUser <-> ZarklyXRole
   ZarklyXUser.belongsTo(ZarklyXRole, {
     foreignKey: "roleId",
@@ -1373,5 +1602,13 @@ export function initControlDB(sequelize: Sequelize) {
     Role,
     RolePermissions,
     UserPermissionOverrides,
+    Ticket,
+    TicketAssignment,
+    TicketAttachment,
+    TicketChanges,
+    TicketTimeline,
+    ManagerHandover,
+    ChangeAssignment,
+    ClientUserAssignment,
   };
 }

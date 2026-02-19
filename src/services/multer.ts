@@ -22,6 +22,7 @@ const profileFile = "profileFile";
 
 const IT_TICKET_UPLOAD_DIR = "itManagement/itTickets";
 const IT_ASSET_UPLOAD_DIR = "itManagement/itAssets";
+const TOKENS_UPLOAD_DIR = "tickets";
 
 
 const itTicketStorage = multer.diskStorage({
@@ -38,6 +39,7 @@ const itTicketStorage = multer.diskStorage({
   },
 });
 
+// IT Tickets Module Upload (for IT Management)
 export const ticketAttachmentUpload = multer({
   storage: itTicketStorage,
   limits: { fileSize: 3 * 1024 * 1024 },
@@ -45,6 +47,43 @@ export const ticketAttachmentUpload = multer({
     const allowed = ["image/jpeg", "image/png"];
     if (!allowed.includes(file.mimetype)) {
       cb(new Error("Only jpeg/png files allowed"));
+    } else {
+      cb(null, true);
+    }
+  },
+});
+
+// Storage for NEW Tickets Module (Client/Company Tickets - separate from IT)
+const tokensStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadPath = `/${config.publicPath}/${TOKENS_UPLOAD_DIR}`;
+    if (!fs.existsSync(`.${uploadPath}`)) {
+      fs.mkdirSync(`.${uploadPath}`, { recursive: true });
+    }
+    cb(null, process.cwd() + uploadPath);
+  },
+  filename(req, file, cb) {
+    const unique = file.originalname.replace(/ /g, "_");
+    cb(null, `${Date.now()}-${unique}`);
+  },
+});
+
+// NEW Tickets Module Upload (Client/Company Tickets)
+export const tokensAttachmentUpload = multer({
+  storage: tokensStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB for client uploads
+  fileFilter(req, file, cb) {
+    // Allow more file types for tickets (images, PDFs, docs)
+    const allowed = [
+      "image/jpeg", 
+      "image/png", 
+      "image/webp",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Only jpeg/png/webp/pdf/doc/docx files allowed"));
     } else {
       cb(null, true);
     }
