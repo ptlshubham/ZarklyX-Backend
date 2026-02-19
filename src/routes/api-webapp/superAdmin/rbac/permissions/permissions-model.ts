@@ -15,6 +15,7 @@ export class ZarklyXPermission extends Model<
   declare id: CreationOptional<string>;
   declare name: string;
   declare description: string;
+  declare displayName: string;
   declare moduleId: string;
   declare action: string;
   declare isSystemPermission: boolean;
@@ -41,6 +42,11 @@ export class ZarklyXPermission extends Model<
         description: {
           type: DataTypes.TEXT,
           allowNull: false,
+        },
+        displayName: {
+          type: DataTypes.STRING(255),
+          allowNull: false,
+          comment: "User-friendly name for the permission",
         },
         moduleId: {
           type: DataTypes.UUID,

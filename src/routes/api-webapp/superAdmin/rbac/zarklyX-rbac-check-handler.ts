@@ -4,13 +4,19 @@ import { ZarklyXRole } from "../../../api-webapp/superAdmin/rbac/roles/roles-mod
 import { ZarklyXPermission } from "../../../api-webapp/superAdmin/rbac/permissions/permissions-model";
 import { ZarklyXRolePermission } from "../../../api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../../api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
+import { 
+  getActiveOverrideFilter,
+  checkHierarchicalPermission,
+  checkRolePermission,
+  findPermissionByKey,
+  checkRolePermissionByKey,
+} from "../../../../utils/rbac-shared-utils";
 
 /**
  * Helper: Active override filter (non-expired)
+ * Re-exported for backward compatibility
  */
-export const ZARKLYX_ACTIVE_OVERRIDE_FILTER = {
-  [Op.or]: [{ expiresAt: null }, { expiresAt: { [Op.gt]: new Date() } }],
-};
+export const ZARKLYX_ACTIVE_OVERRIDE_FILTER = getActiveOverrideFilter();
 
 /**
  * Check if a ZarklyX role has a specific permission
@@ -19,11 +25,7 @@ export async function checkZarklyXRoleHasPermission(
   roleId: string,
   permissionId: string
 ): Promise<boolean> {
-  const rolePermission = await ZarklyXRolePermission.findOne({
-    where: { roleId, permissionId },
-  });
-
-  return !!rolePermission;
+  return await checkRolePermission(ZarklyXRolePermission, roleId, permissionId);
 }
 
 /**
@@ -33,19 +35,12 @@ export async function checkZarklyXRoleHasPermissionByKey(
   roleId: string,
   permissionKey: string
 ): Promise<boolean> {
-  const permission = await ZarklyXPermission.findOne({
-    where: {
-      name: permissionKey,
-      isActive: true,
-      isDeleted: false,
-    },
-  });
-
-  if (!permission) {
-    return false;
-  }
-
-  return await checkZarklyXRoleHasPermission(roleId, permission.id);
+  return await checkRolePermissionByKey(
+    ZarklyXPermission,
+    ZarklyXRolePermission,
+    roleId,
+    permissionKey
+  );
 }
 
 /**
@@ -141,6 +136,38 @@ export async function checkZarklyXUserPermission(
         override: true,
         effect: "deny",
         reason: denyOverride.reason,
+        matchType: "exact",
+      },
+    };
+  }
+
+  // Check hierarchical deny overrides
+  const hierarchicalDeny = await checkHierarchicalPermission(
+    permissionKey,
+    ZarklyXPermission,
+    async (higherPermissionId) => {
+      return await ZarklyXUserPermissionOverride.findOne({
+        where: {
+          userId,
+          permissionId: higherPermissionId,
+          effect: "deny",
+          ...ZARKLYX_ACTIVE_OVERRIDE_FILTER,
+        },
+      });
+    }
+  );
+
+  if (hierarchicalDeny.found && hierarchicalDeny.result) {
+    return {
+      hasAccess: false,
+      reason: "Permission explicitly denied for ZarklyX user (via higher-level action)",
+      details: {
+        override: true,
+        effect: "deny",
+        reason: hierarchicalDeny.result.reason,
+        requestedPermission: permissionKey,
+        deniedVia: hierarchicalDeny.grantedVia,
+        matchType: "hierarchical",
       },
     };
   }
@@ -165,22 +192,78 @@ export async function checkZarklyXUserPermission(
         override: true,
         effect: "allow",
         reason: allowOverride.reason,
+        matchType: "exact",
+      },
+    };
+  }
+
+  // Check hierarchical allow overrides
+  const hierarchicalAllow = await checkHierarchicalPermission(
+    permissionKey,
+    ZarklyXPermission,
+    async (higherPermissionId) => {
+      return await ZarklyXUserPermissionOverride.findOne({
+        where: {
+          userId,
+          permissionId: higherPermissionId,
+          effect: "allow",
+          ...ZARKLYX_ACTIVE_OVERRIDE_FILTER,
+        },
+      });
+    }
+  );
+
+  if (hierarchicalAllow.found && hierarchicalAllow.result) {
+    return {
+      hasAccess: true,
+      reason: "Permission explicitly allowed for ZarklyX user (via higher-level action)",
+      details: {
+        override: true,
+        effect: "allow",
+        reason: hierarchicalAllow.result.reason,
+        requestedPermission: permissionKey,
+        grantedVia: hierarchicalAllow.grantedVia,
+        matchType: "hierarchical",
       },
     };
   }
 
   // ============================================================
-  // PRIORITY 3: Role Permission Check
+  // PRIORITY 3: Role Permission Check (with Action Hierarchy)
   // ============================================================
-  const hasRolePermission = await checkZarklyXRoleHasPermission(user.roleId, permission.id);
+  const hasExactRolePermission = await checkZarklyXRoleHasPermission(user.roleId, permission.id);
 
-  if (hasRolePermission) {
+  if (hasExactRolePermission) {
     return {
       hasAccess: true,
       reason: "Permission granted by ZarklyX role",
       details: {
         roleId: user.roleId,
         permissionKey,
+        matchType: "exact",
+      },
+    };
+  }
+
+  // Check hierarchical role permissions
+  const hierarchicalRole = await checkHierarchicalPermission(
+    permissionKey,
+    ZarklyXPermission,
+    async (higherPermissionId) => {
+      const hasPermission = await checkZarklyXRoleHasPermission(user.roleId, higherPermissionId);
+      return hasPermission ? { granted: true } : null;
+    }
+  );
+
+  if (hierarchicalRole.found) {
+    return {
+      hasAccess: true,
+      reason: "Permission granted by ZarklyX role (via action hierarchy)",
+      details: {
+        roleId: user.roleId,
+        requestedPermission: permissionKey,
+        grantedVia: hierarchicalRole.grantedVia,
+        matchType: "hierarchical",
       },
     };
   }

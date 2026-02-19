@@ -10,13 +10,19 @@ import { SubscriptionPlanModule } from "../../api-webapp/superAdmin/subscription
 import { Modules } from "../../api-webapp/superAdmin/modules/modules-model";
 import { SubscriptionPlanPermission } from "../../api-webapp/superAdmin/subscription-plan-permission/subscription-plan-permission-model";
 import { CompanyPermission } from "../../api-webapp/company/company-permission/company-permission-model";
+import { 
+  getActiveOverrideFilter,
+  checkHierarchicalPermission,
+  checkRolePermission,
+  findPermissionByKey,
+  checkRolePermissionByKey,
+} from "../../../utils/rbac-shared-utils";
 
 /**
  * Helper: Active override filter (non-expired)
+ * Re-exported for backward compatibility
  */
-export const ACTIVE_OVERRIDE_FILTER = {
-  [Op.or]: [{ expiresAt: null }, { expiresAt: { [Op.gt]: new Date() } }],
-};
+export const ACTIVE_OVERRIDE_FILTER = getActiveOverrideFilter();
 
 /**
  * Preload all accessible module IDs for a company
@@ -190,16 +196,14 @@ export async function checkCompanyPermissionAccess(
  * Check if a role has a specific permission
  * Only checks the role's directly assigned permissions (no base role inheritance)
  */
+/**
+ * Check if a role has a specific permission
+ */
 export async function checkRoleHasPermission(
   roleId: string,
   permissionId: string
 ): Promise<boolean> {
-  // Check if this role directly has the permission
-  const rolePermission = await RolePermissions.findOne({
-    where: { roleId, permissionId },
-  });
-
-  return !!rolePermission;
+  return await checkRolePermission(RolePermissions, roleId, permissionId);
 }
 
 /**
@@ -209,19 +213,12 @@ export async function checkRoleHasPermissionByKey(
   roleId: string,
   permissionKey: string
 ): Promise<boolean> {
-  const permission = await Permissions.findOne({
-    where: {
-      name: permissionKey,
-      isActive: true,
-      isDeleted: false,
-    },
-  });
-
-  if (!permission) {
-    return false;
-  }
-
-  return await checkRoleHasPermission(roleId, permission.id);
+  return await checkRolePermissionByKey(
+    Permissions,
+    RolePermissions,
+    roleId,
+    permissionKey
+  );
 }
 
 /**
@@ -314,6 +311,13 @@ export async function checkUserPermission(
     return {
       hasAccess: false,
       reason: "User not found",
+    };
+  }
+
+  if (!user.isActive) {
+    return {
+      hasAccess: false,
+      reason: "User account is inactive",
     };
   }
 
@@ -419,6 +423,38 @@ export async function checkUserPermission(
         override: true,
         effect: "deny",
         reason: denyOverride.reason,
+        matchType: "exact",
+      },
+    };
+  }
+
+  // Check hierarchical deny overrides
+  const hierarchicalDeny = await checkHierarchicalPermission(
+    permissionKey,
+    Permissions,
+    async (higherPermissionId) => {
+      return await UserPermissionOverrides.findOne({
+        where: {
+          userId,
+          permissionId: higherPermissionId,
+          effect: "deny",
+          ...ACTIVE_OVERRIDE_FILTER,
+        },
+      });
+    }
+  );
+
+  if (hierarchicalDeny.found && hierarchicalDeny.result) {
+    return {
+      hasAccess: false,
+      reason: "Permission explicitly denied for user (via higher-level action)",
+      details: {
+        override: true,
+        effect: "deny",
+        reason: hierarchicalDeny.result.reason,
+        requestedPermission: permissionKey,
+        deniedVia: hierarchicalDeny.grantedVia,
+        matchType: "hierarchical",
       },
     };
   }
@@ -443,22 +479,78 @@ export async function checkUserPermission(
         override: true,
         effect: "allow",
         reason: allowOverride.reason,
+        matchType: "exact",
+      },
+    };
+  }
+
+  // Check hierarchical allow overrides
+  const hierarchicalAllow = await checkHierarchicalPermission(
+    permissionKey,
+    Permissions,
+    async (higherPermissionId) => {
+      return await UserPermissionOverrides.findOne({
+        where: {
+          userId,
+          permissionId: higherPermissionId,
+          effect: "allow",
+          ...ACTIVE_OVERRIDE_FILTER,
+        },
+      });
+    }
+  );
+
+  if (hierarchicalAllow.found && hierarchicalAllow.result) {
+    return {
+      hasAccess: true,
+      reason: "Permission explicitly allowed for user (via higher-level action)",
+      details: {
+        override: true,
+        effect: "allow",
+        reason: hierarchicalAllow.result.reason,
+        requestedPermission: permissionKey,
+        grantedVia: hierarchicalAllow.grantedVia,
+        matchType: "hierarchical",
       },
     };
   }
 
   // ============================================================
-  // PRIORITY 4: Role Permission Check
+  // PRIORITY 4: Role Permission Check (with Action Hierarchy)
   // ============================================================
-  const hasRolePermission = await checkRoleHasPermission(user.roleId, permission.id);
+  const hasExactRolePermission = await checkRoleHasPermission(user.roleId, permission.id);
 
-  if (hasRolePermission) {
+  if (hasExactRolePermission) {
     return {
       hasAccess: true,
       reason: "Permission granted by role",
       details: {
         roleId: user.roleId,
         permissionKey,
+        matchType: "exact",
+      },
+    };
+  }
+
+  // Check hierarchical role permissions
+  const hierarchicalRole = await checkHierarchicalPermission(
+    permissionKey,
+    Permissions,
+    async (higherPermissionId) => {
+      const hasPermission = await checkRoleHasPermission(user.roleId!, higherPermissionId);
+      return hasPermission ? { granted: true } : null;
+    }
+  );
+
+  if (hierarchicalRole.found) {
+    return {
+      hasAccess: true,
+      reason: "Permission granted by role (via action hierarchy)",
+      details: {
+        roleId: user.roleId,
+        requestedPermission: permissionKey,
+        grantedVia: hierarchicalRole.grantedVia,
+        matchType: "hierarchical",
       },
     };
   }
@@ -488,7 +580,7 @@ export async function getUserEffectivePermissions(userId: string): Promise<{
 }> {
   const user = await User.findByPk(userId);
 
-  if (!user || !user.roleId) {
+  if (!user || !user.isActive || !user.roleId) {
     return {
       rolePermissions: [],
       allowOverrides: [],
@@ -551,7 +643,7 @@ export async function getUserEffectivePermissions(userId: string): Promise<{
  */
 export async function getUserAccessibleModules(userId: string): Promise<string[]> {
   const user = await User.findByPk(userId);
-  if (!user || !user.companyId) return [];
+  if (!user || !user.isActive || !user.companyId) return [];
 
   const moduleIds = await getCompanyAccessibleModuleIds(user.companyId);
   return Array.from(moduleIds);
@@ -573,7 +665,7 @@ export async function batchCheckUserPermissions(
     include: [{ model: Role, as: "role" }],
   });
 
-  if (!user || !user.roleId || !user.companyId) {
+  if (!user || !user.isActive || !user.roleId || !user.companyId) {
     permissionKeys.forEach((key) => (result[key] = false));
     return result;
   }
@@ -691,7 +783,7 @@ export async function getUserAccessSnapshot(userId: string) {
     include: [{ model: Role, as: "role" }],
   });
 
-  if (!user || !user.roleId || !user.companyId) {
+  if (!user || !user.isActive || !user.roleId || !user.companyId) {
     return { permissions: [], modules: [] };
   }
 

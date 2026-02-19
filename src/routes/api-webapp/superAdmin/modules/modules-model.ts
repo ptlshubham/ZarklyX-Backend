@@ -14,12 +14,17 @@ export class Modules extends Model<
   declare id: CreationOptional<string>;
   declare name: string;
   declare description: string;
+  declare parentModuleId: string | null;
   declare price: number; // Price when purchased as addon module
   declare isFreeForAll: boolean; // Free for all companies regardless of subscription
   declare isActive: boolean;
   declare isDeleted: boolean;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
+
+  // Associations for hierarchical structure
+  declare children?: Modules[];
+  declare parent?: Modules;
 
   static initModel(sequelize: Sequelize): typeof Modules {
     Modules.init(
@@ -38,6 +43,14 @@ export class Modules extends Model<
         description: {
           type: DataTypes.STRING,
           allowNull: false,
+        },
+        parentModuleId: {
+          type: DataTypes.UUID,
+          allowNull: true, // NULL = root module
+          references: {
+            model: 'modules',
+            key: 'id',
+          },
         },
         price: {
           type: DataTypes.DECIMAL(10, 2),
@@ -76,6 +89,14 @@ export class Modules extends Model<
         tableName: "modules",
         timestamps: true,
         indexes: [
+          {
+            fields: ["parentModuleId"],
+            name: "idx_modules_parent_id",
+          },
+          {
+            fields: ["parentModuleId", "isActive", "isDeleted"],
+            name: "idx_modules_parent_active_deleted",
+          },
           {
             fields: ["isFreeForAll"],
             name: "idx_modules_isFreeForAll",

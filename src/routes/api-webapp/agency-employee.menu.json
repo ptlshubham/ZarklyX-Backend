@@ -1,0 +1,309 @@
+﻿[
+    {
+        "id":  1,
+        "label":  "Dashboard"
+    },
+    {
+        "id":  2,
+        "label":  "My Work"
+    },
+    {
+        "label":  "My Tasks",
+        "id":  3,
+        "subItems":  [
+                         {
+                             "label":  "Assigned Tasks",
+                             "id":  4,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "In Progress",
+                             "id":  5,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "Completed",
+                             "id":  6,
+                             "parentId":  3
+                         },
+                         {
+                             "label":  "Task Calendar",
+                             "id":  7,
+                             "parentId":  3
+                         }
+                     ]
+    },
+    {
+        "label":  "My Projects",
+        "id":  8,
+        "subItems":  [
+                         {
+                             "label":  "Active Projects",
+                             "id":  9,
+                             "parentId":  8
+                         },
+                         {
+                             "label":  "Project Timeline",
+                             "id":  10,
+                             "parentId":  8
+                         },
+                         {
+                             "label":  "Project Files",
+                             "id":  11,
+                             "parentId":  8
+                         }
+                     ]
+    },
+    {
+        "label":  "Timesheet",
+        "id":  12,
+        "subItems":  [
+                         {
+                             "label":  "Log Time",
+                             "id":  13,
+                             "parentId":  12
+                         },
+                         {
+                             "label":  "My Timesheet",
+                             "id":  14,
+                             "parentId":  12
+                         },
+                         {
+                             "label":  "Time Reports",
+                             "id":  15,
+                             "parentId":  12
+                         }
+                     ]
+    },
+    {
+        "id":  16,
+        "label":  "Clients"
+    },
+    {
+        "label":  "Client Management",
+        "id":  17,
+        "subItems":  [
+                         {
+                             "label":  "My Clients",
+                             "id":  18,
+                             "parentId":  17
+                         },
+                         {
+                             "label":  "Client Communications",
+                             "id":  19,
+                             "parentId":  17
+                         }
+                     ]
+    },
+    {
+        "id":  20,
+        "label":  "Team Collaboration"
+    },
+    {
+        "id":  21,
+        "label":  "Team Chat"
+    },
+    {
+        "label":  "Meetings",
+        "id":  22,
+        "subItems":  [
+                         {
+                             "label":  "Schedule Meeting",
+                             "id":  23,
+                             "parentId":  22
+                         },
+                         {
+                             "label":  "Upcoming Meetings",
+                             "id":  24,
+                             "parentId":  22
+                         },
+                         {
+                             "label":  "Meeting History",
+                             "id":  25,
+                             "parentId":  22
+                         }
+                     ]
+    },
+    {
+        "id":  26,
+        "label":  "Shared Files"
+    },
+    {
+        "id":  27,
+        "label":  "HR Attendance"
+    },
+    {
+        "label":  "Attendance",
+        "id":  28,
+        "subItems":  [
+                         {
+                             "label":  "Check-In/Out",
+                             "id":  29,
+                             "parentId":  28
+                         },
+                         {
+                             "label":  "My Attendance",
+                             "id":  30,
+                             "parentId":  28
+                         },
+                         {
+                             "label":  "Attendance Report",
+                             "id":  31,
+                             "parentId":  28
+                         }
+                     ]
+    },
+    {
+        "label":  "Leave Management",
+        "id":  32,
+        "subItems":  [
+                         {
+                             "label":  "Apply Leave",
+                             "id":  33,
+                             "parentId":  32
+                         },
+                         {
+                             "label":  "Leave Balance",
+                             "id":  34,
+                             "parentId":  32
+                         },
+                         {
+                             "label":  "Leave History",
+                             "id":  35,
+                             "parentId":  32
+                         }
+                     ]
+    },
+    {
+        "label":  "Payroll",
+        "id":  36,
+        "subItems":  [
+                         {
+                             "label":  "Salary Slips",
+                             "id":  37,
+                             "parentId":  36
+                         },
+                         {
+                             "label":  "Tax Documents",
+                             "id":  38,
+                             "parentId":  36
+                         }
+                     ]
+    },
+    {
+        "id":  39,
+        "label":  "Social Media"
+    },
+    {
+        "label":  "Content Management",
+        "id":  40,
+        "subItems":  [
+                         {
+                             "label":  "Create Post",
+                             "id":  41,
+                             "parentId":  40
+                         },
+                         {
+                             "label":  "Schedule Posts",
+                             "id":  42,
+                             "parentId":  40
+                         },
+                         {
+                             "label":  "Content Calendar",
+                             "id":  43,
+                             "parentId":  40
+                         },
+                         {
+                             "label":  "My Posts",
+                             "id":  44,
+                             "parentId":  40
+                         }
+                     ]
+    },
+    {
+        "label":  "Analytics",
+        "id":  45,
+        "subItems":  [
+                         {
+                             "label":  "Performance Reports",
+                             "id":  46,
+                             "parentId":  45
+                         },
+                         {
+                             "label":  "Engagement Stats",
+                             "id":  47,
+                             "parentId":  45
+                         }
+                     ]
+    },
+    {
+        "id":  48,
+        "label":  "My Profile"
+    },
+    {
+        "id":  49,
+        "label":  "Profile Settings"
+    },
+    {
+        "label":  "Documents",
+        "id":  50,
+        "subItems":  [
+                         {
+                             "label":  "My Documents",
+                             "id":  51,
+                             "parentId":  50
+                         },
+                         {
+                             "label":  "Company Policies",
+                             "id":  52,
+                             "parentId":  50
+                         }
+                     ]
+    },
+    {
+        "label":  "Performance",
+        "id":  53,
+        "subItems":  [
+                         {
+                             "label":  "My Performance",
+                             "id":  54,
+                             "parentId":  53
+                         },
+                         {
+                             "label":  "Goals  Objectives",
+                             "id":  55,
+                             "parentId":  53
+                         },
+                         {
+                             "label":  "Feedback",
+                             "id":  56,
+                             "parentId":  53
+                         }
+                     ]
+    },
+    {
+        "id":  57,
+        "label":  "Support"
+    },
+    {
+        "label":  "Help Support",
+        "id":  58,
+        "subItems":  [
+                         {
+                             "label":  "IT Tickets",
+                             "id":  59,
+                             "parentId":  58
+                         },
+                         {
+                             "label":  "HR Queries",
+                             "id":  60,
+                             "parentId":  58
+                         },
+                         {
+                             "label":  "Knowledge Base",
+                             "id":  61,
+                             "parentId":  58
+                         }
+                     ]
+    }
+]

@@ -244,6 +244,18 @@ export function initControlDB(sequelize: Sequelize) {
 
 
   // Relations and associations
+  /*** Modules self-referencing (parent-child hierarchy) */
+  Modules.hasMany(Modules, {
+    foreignKey: 'parentModuleId',
+    as: 'children',
+  });
+  
+  // Self-referencing: A module belongs to one parent
+  Modules.belongsTo(Modules, {
+    foreignKey: 'parentModuleId',
+    as: 'parent',
+  });
+
   /***user <-> company */
   User.belongsTo(Company, {
     foreignKey: "companyId",
@@ -921,77 +933,75 @@ export function initControlDB(sequelize: Sequelize) {
     constraints: false,
   });
 
-
-
   /*** DebitNote <-> Vendor */
-  Vendor.hasMany(DebitNote, {
-    foreignKey: "vendorId",
-    as: "debitNotes",
-    constraints: false,
-  });
-  DebitNote.belongsTo(Vendor, {
-    foreignKey: "vendorId",
-    as: "vendor",
-    constraints: false,
-  });
+    Vendor.hasMany(DebitNote, {
+      foreignKey: "vendorId",
+      as: "debitNotes",
+      constraints: false,
+    });
+    DebitNote.belongsTo(Vendor, {
+      foreignKey: "vendorId",
+      as: "vendor",
+      constraints: false,
+    });
 
-  /*** DebitNote <-> Invoice */
-  Invoice.hasMany(DebitNote, {
-    foreignKey: "invoiceId",
-    as: "debitNotes",
-    constraints: false,
-  });
-  DebitNote.belongsTo(Invoice, {
-    foreignKey: "invoiceId",
-    as: "invoice",
-    constraints: false,
-  });
+    /*** DebitNote <-> Invoice */
+    Invoice.hasMany(DebitNote, {
+      foreignKey: "invoiceId",
+      as: "debitNotes",
+      constraints: false,
+    });
+    DebitNote.belongsTo(Invoice, {
+      foreignKey: "invoiceId",
+      as: "invoice",
+      constraints: false,
+    });
 
-  /*** DebitNote <-> PurchaseBill */
-  PurchaseBill.hasMany(DebitNote, {
-    foreignKey: "purchaseBillId",
-    as: "debitNotes",
-    constraints: false,
-  });
-  DebitNote.belongsTo(PurchaseBill, {
-    foreignKey: "purchaseBillId",
-    as: "purchaseBill",
-    constraints: false,
-  });
+    /*** DebitNote <-> PurchaseBill */
+    PurchaseBill.hasMany(DebitNote, {
+      foreignKey: "purchaseBillId",
+      as: "debitNotes",
+      constraints: false,
+    });
+    DebitNote.belongsTo(PurchaseBill, {
+      foreignKey: "purchaseBillId",
+      as: "purchaseBill",
+      constraints: false,
+    });
 
-  /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
-  DebitNote.belongsToMany(Item, {
-    through: DebitNoteItem,
-    foreignKey: "debitNoteId",
-    otherKey: "itemId",
-    as: "items",
-  });
-  Item.belongsToMany(DebitNote, {
-    through: DebitNoteItem,
-    foreignKey: "itemId",
-    otherKey: "debitNoteId",
-    as: "debitNotes",
-  });
+    /*** DebitNote <-> Item (Many-to-Many through DebitNoteItem) */
+    DebitNote.belongsToMany(Item, {
+      through: DebitNoteItem,
+      foreignKey: "debitNoteId",
+      otherKey: "itemId",
+      as: "items",
+    });
+    Item.belongsToMany(DebitNote, {
+      through: DebitNoteItem,
+      foreignKey: "itemId",
+      otherKey: "debitNoteId",
+      as: "debitNotes",
+    });
 
-  /*** DebitNote <-> DebitNoteItem */
-  DebitNote.hasMany(DebitNoteItem, {
-    foreignKey: "debitNoteId",
-    as: "debitNoteItems",
-  });
-  DebitNoteItem.belongsTo(DebitNote, {
-    foreignKey: "debitNoteId",
-    as: "debitNote",
-  });
+    /*** DebitNote <-> DebitNoteItem */
+    DebitNote.hasMany(DebitNoteItem, {
+      foreignKey: "debitNoteId",
+      as: "debitNoteItems",
+    });
+    DebitNoteItem.belongsTo(DebitNote, {
+      foreignKey: "debitNoteId",
+      as: "debitNote",
+    });
 
-  /*** Item <-> DebitNoteItem */
-  Item.hasMany(DebitNoteItem, {
-    foreignKey: "itemId",
-    as: "debitNoteItems",
-  });
-  DebitNoteItem.belongsTo(Item, {
-    foreignKey: "itemId",
-    as: "item",
-  });
+    /*** Item <-> DebitNoteItem */
+    Item.hasMany(DebitNoteItem, {
+      foreignKey: "itemId",
+      as: "debitNoteItems",
+    });
+    DebitNoteItem.belongsTo(Item, {
+      foreignKey: "itemId",
+      as: "item",
+    });
 
   /*** InfluencerCategory <-> Influencer (Many-to-Many) */
   InfluencerCategory.belongsToMany(Influencer, {

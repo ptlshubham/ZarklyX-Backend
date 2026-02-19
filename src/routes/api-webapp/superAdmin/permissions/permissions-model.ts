@@ -14,6 +14,7 @@ export class Permissions extends Model<
   declare id: CreationOptional<string>;
   declare name: string;
   declare description: string;
+  declare displayName: string;
   declare moduleId: string;
   declare action: string;
   declare price: number; // Price for individual permission addon
@@ -40,6 +41,10 @@ export class Permissions extends Model<
           unique: true,
         },
         description: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
+        displayName: {
           type: DataTypes.STRING,
           allowNull: false,
         },
