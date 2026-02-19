@@ -3,6 +3,7 @@ import { Sequelize } from "sequelize";
 import { seedUser } from "./user-seed";
 import { seedRoles } from "./role-seed";
 import { seedModulesAndPermissions } from "./menu-seed";
+import { seedZarklyXPermissions } from "./zarklyX-permissions-seed";
 
 export const runSeeders = async (sequelize: Sequelize) => {
     try {
@@ -11,6 +12,7 @@ export const runSeeders = async (sequelize: Sequelize) => {
         // await seedRoles(sequelize);
         // await seedUser(sequelize);
         await seedModulesAndPermissions(sequelize);
+        await seedZarklyXPermissions(sequelize);
         
         console.log("\nAll seeders completed successfully!\n");
     } catch (error) {

@@ -110,3 +110,79 @@ export const getActiveModulesWithPermissions = async () => {
         order: [["name", "ASC"]],
     });
 };
+
+// Get modules in hierarchical structure
+export const getModulesHierarchy = async () => {
+    // Fetch all modules
+    const modules = await Modules.findAll({
+        where: { isDeleted: false },
+        order: [["name", "ASC"]],
+        raw: true,
+    });
+
+    // Create a map for quick lookup
+    const moduleMap = new Map();
+    const rootModules: any[] = [];
+
+    // First pass: Create module objects with children arrays
+    modules.forEach((module: any) => {
+        moduleMap.set(module.id, { ...module, subModules: [] });
+    });
+
+    // Second pass: Build hierarchy
+    modules.forEach((module: any) => {
+        const moduleWithChildren = moduleMap.get(module.id);
+        if (module.parentModuleId) {
+            const parent = moduleMap.get(module.parentModuleId);
+            if (parent) {
+                parent.subModules.push(moduleWithChildren);
+            } else {
+                // If parent not found, treat as root
+                rootModules.push(moduleWithChildren);
+            }
+        } else {
+            // Root module (no parent)
+            rootModules.push(moduleWithChildren);
+        }
+    });
+
+    return rootModules;
+};
+
+// Get active modules in hierarchical structure
+export const getActiveModulesHierarchy = async () => {
+    // Fetch all active modules
+    const modules = await Modules.findAll({
+        where: { isActive: true, isDeleted: false },
+        order: [["name", "ASC"]],
+        raw: true,
+    });
+
+    // Create a map for quick lookup
+    const moduleMap = new Map();
+    const rootModules: any[] = [];
+
+    // First pass: Create module objects with children arrays
+    modules.forEach((module: any) => {
+        moduleMap.set(module.id, { ...module, subModules: [] });
+    });
+
+    // Second pass: Build hierarchy
+    modules.forEach((module: any) => {
+        const moduleWithChildren = moduleMap.get(module.id);
+        if (module.parentModuleId) {
+            const parent = moduleMap.get(module.parentModuleId);
+            if (parent) {
+                parent.subModules.push(moduleWithChildren);
+            } else {
+                // If parent not found, treat as root
+                rootModules.push(moduleWithChildren);
+            }
+        } else {
+            // Root module (no parent)
+            rootModules.push(moduleWithChildren);
+        }
+    });
+
+    return rootModules;
+};

@@ -6,6 +6,8 @@ import {
   getActiveModules,
   getModulesWithPermissions,
   getActiveModulesWithPermissions,
+  getModulesHierarchy,
+  getActiveModulesHierarchy,
   updateModule,
   deleteModule,
   toggleModuleActive
@@ -84,6 +86,42 @@ router.get("/getActiveModules", async (_req: Request, res: Response): Promise<an
     return res.status(200).json({ success: true, data: modules });
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch active modules", details: error });
+  }
+});
+
+// Get /superAdmin/modules/getModulesHierarchy
+router.get("/getModulesHierarchy", async (_req: Request, res: Response): Promise<any> => {
+  try {
+    const modulesHierarchy = await getModulesHierarchy();
+    return res.status(200).json({
+      success: true,
+      data: modulesHierarchy,
+      message: "Modules hierarchy fetched successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch modules hierarchy",
+      details: error
+    });
+  }
+});
+
+// Get /superAdmin/modules/getActiveModulesHierarchy
+router.get("/getActiveModulesHierarchy", async (_req: Request, res: Response): Promise<any> => {
+  try {
+    const modulesHierarchy = await getActiveModulesHierarchy();
+    return res.status(200).json({
+      success: true,
+      data: modulesHierarchy,
+      message: "Active modules hierarchy fetched successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch active modules hierarchy",
+      details: error
+    });
   }
 });
 

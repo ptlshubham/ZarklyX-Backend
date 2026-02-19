@@ -38,7 +38,6 @@ export class Modules extends Model<
         name: {
           type: DataTypes.STRING,
           allowNull: false,
-          unique: true,
         },
         description: {
           type: DataTypes.STRING,
@@ -89,6 +88,12 @@ export class Modules extends Model<
         tableName: "modules",
         timestamps: true,
         indexes: [
+          {
+            // Composite unique constraint: same name allowed under different parents
+            unique: true,
+            fields: ["name", "parentModuleId"],
+            name: "idx_modules_name_parent_unique",
+          },
           {
             fields: ["parentModuleId"],
             name: "idx_modules_parent_id",
