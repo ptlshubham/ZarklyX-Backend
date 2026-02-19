@@ -19,12 +19,12 @@ const router = Router();
 router.post("/createPermission", async (req, res) => {
   const t = await dbInstance.transaction();
   try {
-    const { name, description, moduleId, action, price, isActive, isDeleted, isSystemPermission, isSubscriptionExempt } = req.body;
-    if (!name || !description || !moduleId || !action) {
+    const { name, description, displayName, moduleId, action, price, isActive, isDeleted, isSystemPermission, isSubscriptionExempt } = req.body;
+    if (!name || !description || !displayName || !moduleId || !action) {
       await t.rollback();
-      return res.status(400).json({ error: "All fields (name, description, moduleId, action) are required" });
+      return res.status(400).json({ error: "All fields (name, description, displayName, moduleId, action) are required" });
     }
-    const permission = await createPermission({ name, description, moduleId, action, price: price || 0, isActive, isDeleted, isSystemPermission, isSubscriptionExempt }, t);
+    const permission = await createPermission({ name, description, displayName, moduleId, action, price: price || 0, isActive, isDeleted, isSystemPermission, isSubscriptionExempt }, t);
     await t.commit();
     return res.status(201).json({ success: true, data: permission });
   } catch (error: any) {
@@ -59,11 +59,11 @@ router.post("/createBulkPermissions", async (req: Request, res: Response): Promi
     // Validate each permission has required fields
     for (let i = 0; i < permissions.length; i++) {
       const perm = permissions[i];
-      if (!perm.name || !perm.description || !perm.moduleId || !perm.action) {
+      if (!perm.name || !perm.description || !perm.displayName || !perm.moduleId || !perm.action) {
         await t.rollback();
         return res.status(400).json({
           success: false,
-          error: `Permission at index ${i} is missing required fields (name, description, moduleId, action)`
+          error: `Permission at index ${i} is missing required fields (name, description, displayName, moduleId, action)`
         });
       }
     }
@@ -151,9 +151,10 @@ router.patch("/updatePermissionById/:id", async (req, res) => {
       return res.status(400).json({ error: "Permission ID is required" });
     }
     const updateFields: any = {};
-    const { name, description, moduleId, action, price, isActive, isDeleted, isSystemPermission, isSubscriptionExempt, isFreeForAll } = req.body;
+    const { name, description, displayName, moduleId, action, price, isActive, isDeleted, isSystemPermission, isSubscriptionExempt, isFreeForAll } = req.body;
     if (typeof name === 'string') updateFields.name = name;
     if (typeof description === 'string') updateFields.description = description;
+    if (typeof displayName === 'string') updateFields.displayName = displayName;
     if (typeof moduleId === 'string') updateFields.moduleId = moduleId;
     if (typeof action === 'string') updateFields.action = action;
     if (typeof price === 'number' && price >= 0) updateFields.price = price;

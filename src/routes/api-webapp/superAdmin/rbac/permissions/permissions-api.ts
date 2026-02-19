@@ -78,21 +78,21 @@ router.get("/getZarklyXPermissionById/:id", zarklyXAuthMiddleware, async (req: R
  */
 router.post("/createZarklyXPermission", zarklyXAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, description, moduleId, action, isSystemPermission } = req.body;
+    const { name, description, displayName, moduleId, action, isSystemPermission } = req.body;
 
-    if (!name || !moduleId || !action) {
+    if (!name || !displayName || !moduleId || !action) {
       res.status(400).json({
         success: false,
-        message: "Name, moduleId, and action are required",
+        message: "Name, displayName, moduleId, and action are required",
       });
       return;
     }
 
     // Validate inputs are not empty strings
-    if (!name.trim() || !moduleId.trim() || !action.trim()) {
+    if (!name.trim() || !displayName.trim() || !moduleId.trim() || !action.trim()) {
       res.status(400).json({
         success: false,
-        message: "Name, moduleId, and action cannot be empty",
+        message: "Name, displayName, moduleId, and action cannot be empty",
       });
       return;
     }
@@ -100,6 +100,7 @@ router.post("/createZarklyXPermission", zarklyXAuthMiddleware, async (req: Reque
     const result = await createZarklyXPermission({
       name: name.trim(),
       description: description?.trim() || '',
+      displayName: displayName.trim(),
       moduleId: moduleId.trim(),
       action: action.trim(),
       isSystemPermission,
@@ -142,10 +143,10 @@ router.post("/createBulkZarklyXPermission", zarklyXAuthMiddleware, async (req: R
 
     // Validate each permission
     for (const perm of permissions) {
-      if (!perm.name || !perm.moduleId || !perm.action) {
+      if (!perm.name || !perm.displayName || !perm.moduleId || !perm.action) {
         res.status(400).json({
           success: false,
-          message: "Each permission must have name, moduleId, and action",
+          message: "Each permission must have name, displayName, moduleId, and action",
         });
         return;
       }
@@ -179,11 +180,11 @@ router.patch("/updateZarklyXPermission/:id", zarklyXAuthMiddleware, async (req: 
   try {
     let { id } = req.params;
     if(Array.isArray(id)) id = id[0];
-    const { name, description, isActive } = req.body;
+    const { name, description, displayName, isActive } = req.body;
 
     const result = await updateZarklyXPermission(
       id,
-      { name, description, isActive },
+      { name, description, displayName, isActive },
       req.zarklyXUser!.id
     );
 

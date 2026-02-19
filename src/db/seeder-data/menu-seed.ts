@@ -17,6 +17,7 @@ interface ModulePermissionMap {
   permissions: {
     name: string;
     description: string;
+    displayName: string;
     action: string;
   }[];
   subModules?: ModulePermissionMap[];
@@ -81,26 +82,31 @@ function extractModulesFromMenu(
       {
         name: `${resource}.view`,
         description: `View ${moduleName}`,
+        displayName: `View ${moduleName}`,
         action: "view",
       },
       {
         name: `${resource}.create`,
         description: `Create ${moduleName}`,
+        displayName: `Create ${moduleName}`,
         action: "create",
       },
       {
         name: `${resource}.update`,
         description: `Update ${moduleName}`,
+        displayName: `Update ${moduleName}`,
         action: "update",
       },
       {
         name: `${resource}.delete`,
         description: `Delete ${moduleName}`,
+        displayName: `Delete ${moduleName}`,
         action: "delete",
       },
       {
         name: `${resource}.manage`,
         description: `Full management access to ${moduleName} (includes create, update, delete)`,
+        displayName: `Manage ${moduleName}`,
         action: "manage",
       }
     );
@@ -168,6 +174,7 @@ async function seedModuleRecursive(
       await Permissions.create({
         name: permData.name,
         description: permData.description,
+        displayName: permData.displayName,
         moduleId: module.id,
         action: permData.action,
         price: 0,

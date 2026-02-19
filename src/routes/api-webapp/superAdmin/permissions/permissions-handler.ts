@@ -6,6 +6,7 @@ import { Permissions } from "../../../api-webapp/superAdmin/permissions/permissi
 export const createPermission = async (fields: {
   name: string;
   description: string;
+  displayName: string;
   moduleId: string;
   action: string;
   price: number;
@@ -16,7 +17,12 @@ export const createPermission = async (fields: {
   isFreeForAll?: boolean;
 }, t: Transaction) => {
   return await Permissions.create({
-    ...fields,
+    name: fields.name,
+    description: fields.description,
+    displayName: fields.displayName,
+    moduleId: fields.moduleId,
+    action: fields.action,
+    price: fields.price,
     isActive: fields.isActive !== undefined ? fields.isActive : true,
     isDeleted: fields.isDeleted !== undefined ? fields.isDeleted : false,
     isSystemPermission: fields.isSystemPermission !== undefined ? fields.isSystemPermission : false,
@@ -30,6 +36,7 @@ export const createPermissions = async (
   permissionsArray: Array<{
     name: string;
     description: string;
+    displayName: string;
     moduleId: string;
     action: string;
     price: number;
@@ -47,7 +54,12 @@ export const createPermissions = async (
   for (const fields of permissionsArray) {
     try {
       const permission = await Permissions.create({
-        ...fields,
+        name: fields.name,
+        description: fields.description,
+        displayName: fields.displayName,
+        moduleId: fields.moduleId,
+        action: fields.action,
+        price: fields.price,
         isActive: fields.isActive !== undefined ? fields.isActive : true,
         isDeleted: fields.isDeleted !== undefined ? fields.isDeleted : false,
         isSystemPermission: fields.isSystemPermission !== undefined ? fields.isSystemPermission : false,

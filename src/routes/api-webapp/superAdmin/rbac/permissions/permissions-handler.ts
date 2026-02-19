@@ -96,6 +96,7 @@ export async function getZarklyXPermissionById(permissionId: string) {
 export async function createZarklyXPermission(data: {
   name: string;
   description: string;
+  displayName: string;
   moduleId: string;
   action: string;
   isSystemPermission?: boolean;
@@ -117,6 +118,7 @@ export async function createZarklyXPermission(data: {
     const newPermission = await ZarklyXPermission.create({
       name: data.name,
       description: data.description,
+      displayName: data.displayName,
       moduleId: data.moduleId,
       action: data.action,
       isSystemPermission: data.isSystemPermission || false,
@@ -146,6 +148,7 @@ export async function bulkCreateZarklyXPermissions(
   permissions: Array<{
     name: string;
     description: string;
+    displayName: string;
     moduleId: string;
     action: string;
     isSystemPermission?: boolean;
@@ -172,6 +175,7 @@ export async function bulkCreateZarklyXPermissions(
     const permissionsToCreate = permissions.map((p) => ({
       name: p.name,
       description: p.description,
+      displayName: p.displayName,
       moduleId: p.moduleId,
       action: p.action,
       isSystemPermission: p.isSystemPermission || false,
@@ -204,6 +208,7 @@ export async function updateZarklyXPermission(
   data: {
     name?: string;
     description?: string;
+    displayName?: string;
     isActive?: boolean;
   },
   updatedBy: string
