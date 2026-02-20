@@ -248,12 +248,12 @@ router.post("/createBulkUserPermission", zarklyXAuthMiddleware, async (req: Requ
     res.status(201).json({
       success: true,
       message: enableCascade && finalOverrides.length > overrides.length
-        ? `${result.data?.length || 0} permission overrides created (${finalOverrides.length - overrides.length} cascaded)`
+        ? `${result.data?.overrides?.length || 0} permission overrides created (${finalOverrides.length - overrides.length} cascaded)`
         : result.message,
       data: {
         overrides: result.data,
         cascaded: enableCascade && finalOverrides.length > overrides.length,
-        totalCreated: result.data?.length || 0,
+        totalCreated: result.data?.overrides?.length || 0,
         originalCount: overrides.length,
       },
     });

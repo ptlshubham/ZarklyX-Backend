@@ -4,6 +4,7 @@ import { ZarklyXRole } from "../../../api-webapp/superAdmin/rbac/roles/roles-mod
 import { ZarklyXPermission } from "../../../api-webapp/superAdmin/rbac/permissions/permissions-model";
 import { ZarklyXRolePermission } from "../../../api-webapp/superAdmin/rbac/role-permissions/role-permissions-model";
 import { ZarklyXUserPermissionOverride } from "../../../api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-model";
+import { Modules } from "../../../api-webapp/superAdmin/modules/modules-model";
 import { 
   getActiveOverrideFilter,
   checkHierarchicalPermission,
@@ -475,9 +476,6 @@ export async function getAllZarklyXSubmoduleIds(
 ): Promise<Set<string>> {
   const submoduleIds = new Set<string>();
 
-  // Import Modules model to avoid circular dependency
-  const { Modules } = await import("../../../../api-webapp/superAdmin/modules/modules-model");
-
   // Get direct children
   const children = await Modules.findAll({
     where: {
@@ -513,8 +511,6 @@ export async function getAllZarklyXSubmoduleIds(
 export async function getZarklyXSubmoduleCascadedPermissions(
   permissionId: string
 ): Promise<string[]> {
-  // Import Modules model to avoid circular dependency
-  const { Modules } = await import("../../../../api-webapp/superAdmin/modules/modules-model");
 
   // Get the parent permission details
   const parentPermission = await ZarklyXPermission.findByPk(permissionId, {
@@ -562,8 +558,6 @@ export async function getZarklyXSubmoduleCascadedPermissions(
 export async function getZarklyXParentCascadedPermissions(
   permissionId: string
 ): Promise<string[]> {
-  // Import Modules model to avoid circular dependency
-  const { Modules } = await import("../../../../api-webapp/superAdmin/modules/modules-model");
 
   const permission = await ZarklyXPermission.findByPk(permissionId, {
     include: [{
