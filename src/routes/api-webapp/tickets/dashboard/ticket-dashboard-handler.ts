@@ -51,7 +51,7 @@ const getWhereClauseByRole = async (userId: string, userRole: string, companyId:
             where: { employeeId: employee.id,isActive:true,isDeleted:false },
             attributes: ["ticketId"],
         });
-        const ticketIds = assignments.map(a => a.ticketId);
+        const ticketIds = assignments.map(a => a.ticketId).filter((id: any): id is string => id != null);
 
         if (ticketIds.length === 0) {
             return { id: { [Op.in]: [] } };
@@ -366,7 +366,7 @@ export const getTicketStatsDailyReport = async (userId: string, userRole: string
                 where: { employeeId: employee.id,isActive:true,isDeleted:false },
                 attributes: ["ticketId"],
             });
-            const ticketIds = assignments.map(a => a.ticketId);
+            const ticketIds = assignments.map(a => a.ticketId).filter((id: any): id is string => id != null);
 
             if (ticketIds.length === 0) {
                 return {
@@ -386,7 +386,7 @@ export const getTicketStatsDailyReport = async (userId: string, userRole: string
                     where: { employeeId,isActive:true,isDeleted:false },
                     attributes: ["ticketId"],
                 });
-                const ticketIds = assignments.map(a => a.ticketId);
+                const ticketIds = assignments.map(a => a.ticketId).filter((id: any): id is string => id != null);
                 whereClause.id = { [Op.in]: ticketIds };
             } else {
                 const employee = await Employee.findOne({
@@ -504,7 +504,7 @@ export const getAverageCompletionTime = async (userId: string, userRole: string,
         if (!completedTickets || completedTickets.length === 0) {
             return { avgMs: 0, avgDisplay: "0 hrs : 0 mins : 0 secs", count: 0 };
         }
-        const ticketIds = completedTickets.map((t: any) => t.ticketId);
+        const ticketIds = completedTickets.map((t: any) => t.ticketId).filter((id: any): id is string => id != null);
         const tickets = await Ticket.findAll({
             where: { id: { [Op.in]: ticketIds }, ...whereClause },
             attributes: ["id", "createdAt"],
@@ -538,8 +538,10 @@ export const getAverageCompletionTime = async (userId: string, userRole: string,
 
             const timelineMap = new Map<string, any[]>();
             for (const r of allTimelines) {
-                if (!timelineMap.has(r.ticketId)) timelineMap.set(r.ticketId, []);
-                timelineMap.get(r.ticketId)!.push(r);
+                if (!r.ticketId) continue;
+                const key = r.ticketId as string;
+                if (!timelineMap.has(key)) timelineMap.set(key, []);
+                timelineMap.get(key)!.push(r);
             }
 
             for (const ev of completedTickets) {
@@ -550,7 +552,7 @@ export const getAverageCompletionTime = async (userId: string, userRole: string,
                 const createdAt = new Date(ticketCreated);
                 let baseMs = Math.max(0, completedAt.getTime() - createdAt.getTime());
 
-                const rows = (timelineMap.get(ev.ticketId) || []).filter((r: any) => {
+                const rows = (timelineMap.get(ev.ticketId as string) || []).filter((r: any) => {
                     const t = new Date(r.createdAt);
                     return t >= createdAt && t <= completedAt;
                 });
