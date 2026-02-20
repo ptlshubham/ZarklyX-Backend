@@ -162,6 +162,7 @@ export const getAvailableManagers = async (clientId: string) => {
     },
     include: [
       { model: Role, as: "role" },
+      { model: Employee, as: "employees", attributes: ["designation"] },
     ],
     raw: false,
   });
@@ -209,6 +210,7 @@ export const getAvailableEmployees = async (clientId: string) => {
     },
     include: [
       { model: Role, as: "role" },
+      { model: Employee, as: "employees", attributes: ["designation"] },
     ],
     raw: false,
   });
