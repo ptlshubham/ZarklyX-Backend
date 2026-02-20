@@ -26,6 +26,7 @@ router.post('/assignEmployee', async (req: Request, res: Response): Promise<any>
             ticketId,
             employeeId,
             assignedBy,
+            "Employee",
             t
         );
         await t.commit();

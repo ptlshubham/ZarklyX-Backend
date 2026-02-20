@@ -23,7 +23,9 @@ export class ManagerHandover extends Model<
     declare startDate: Date | null;
     declare endDate: Date | null;
     declare acceptedAt: Date | null;
+    declare acceptedBy: string | null;
     declare rejectedAt: Date | null;
+    declare rejectedBy: string | null;
     declare requestedBy: string | null; // userId of requester (manager or admin)
     declare approvedBy: string | null; // userId of approver (admin)
 
@@ -90,10 +92,20 @@ export class ManagerHandover extends Model<
                     allowNull: true,
                     comment: "When backup manager accepted the handover",
                 },
+                acceptedBy: {
+                    type: DataTypes.UUID,
+                    allowNull: true,
+                    comment: "User ID who accepted the handover",
+                },
                 rejectedAt: {
                     type: DataTypes.DATE,
                     allowNull: true,
                     comment: "When backup manager rejected the handover",
+                },
+                rejectedBy: {
+                    type: DataTypes.UUID,
+                    allowNull: true,
+                    comment: "User ID who rejected the handover",
                 },
                 requestedBy: {
                     type: DataTypes.UUID,

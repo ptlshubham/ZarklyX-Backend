@@ -6,20 +6,18 @@ import {
     assignUsersToClient,
     partiallyUpdateClientAssignments,
     getAssignedUsersForClient,
+    getAvailableForClient,
 } from "./client-assignment-handler";
-
+import { errorResponse, successResponse } from "../../../../utils/responseHandler";
 const router = express.Router();
 
 // TODO: need to add tokenMiddlerWare
 router.get("/managers/:clientId", async (req, res) => {
     try {
         const data = await getAvailableManagers(req.params.clientId);
-        res.json({ success: true, data });
+        return successResponse(res, "Available managers fetched successfully", data);
     } catch (error: any) {
-        res.status(400).json({
-            success: false,
-            message: error.message || "Failed to fetch available managers"
-        });
+        return errorResponse(res, error.message || "Failed to fetch available managers", null, 400);
     }
 });
 
@@ -27,12 +25,9 @@ router.get("/managers/:clientId", async (req, res) => {
 router.get("/employees/:clientId", async (req, res) => {
     try {
         const data = await getAvailableEmployees(req.params.clientId);
-        res.json({ success: true, data });
+        return successResponse(res, "Available employees fetched successfully", data);
     } catch (error: any) {
-        res.status(400).json({
-            success: false,
-            message: error.message || "Failed to fetch available employees"
-        });
+        return errorResponse(res, error.message || "Failed to fetch available employees", null, 400);
     }
 });
 
@@ -49,10 +44,7 @@ router.post("/assign/:clientId", async (req, res) => {
         //   });
         // }
         if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: "userId is required"
-            });
+            return errorResponse(res, "userId is required", null, 400);
         }
         await assignUsersToClient(
             req.params.clientId,
@@ -62,12 +54,9 @@ router.post("/assign/:clientId", async (req, res) => {
             userId
         );
 
-        res.json({ success: true, message: "Client team assigned successfully" });
+        return successResponse(res, "Client team assigned successfully", null);
     } catch (error: any) {
-        res.status(400).json({
-            success: false,
-            message: error.message || "Failed to assign client team"
-        });
+        return errorResponse(res, error.message || "Failed to assign client team", null, 400);
     }
 });
 
@@ -77,10 +66,7 @@ router.patch("/assignments/:clientId", async (req, res) => {
     try {
         const userId=req.body.userId;
         if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: "userId is required"
-            });
+            return errorResponse(res, "userId is required", null, 400);
         }
         // if (!(req as any).user?.id) {
         //     return res.status(401).json({
@@ -95,15 +81,9 @@ router.patch("/assignments/:clientId", async (req, res) => {
             userId
         );
 
-        res.json({
-            success: true,
-            message: "Client assignments updated successfully",
-        });
+       return successResponse(res, "Client assignments updated successfully", null);
     } catch (error: any) {
-        res.status(400).json({
-            success: false,
-            message: error.message || "Failed to update assignments",
-        });
+        return errorResponse(res, error.message || "Failed to update assignments", null, 400);
     }
 });
 
@@ -111,13 +91,20 @@ router.patch("/assignments/:clientId", async (req, res) => {
 router.get("/assigned/:clientId", async (req, res) => {
   try {
     const data = await getAssignedUsersForClient(req.params.clientId);
-    res.json({ success: true, data });
+    return successResponse(res, "Assigned users fetched successfully", data);
   } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      message: error.message || "Failed to fetch assigned users"
-    });
+    return errorResponse(res, error.message || "Failed to fetch assigned users", null, 400);
   }
+});
+
+// Combined available managers + employees for a client
+router.get("/available/:clientId", async (req, res) => {
+    try {
+        const data = await getAvailableForClient(req.params.clientId);
+        return successResponse(res, "Available users fetched successfully", data);
+    } catch (error: any) {
+        return errorResponse(res, error.message || "Failed to fetch available users for client", null, 400);
+    }
 });
 
 export default router;

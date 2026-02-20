@@ -15,11 +15,12 @@ export class TicketTimeline extends Model<
     declare id: CreationOptional<string>; // UUID
 
     // Relationships
-    declare ticketId: string; // FK to Ticket
+    declare ticketId: string | null; // FK to Ticket (nullable for system-level events)
+    declare handoverId: string | null; // FK to ManagerHandover (optional link to handover context)
     declare changedBy: string; // FK to User (who made the change)//employeeid
 
     // Timeline Event Details
-    declare changeType: "status" | "priority" | "handover_assign" | "handover_revert" | "handover_cancel" | "handover_accept"; // Type of change
+    declare changeType: "status" | "priority" | "handover_assign" | "handover_revert" | "handover_cancel" | "handover_accept" | "handover_reject"; // Type of change
     declare oldValue: string | null; // Previous state (status or priority)
     declare newValue: string | null; // New state (status or priority)
 
@@ -38,12 +39,13 @@ export class TicketTimeline extends Model<
                 },
                 ticketId: {
                     type: DataTypes.UUID,
-                    allowNull: false,
+                    allowNull: true,
                     references: {
                         model: "tickets",
                         key: "id",
                     },
                     onDelete: "CASCADE",
+                    comment: "Nullable: system-level events may not be tied to a single ticket",
                 },
                 changedBy: {
                     type: DataTypes.UUID,
@@ -55,10 +57,20 @@ export class TicketTimeline extends Model<
                     comment: "User who performed this action",
                 },
                 changeType: {
-                    type: DataTypes.ENUM("status", "priority", "handover_assign", "handover_revert", "handover_cancel"),
+                    type: DataTypes.ENUM("status", "priority", "handover_assign", "handover_revert", "handover_cancel", "handover_accept", "handover_reject"),
                     allowNull: false,
                     comment: "Type of change recorded in the timeline",
                 },
+                handoverId: {
+                    type: DataTypes.UUID,
+                    allowNull: true,
+                    references: {
+                        model: "manager_handover",
+                        key: "id",
+                    },
+                    comment: "Optional link to a manager_handover row when the action happened under a handover",
+                },
+
                 oldValue: {
                     type: DataTypes.STRING(50),
                     allowNull: true,

@@ -4,11 +4,14 @@ import { Op } from "sequelize";
 import { TicketAssignment } from "./ticket-assignment-model";
 import { calculateOverallTicketStatus } from "../ticket/ticket-handler";
 import {createTicketTimeline} from "../../tickets/ticket-timeline/ticket-timeline-handler"
+import { Employee } from "../../agency/employee/employee-model";
+import { getActiveHandoverForActor } from "../manager-handover/manager-handover-handler";
 
 export const assignEmployeeToTicket = async (
     ticketId: string,
     employeeId: string,
     assignedBy: string,
+    roleType: "Manager" | "Employee",
     transaction: Transaction
 ) :Promise<TicketAssignment>=> {
     try{
@@ -38,6 +41,7 @@ export const assignEmployeeToTicket = async (
                     employeeId,
                     assignedBy,
                     employeeTicketStatus:"Pending",
+                    roleType,
                     isActive: true,
                     isDeleted: false,
                 },
@@ -96,6 +100,17 @@ export const updateEmployeeTicketStatus = async (
         );
         
         if (oldTicketStatus !== newOverallStatus) {
+            // Determine handover context if actor is backup manager
+            let handoverRow = null as any;
+            try {
+                const actingEmployee = await Employee.findOne({ where: { userId }, transaction });
+                if (actingEmployee) {
+                    handoverRow = await getActiveHandoverForActor(ticket.id ? ticket.assignedManagerId as string : ticket.assignedManagerId, actingEmployee.id, ticket.companyId);
+                }
+            } catch (err) {
+                handoverRow = null;
+            }
+
             await createTicketTimeline(
                 {
                     ticketId: assignment.ticketId,
@@ -103,6 +118,7 @@ export const updateEmployeeTicketStatus = async (
                     changeType: "status",
                     oldValue: oldTicketStatus,
                     newValue: newOverallStatus,
+                    handoverId: handoverRow ? handoverRow.id : null,
                 },
                 transaction
             );

@@ -164,34 +164,34 @@ export const completeHandover = async (
         }
 
         // Find tickets that were moved by this handover and are still with the backup manager
-        const tickets = await Ticket.findAll({
-            where: {
-                lastHandoverId: handover.id,
-                assignedManagerId: handover.backupManagerId,
-                isDeleted: false,
-                overallStatus: {
-                    [Op.notIn]: ["Completed"],
-                },
-            },
-            transaction,
-        });
+        // const tickets = await Ticket.findAll({
+        //     where: {
+        //         lastHandoverId: handover.id,
+        //         assignedManagerId: handover.backupManagerId,
+        //         isDeleted: false,
+        //         overallStatus: {
+        //             [Op.notIn]: ["Completed"],
+        //         },
+        //     },
+        //     transaction,
+        // });
 
-        for (const t of tickets) {
-            const oldManager = t.assignedManagerId;
-            await t.update({ assignedManagerId: handover.managerId, lastHandoverId: null }, { transaction });
+        // for (const t of tickets) {
+        //     const oldManager = t.assignedManagerId;
+        //     await t.update({ assignedManagerId: handover.managerId, lastHandoverId: null }, { transaction });
 
-            // timeline entry for revert
-            await createTicketTimeline(
-                {
-                    ticketId: t.id,
-                    changedBy: completedByUserId,
-                    changeType: "handover_revert",
-                    oldValue: oldManager,
-                    newValue: handover.managerId,
-                },
-                transaction
-            );
-        }
+        //     // timeline entry for revert
+        //     await createTicketTimeline(
+        //         {
+        //             ticketId: t.id,
+        //             changedBy: completedByUserId,
+        //             changeType: "handover_revert",
+        //             oldValue: oldManager,
+        //             newValue: handover.managerId,
+        //         },
+        //         transaction
+        //     );
+        // }
 
         await handover.update({ status: "Completed" }, { transaction });
 
@@ -219,39 +219,18 @@ export const cancelHandover = async (
             throw new Error("Only active handovers can be cancelled");
         }
 
-        // 1️⃣ Revert tickets back to original manager
-        const ticketsToRevert = await Ticket.findAll({
-            where: {
-                assignedManagerId: handover.backupManagerId,
-                lastHandoverId: handoverId,
-                isDeleted: false,
-            },
-            transaction,
-        });
-
-        for (const ticket of ticketsToRevert) {
-            await ticket.update(
-                { assignedManagerId: handover.managerId, lastHandoverId: null },
-                { transaction }
-            );
-
-            // Create timeline entry for cancellation
-            await createTicketTimeline(
-                {
-                    ticketId: ticket.id,
-                    changedBy: createdByUserId,
-                    changeType: "handover_cancel",
-                    oldValue: handover.backupManagerId,
-                    newValue: handover.managerId,
-                },
-                transaction
-            );
-        }
-
-        // 2️⃣ Mark handover as cancelled
+        // Mark handover as cancelled (logical-access model: do not revert tickets)
         await handover.update({ status: "Cancelled" }, { transaction });
 
-        console.log(`[HANDOVER] Cancelled ${handoverId}: Reverted ${ticketsToRevert.length} tickets`);
+        // create a system timeline entry for the cancellation
+        await createTicketTimeline({
+            ticketId: null,
+            changedBy: createdByUserId,
+            changeType: "handover_cancel",
+            oldValue: handover.managerId,
+            newValue: handover.backupManagerId,
+            handoverId: handover.id ?? null,
+        }, transaction);
 
         return handover;
     } catch (error) {
@@ -262,18 +241,24 @@ export const cancelHandover = async (
 
 export const getEffectiveManager = async (
     managerId: string
-): Promise<string> => {
+): Promise<string[]> => {
     try {
-        const handover = await ManagerHandover.findOne({
+        // const handover = await ManagerHandover.findOne({
+        //     where: {
+        //         managerId,
+        //         status: "Active",
+        //     },
+        // });
+
+        // If active handover exists, return backup manager
+        // Otherwise, return original manager
+        const handovers = await ManagerHandover.findAll({
             where: {
                 managerId,
                 status: "Active",
             },
         });
-
-        // If active handover exists, return backup manager
-        // Otherwise, return original manager
-        return handover ? handover.backupManagerId : managerId;
+        return handovers.map(h => h.backupManagerId);
     } catch (error) {
         throw error;
     }
@@ -397,6 +382,10 @@ export const acceptHandover = async (
     transaction: Transaction
 ): Promise<ManagerHandover> => {
 
+    if (!acceptedBy) {
+        throw new Error("acceptedBy (userId) is required to accept a handover");
+    }
+
     const handover = await ManagerHandover.findByPk(handoverId, { transaction });
 
     if (!handover) {
@@ -410,38 +399,51 @@ export const acceptHandover = async (
     // update status
     await handover.update({
         status: "Active",
-        acceptedAt: new Date()
+        acceptedAt: new Date(),
+        acceptedBy: acceptedBy
     }, { transaction });
 
 
-    // transfer ALL pending tickets
-    const tickets = await Ticket.findAll({
-        where: {
-            assignedManagerId: handover.managerId,
-            companyId: handover.companyId,
-            isDeleted: false,
-            overallStatus: {
-                [Op.notIn]: ["Completed"]
-            }
-        },
-        transaction
-    });
+    // // transfer ALL pending tickets
+    // const tickets = await Ticket.findAll({
+    //     where: {
+    //         assignedManagerId: handover.managerId,
+    //         companyId: handover.companyId,
+    //         isDeleted: false,
+    //         overallStatus: {
+    //             [Op.notIn]: ["Completed"]
+    //         }
+    //     },
+    //     transaction
+    // });
 
-    for (const t of tickets) {
+    // for (const t of tickets) {
 
-        await t.update({
-            assignedManagerId: handover.backupManagerId,
-            lastHandoverId: handover.id
-        }, { transaction });
+    //     await t.update({
+    //         assignedManagerId: handover.backupManagerId,
+    //         lastHandoverId: handover.id
+    //     }, { transaction });
 
-        await createTicketTimeline({
-            ticketId: t.id,
-            changedBy: acceptedBy,
-            changeType: "handover_accept",
-            oldValue: handover.managerId,
-            newValue: handover.backupManagerId
-        }, transaction);
-    }
+    //     await createTicketTimeline({
+    //         ticketId: t.id,
+    //         changedBy: acceptedBy,
+    //         changeType: "handover_accept",
+    //         oldValue: handover.managerId,
+    //         newValue: handover.backupManagerId
+    //     }, transaction);
+    // }
+    // DO NOT transfer tickets physically
+    // Backup manager will access tickets logically via ManagerHandover table
+
+    await createTicketTimeline({
+        ticketId: null, // optional system log
+        changedBy: acceptedBy,
+        changeType: "handover_accept",
+        oldValue: handover.managerId,
+        newValue: handover.backupManagerId,
+        handoverId: handover.id,
+    }, transaction);
+
 
     return handover;
 };
@@ -469,11 +471,21 @@ export const rejectHandover = async (
 
     await handover.update({
         status: "Rejected",
-        rejectedAt: new Date()
+        rejectedAt: new Date(),
+        rejectedBy: rejectedBy
     }, { transaction });
 
+    await createTicketTimeline({
+        ticketId: null,
+        changedBy: rejectedBy,
+        changeType: "handover_reject",
+        oldValue: handover.managerId,
+        newValue: handover.backupManagerId,
+        handoverId: handover.id,
+    }, transaction);
+
     return handover;
-}; 
+};
 
 export const adminAssignHandover = async (
     payload: {
@@ -505,33 +517,55 @@ export const adminAssignHandover = async (
 
 
     // transfer tickets immediately
-    const tickets = await Ticket.findAll({
+    // const tickets = await Ticket.findAll({
 
-        where: {
+    //     where: {
 
-            assignedManagerId: payload.managerId,
-            companyId: payload.companyId,
-            isDeleted: false,
+    //         assignedManagerId: payload.managerId,
+    //         companyId: payload.companyId,
+    //         isDeleted: false,
 
-            overallStatus: {
-                [Op.notIn]: ["Completed"]
-            }
-        },
-        transaction
-    });
+    //         overallStatus: {
+    //             [Op.notIn]: ["Completed"]
+    //         }
+    //     },
+    //     transaction
+    // });
 
 
-    for (const t of tickets) {
+    // for (const t of tickets) {
 
-        await t.update({
+    //     await t.update({
 
-            assignedManagerId: payload.backupManagerId,
-            lastHandoverId: handover.id
+    //         assignedManagerId: payload.backupManagerId,
+    //         lastHandoverId: handover.id
 
-        }, { transaction });
+    //     }, { transaction });
 
-    }
+    // }
 
 
     return handover;
+};
+
+/**
+ * Get active handover for a specific actor (backup) relative to a manager
+ * Returns the ManagerHandover row when backupManagerId matches actorEmployeeId and status is Active
+ */
+export const getActiveHandoverForActor = async (
+    managerId: string,
+    actorEmployeeId: string,
+    companyId?: string
+): Promise<ManagerHandover | null> => {
+    try {
+        const whereAny: any = {
+            managerId,
+            backupManagerId: actorEmployeeId,
+            status: "Active",
+        };
+        if (companyId) whereAny.companyId = companyId;
+        return await ManagerHandover.findOne({ where: whereAny });
+    } catch (error) {
+        throw error;
+    }
 };

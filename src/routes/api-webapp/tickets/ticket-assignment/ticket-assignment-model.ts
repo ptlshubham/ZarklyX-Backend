@@ -12,10 +12,11 @@ export class TicketAssignment extends Model<
     InferCreationAttributes<TicketAssignment>
 > {
     declare id: CreationOptional<string>; // UUID
-    declare ticketId: string; 
-    declare employeeId: string; 
+    declare ticketId: string;
+    declare employeeId: string;
     declare employeeTicketStatus: "Pending" | "Processing" | "Hold" | "Review" | "Changes" | "Completed";
-    declare assignedBy: string; 
+    declare roleType: "Manager" | "Employee";
+    declare assignedBy: string;
     declare isActive: boolean;
     declare isDeleted: boolean;
     declare createdAt: CreationOptional<Date>;
@@ -40,7 +41,7 @@ export class TicketAssignment extends Model<
                     },
                     onDelete: "CASCADE",
                 },
-                  assignedBy: {
+                assignedBy: {
                     type: DataTypes.UUID,
                     allowNull: false,
                     references: {
@@ -48,6 +49,11 @@ export class TicketAssignment extends Model<
                         key: "id",
                     },
                     comment: "Manager/Admin who assigned this employee",
+                },
+                roleType: {
+                    type: DataTypes.ENUM("manager", "employee"),
+                    allowNull: false,
+                    defaultValue: "employee",
                 },
                 employeeId: {
                     type: DataTypes.UUID,

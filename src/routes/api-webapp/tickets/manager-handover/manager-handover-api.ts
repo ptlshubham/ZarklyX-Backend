@@ -103,12 +103,12 @@ router.get("/getEffectiveManager/:managerId", async (req: Request, res: Response
         let managerId = req.params.managerId;
         if (Array.isArray(managerId)) managerId = managerId[0];
 
-        const effectiveManagerId = await getEffectiveManager(managerId);
+        const effectiveManagerIds = await getEffectiveManager(managerId);
 
         success(res, {
             originalManagerId: managerId,
-            effectiveManagerId: effectiveManagerId,
-            isHandoverActive: managerId !== effectiveManagerId
+            effectiveManagerIds: effectiveManagerIds,
+            isHandoverActive: effectiveManagerIds && effectiveManagerIds.length > 0
         }, "Effective manager resolved");
     } catch (error: any) {
         serverError(res, error.message);
@@ -225,7 +225,7 @@ router.post("/request", async (req: Request, res: Response) => {
 
 });
 
-router.post("/:id/accept", async (req: Request, res: Response) => {
+router.post("/accept/:id", async (req: Request, res: Response) => {
 
     const transaction = await dbInstance.transaction();
 
@@ -235,6 +235,10 @@ router.post("/:id/accept", async (req: Request, res: Response) => {
         if (Array.isArray(handoverId)) handoverId = handoverId[0];
 
         const { userId } = req.body;
+        if (!userId) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "userId is required" });
+        }
 
         const handover = await acceptHandover(
             handoverId,
@@ -255,7 +259,7 @@ router.post("/:id/accept", async (req: Request, res: Response) => {
 
 });
 
-router.post("/:id/reject", async (req: Request, res: Response) => {
+router.post("/reject/:id", async (req: Request, res: Response) => {
 
     const transaction = await dbInstance.transaction();
 
@@ -265,6 +269,10 @@ router.post("/:id/reject", async (req: Request, res: Response) => {
         if (Array.isArray(handoverId)) handoverId = handoverId[0];
 
         const { userId } = req.body;
+        if (!userId) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "userId is required" });
+        }
 
         const handover = await rejectHandover(
             handoverId,

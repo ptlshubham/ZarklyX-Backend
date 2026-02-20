@@ -12,6 +12,7 @@ import { createTicketTimeline } from "../ticket-timeline/ticket-timeline-handler
 import { TicketTimeline } from "../ticket-timeline/ticket-timeline-model";
 import { TicketAttachment } from "../ticket-attachments/ticket-attachments-model";
 import { ManagerHandover } from "../manager-handover/manager-handover-model";
+import { getActiveHandoverForActor } from "../manager-handover/manager-handover-handler";
 import { assignEmployeeToTicket } from "../ticket-assignment/ticket-assignment-handler";
 import { getAssignedUsersForClient } from "../../agency/client-assignment/client-assignment-handler";
 import { unauthorized, serverError, successResponse, errorResponse } from "src/utils/responseHandler";
@@ -56,6 +57,7 @@ export interface CreateTicketPayload {
     companyId?: string;
     clientId?: string;
     assignedManagerId?: string;
+    assignedEmployeeIds?: string[];
     deliveryDate?: Date;
     isMultiAssignee?: boolean;
 }
@@ -279,6 +281,12 @@ export const createTicket = async (
         }
 
         // Apply inferred manager if found
+        // If multiple managers provided (minimal support), prefer first as primary
+        const providedAssignedManagerIds = (payload as any).assignedManagerIds;
+        if (!inferredAssignedManagerId && providedAssignedManagerIds && Array.isArray(providedAssignedManagerIds) && providedAssignedManagerIds.length > 0) {
+            inferredAssignedManagerId = providedAssignedManagerIds[0];
+        }
+
         if (inferredAssignedManagerId) payload.assignedManagerId = inferredAssignedManagerId;
 
         // Basic validation after inference
@@ -330,6 +338,42 @@ export const createTicket = async (
     }
 
     const ticket = await Ticket.create(ticketData, { transaction });
+    // Prepare assigned employee ids (company-side flow) and create assignments now
+    const assignedEmployeeIds = (payload as any).assignedEmployeeIds;
+    const uniqueEmpIds = assignedEmployeeIds && Array.isArray(assignedEmployeeIds) ? [...new Set(assignedEmployeeIds)] : [];
+    if (uniqueEmpIds.length > 0) {
+        for (const empId of uniqueEmpIds) {
+            const emp = await Employee.findOne({ where: { id: empId, companyId: ticket.companyId, isDeleted: false, isActive: true }, transaction });
+            if (!emp) throw new Error(`Assigned employee ${empId} not found or not active in company`);
+        }
+        for (const empId of uniqueEmpIds) {
+            await assignEmployeeToTicket(ticket.id, empId, userContext.userId, "Employee", transaction);
+        }
+        if (uniqueEmpIds.length > 1) {
+            await ticket.update({ isMultiAssignee: true }, { transaction });
+        }
+    }
+
+    // Minimal multi-manager support: if creator supplied assignedManagerIds (array), create TicketAssignment rows for each
+    const assignedManagerIds = (payload as any).assignedManagerIds;
+    const uniqueManagerIds = assignedManagerIds && Array.isArray(assignedManagerIds) ? [...new Set(assignedManagerIds)] : [];
+    if (uniqueManagerIds.length > 0) {
+        // validate each manager belongs to same company and is active
+        for (const mgrId of uniqueManagerIds) {
+            const mgr = await Employee.findOne({ where: { id: mgrId, companyId: ticket.companyId, isDeleted: false, isActive: true }, transaction });
+            if (!mgr) throw new Error(`Assigned manager ${mgrId} not found or not active in company`);
+        }
+        const empAssignedSet = new Set(uniqueEmpIds);
+        for (const mgrId of uniqueManagerIds) {
+            // avoid duplicating assignment if manager is also included in assignedEmployeeIds
+            if (empAssignedSet.has(mgrId)) continue;
+            await assignEmployeeToTicket(ticket.id, mgrId, userContext.userId, "Manager", transaction);
+        }
+        // set primary assignedManagerId to first manager if different
+        if (uniqueManagerIds.length > 0 && ticket.assignedManagerId !== uniqueManagerIds[0]) {
+            await ticket.update({ assignedManagerId: uniqueManagerIds[0] }, { transaction });
+        }
+    }
 
     await createTicketTimeline(
         {
@@ -511,6 +555,19 @@ export const getTicketById = async (user: any, ticketId: string) => {
                     };
                 }
 
+                // Check if manager appears as an explicit assignment with roleType 'Manager'
+                const managerAssignment = await TicketAssignment.findOne({
+                    where: { ticketId: foundTicketId, employeeId: managerEmployee.id, roleType: "Manager", isActive: true }
+                });
+                if (managerAssignment) {
+                    return {
+                        ...plainTicket,
+                        displayDate,
+                        label: calculateLabel(deliveryDate, overallStatus),
+                        delayDays: calculateDelayDays(deliveryDate, completedAt, overallStatus)
+                    };
+                }
+
                 // Check if manager has active handover access to this ticket
                 const handoverWhere: any = {
                     backupManagerId: managerEmployee.id,
@@ -520,7 +577,7 @@ export const getTicketById = async (user: any, ticketId: string) => {
                 if (user.companyId) {
                     handoverWhere.companyId = user.companyId;
                 }
-                
+
                 const handoverAccess = await ManagerHandover.findOne({
                     where: handoverWhere
                 });
@@ -688,7 +745,6 @@ export const getTicketsByManagerId = async (managerId: string, showHandover: boo
             });
 
             const handoverIds = activeHandovers.map((h) => h.id);
-
             whereClause = {
                 [Op.or]: [
                     {
@@ -705,13 +761,19 @@ export const getTicketsByManagerId = async (managerId: string, showHandover: boo
                             },
                         ]
                         : []),
+                    // Also include tickets where manager is an explicit assignee with roleType = 'Manager'
+                    {
+                        '$assignments.id$': { [Op.ne]: null }
+                    }
                 ],
                 isDeleted: false,
             };
         } else {
             whereClause = {
-                assignedManagerId: managerId,
-                lastHandoverId: null,
+                [Op.or]: [
+                    { assignedManagerId: managerId, lastHandoverId: null },
+                    { '$assignments.id$': { [Op.ne]: null } }
+                ],
                 isDeleted: false,
             };
         }
@@ -719,6 +781,12 @@ export const getTicketsByManagerId = async (managerId: string, showHandover: boo
         const tickets = await Ticket.findAll({
             where: whereClause,
             include: [
+                {
+                    model: TicketAssignment,
+                    as: 'assignments',
+                    required: false,
+                    where: { roleType: 'Manager', isActive: true, isDeleted: false }
+                },
                 {
                     model: Clients,
                     as: "client",
@@ -926,6 +994,18 @@ export const updateTicketStatus = async (
             }
         }
 
+        // Determine handover context (if caller is a backup manager acting under an active handover)
+        let handoverRow = null as any;
+        try {
+            const actingEmployee = await Employee.findOne({ where: { userId }, transaction });
+            if (actingEmployee) {
+                handoverRow = await getActiveHandoverForActor(ticket.assignedManagerId as string, actingEmployee.id, ticket.companyId);
+            }
+        } catch (err) {
+            // ignore helper errors and proceed without handoverId
+            handoverRow = null;
+        }
+
         await createTicketTimeline(
             {
                 ticketId: ticket.id,
@@ -933,6 +1013,7 @@ export const updateTicketStatus = async (
                 changeType: "status",
                 oldValue: oldStatus,
                 newValue: newOverallStatus,
+                handoverId: handoverRow ? handoverRow.id : null,
             },
             transaction
         );
@@ -973,6 +1054,17 @@ export const updateTicketPriority = async (
 
         await ticket.update({ priority }, { transaction });
 
+        // Determine handover context for priority change
+        let handoverRow = null as any;
+        try {
+            const actingEmployee = await Employee.findOne({ where: { userId }, transaction });
+            if (actingEmployee) {
+                handoverRow = await getActiveHandoverForActor(ticket.assignedManagerId as string, actingEmployee.id, ticket.companyId);
+            }
+        } catch (err) {
+            handoverRow = null;
+        }
+
         await createTicketTimeline(
             {
                 ticketId: ticket.id,
@@ -980,6 +1072,7 @@ export const updateTicketPriority = async (
                 changeType: "priority",
                 oldValue: oldPriority,
                 newValue: priority,
+                handoverId: handoverRow ? handoverRow.id : null,
             },
             transaction
         );
@@ -1132,6 +1225,7 @@ export const finalizeAndAssignTicket = async (
         deliveryDate: Date | string;
         priority: "Low" | "Medium" | "High";
         assignedEmployeeIds: string[];
+        assignedManagerIds?: string[];
     },
     assignedBy: string,
     transaction: Transaction
@@ -1157,6 +1251,7 @@ export const finalizeAndAssignTicket = async (
         }
 
         const uniqueEmployeeIds = [...new Set(payload.assignedEmployeeIds)];
+        const uniqueManagerIds = payload.assignedManagerIds && Array.isArray(payload.assignedManagerIds) ? [...new Set(payload.assignedManagerIds)] : [];
 
         const ticket = await Ticket.findByPk(id, { transaction });
         if (!ticket) {
@@ -1174,18 +1269,42 @@ export const finalizeAndAssignTicket = async (
                 priority: payload.priority,
                 isMultiAssignee: uniqueEmployeeIds.length > 1,
                 overallStatus: "Pending",
-                assignedManagerId: managerEmployeeId,
+                assignedManagerId: uniqueManagerIds.length > 0 ? uniqueManagerIds[0] : managerEmployeeId,
             },
             { transaction }
         );
 
         for (const employeeId of uniqueEmployeeIds) {
+            // validate employee exists in same company
+            const emp = await Employee.findOne({ where: { id: employeeId, companyId: ticket.companyId, isDeleted: false, isActive: true }, transaction });
+            if (!emp) throw new Error(`Assigned employee ${employeeId} not found or not active in company`);
             await assignEmployeeToTicket(
                 id,
                 employeeId,
                 assignedBy,
+                "Employee",
                 transaction
             );
+        }
+
+        // If manager IDs provided, validate and create manager assignments
+        if (uniqueManagerIds.length > 0) {
+            for (const mgrId of uniqueManagerIds) {
+                const mgr = await Employee.findOne({ where: { id: mgrId, companyId: ticket.companyId, isDeleted: false, isActive: true }, transaction });
+                if (!mgr) throw new Error(`Assigned manager ${mgrId} not found or not active in company`);
+            }
+            // create assignments for managers (roleType = 'Manager')
+            const empAssignedSet = new Set(uniqueEmployeeIds);
+            for (const mgrId of uniqueManagerIds) {
+                if (empAssignedSet.has(mgrId)) continue; // avoid duplicate
+                await assignEmployeeToTicket(
+                    id,
+                    mgrId,
+                    assignedBy,
+                    "Manager",
+                    transaction
+                );
+            }
         }
 
         return ticket;
@@ -1327,13 +1446,13 @@ export async function getTicketsList(
                 if (user.companyId) {
                     handoverWhere.companyId = user.companyId;
                 }
-                
+
                 const activeHandovers = await ManagerHandover.findAll({
                     where: handoverWhere
                 });
 
                 const originalManagerIds = activeHandovers.map(h => h.managerId);
-                
+
                 if (originalManagerIds.length > 0) {
                     // Show tickets assigned to this manager OR original managers they're backing up
                     whereClause.assignedManagerId = {

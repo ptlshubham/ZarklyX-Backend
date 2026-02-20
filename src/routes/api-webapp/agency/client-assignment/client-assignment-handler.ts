@@ -154,20 +154,43 @@ export const assignUsersToClient = async (
 export const getAvailableManagers = async (clientId: string) => {
   const client = await Clients.findByPk(clientId);
   if (!client) throw new Error("Client not found");
-
   const users = await User.findAll({
     where: {
       companyId: client.companyId,
       isActive: true,
       isDeleted: false,
     },
-    include: [{ model: Role, as: "role" }],
+    include: [
+      { model: Role, as: "role" },
+    ],
+    raw: false,
   });
 
-  const result = [];
+  const mapUser = (u: any) => ({
+    id: u.id,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    email: u.email,
+    contact: u.contact ?? null,
+    companyId: u.companyId ?? null,
+    roleId: u.roleId ?? null,
+    isActive: u.isActive ?? null,
+    createdAt: u.createdAt ?? null,
+    role: u.role
+      ? {
+          id: u.role.id,
+          name: u.role.name,
+          scope: u.role.scope,
+          companyId: u.role.companyId,
+          isSystemRole: u.role.isSystemRole,
+        }
+      : null,
+  });
+
+  const result: any[] = [];
   for (const user of users) {
-    if (user.roleId && await cachedIsManagerRole(user.roleId)) {
-      result.push(user);
+    if (user.roleId && (await cachedIsManagerRole(user.roleId))) {
+      result.push(mapUser(user));
     }
   }
 
@@ -178,20 +201,43 @@ export const getAvailableManagers = async (clientId: string) => {
 export const getAvailableEmployees = async (clientId: string) => {
   const client = await Clients.findByPk(clientId);
   if (!client) throw new Error("Client not found");
-
   const users = await User.findAll({
     where: {
       companyId: client.companyId,
       isActive: true,
       isDeleted: false,
     },
-    include: [{ model: Role, as: "role" }],
+    include: [
+      { model: Role, as: "role" },
+    ],
+    raw: false,
   });
 
-  const result = [];
+  const mapUser = (u: any) => ({
+    id: u.id,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    email: u.email,
+    contact: u.contact ?? null,
+    companyId: u.companyId ?? null,
+    roleId: u.roleId ?? null,
+    isActive: u.isActive ?? null,
+    createdAt: u.createdAt ?? null,
+    role: u.role
+      ? {
+          id: u.role.id,
+          name: u.role.name,
+          scope: u.role.scope,
+          companyId: u.role.companyId,
+          isSystemRole: u.role.isSystemRole,
+        }
+      : null,
+  });
+
+  const result: any[] = [];
   for (const user of users) {
-    if (user.roleId && await cachedIsEmployeeRole(user.roleId)) {
-      result.push(user);
+    if (user.roleId && (await cachedIsEmployeeRole(user.roleId))) {
+      result.push(mapUser(user));
     }
   }
 
@@ -380,6 +426,17 @@ export const partiallyUpdateClientAssignments = async (
 };
 
 // Add this to client-assignment-handler.ts
+export const getAvailableForClient = async (clientId: string) => {
+  const [availableManagers, availableEmployees] = await Promise.all([
+    getAvailableManagers(clientId),
+    getAvailableEmployees(clientId),
+  ]);
+  
+  return {
+    availableManagers,
+    availableEmployees,
+  };
+};
 export const getAssignedUsersForClient = async (clientId: string, transaction?: Transaction) => {
   const assignments = await ClientUserAssignment.findAll({
     where: {
@@ -390,22 +447,43 @@ export const getAssignedUsersForClient = async (clientId: string, transaction?: 
       {
         model: User,
         as: "assignedUser",
-        attributes: ["id", "firstName", "lastName", "email"],
+        attributes: ["id", "firstName", "lastName", "email", "contact", "companyId", "roleId", "isActive", "createdAt"],
         include: [
           {
             model: Role,
             as: "role",
-            attributes: ["name", "priority"],
+            attributes: ["id", "name", "scope", "companyId", "isSystemRole"],
           },
           {
-            model:Employee,
+            model: Employee,
             as: "employees",
-            attributes:["id","userId"],required:false,
-          }
+            attributes: ["id"],
+          },
         ]
       }
     ],
     transaction,
+  });
+
+  const mapUser = (u: any) => ({
+    id: u.id,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    email: u.email,
+    contact: u.contact ?? null,
+    companyId: u.companyId ?? null,
+    roleId: u.roleId ?? null,
+    isActive: u.isActive ?? null,
+    createdAt: u.createdAt ?? null,
+    role: u.role
+      ? {
+          id: u.role.id,
+          name: u.role.name,
+          scope: u.role.scope,
+          companyId: u.role.companyId,
+          isSystemRole: u.role.isSystemRole,
+        }
+      : null,
   });
 
   return {
@@ -416,7 +494,7 @@ export const getAssignedUsersForClient = async (clientId: string, transaction?: 
         return {
           assignmentId: (a as any).id,
           role: (a as any).role,
-          assignedUser: user,
+          assignedUser: mapUser(user),
           employeeId: user?.employee?.id ?? user?.employees?.[0]?.id ?? null,
         };
       }),
@@ -427,7 +505,7 @@ export const getAssignedUsersForClient = async (clientId: string, transaction?: 
         return {
           assignmentId: (a as any).id,
           role: (a as any).role,
-          assignedUser: user,
+          assignedUser: mapUser(user),
           employeeId: user?.employee?.id ?? user?.employees?.[0]?.id ?? null,
         };
       }),

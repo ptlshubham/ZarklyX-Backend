@@ -6,15 +6,16 @@ import path from "path";
 import fs from "fs";
 
 export interface CreateTimelineEntryPayload {
-    ticketId: string;
+    ticketId: string | null;
     changedBy: string; // Employee or Manager ID
-    changeType: "status" | "priority" | "handover_assign" | "handover_revert" | "handover_cancel" | "handover_accept";
+    changeType: "status" | "priority" | "handover_assign" | "handover_revert" | "handover_cancel" | "handover_accept" | "handover_reject";
     oldValue: string | null;
     newValue: string;
+    handoverId?: string | null; // optional link to a manager_handover when the action occurred under a handover
 }
 
-const isValidChangeType = (value: any): value is "status" | "priority" | "handover_assign" | "handover_revert" | "handover_cancel" | "handover_accept" => {
-    return ["status", "priority", "handover_assign", "handover_revert", "handover_cancel", "handover_accept"].includes(value);
+const isValidChangeType = (value: any): value is "status" | "priority" | "handover_assign" | "handover_revert" | "handover_cancel" | "handover_accept" | "handover_reject" => {
+    return ["status", "priority", "handover_assign", "handover_revert", "handover_cancel", "handover_accept", "handover_reject"].includes(value);
 };
 
 export const createTicketTimeline = async (
@@ -23,9 +24,12 @@ export const createTicketTimeline = async (
 ): Promise<TicketTimeline> => {
 
     try {
-        const ticket = await Ticket.findByPk(payload.ticketId, { transaction: t });
-        if (!ticket) {
-            throw new Error("Ticket not found");
+        // Only lookup ticket when a ticketId is provided (system-level events may have null)
+        if (payload.ticketId) {
+            const ticket = await Ticket.findByPk(payload.ticketId, { transaction: t });
+            if (!ticket) {
+                throw new Error("Ticket not found");
+            }
         }
 
         if (!isValidChangeType(payload.changeType)) {
@@ -39,6 +43,7 @@ export const createTicketTimeline = async (
                 changeType: payload.changeType,
                 oldValue: payload.oldValue,
                 newValue: payload.newValue,
+                handoverId: payload.handoverId || null,
             },
             { transaction: t }
         );
