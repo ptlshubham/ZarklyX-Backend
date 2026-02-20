@@ -5,6 +5,7 @@ import {
   getAvailableEmployees,
   assignUsersToClient,
   partiallyUpdateClientAssignments,
+  getAssignedTeamForClient,
 } from "./client-assignment-handler";
 
 const router = express.Router();
@@ -31,6 +32,24 @@ router.get("/:clientId/employees", async (req, res) => {
     res.status(400).json({ 
       success: false, 
       message: error.message || "Failed to fetch available employees" 
+    });
+  }
+});
+
+// TODO: need to add tokenMiddlerWare
+// Get assigned team (managers and employees) for a client
+router.get("/:clientId/assigned-team", async (req, res) => {
+  try {
+    const data = await getAssignedTeamForClient(req.params.clientId);
+    res.json({ 
+      success: true, 
+      data,
+      message: "Assigned team fetched successfully" 
+    });
+  } catch (error: any) {
+    res.status(400).json({ 
+      success: false, 
+      message: error.message || "Failed to fetch assigned team" 
     });
   }
 });

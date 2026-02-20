@@ -111,6 +111,32 @@ export const assignUsersToClient = async (
     }
   }
 
+  // Validate hierarchy: prevent managers with higher authority from being assigned as employees
+  // under managers with lower authority
+  if (managerIds.length > 0 && employeeIds.length > 0) {
+    // Get roles for all managers assigned as "manager"
+    const managerUsers = users.filter(u => managerIds.includes(u.id));
+    const managerRoles = await Role.findAll({
+      where: { id: managerUsers.map(u => u.roleId!) },
+    });
+
+    const lowestManagerPriority = Math.min(...managerRoles.map(r => r.priority));
+
+    const employeeUsers = users.filter(u => employeeIds.includes(u.id));
+    for (const empUser of employeeUsers) {
+      const isManagerRole = await cachedIsManagerRole(empUser.roleId!);
+      if (isManagerRole) {
+        const empRole = await Role.findByPk(empUser.roleId!);
+        if (empRole && empRole.priority < lowestManagerPriority) {
+          throw new Error(
+            `Cannot assign manager with higher authority (priority ${empRole.priority}) as employee ` +
+            `under managers with lower authority (priority ${lowestManagerPriority})`
+          );
+        }
+      }
+    }
+  }
+
   // Deactivate old assignments
   await ClientUserAssignment.update(
     { isActive: false },
@@ -272,6 +298,53 @@ export const partiallyUpdateClientAssignments = async (
       }
     }
 
+    // Validate hierarchy: prevent managers with higher authority from being assigned as employees
+    if (addManagers.length > 0 && addEmployees.length > 0) {
+      // Get all current active managers for this client (including ones being added)
+      const currentManagerAssignments = await ClientUserAssignment.findAll({
+        where: {
+          clientId,
+          role: "manager",
+          isActive: true,
+        },
+        transaction: t,
+      });
+      
+      const allManagerIds = [...new Set([
+        ...addManagers,
+        ...currentManagerAssignments.map(a => a.assignedUserId).filter(id => !removeManagers.includes(id)),
+      ])];
+      
+      if (allManagerIds.length > 0) {
+        const managerUsers = await User.findAll({
+          where: { id: allManagerIds },
+          transaction: t,
+        });
+        
+        const managerRoles = await Role.findAll({
+          where: { id: managerUsers.map(u => u.roleId!) },
+          transaction: t,
+        });
+        
+        const lowestManagerPriority = Math.min(...managerRoles.map(r => r.priority));
+        
+        // Check employees being added
+        const employeeUsers = users.filter(u => addEmployees.includes(u.id));
+        for (const empUser of employeeUsers) {
+          if (await isManagerRole(empUser.roleId!)) {
+            const empRole = await Role.findByPk(empUser.roleId!, { transaction: t });
+            if (empRole && empRole.priority < lowestManagerPriority) {
+              await t.rollback();
+              throw new Error(
+                `Cannot assign manager with higher authority (priority ${empRole.priority}) as employee ` +
+                `under managers with lower authority (priority ${lowestManagerPriority})`
+              );
+            }
+          }
+        }
+      }
+    }
+
     // deactivate specified assignments
     const removeUserIds = [...removeManagers, ...removeEmployees];
     if (removeUserIds.length > 0) {
@@ -354,4 +427,80 @@ export const partiallyUpdateClientAssignments = async (
     await t.rollback();
     throw err;
   }
+};
+
+/**
+ * Get assigned team members (managers and employees) for a specific client
+ */
+export const getAssignedTeamForClient = async (clientId: string) => {
+  const client = await Clients.findByPk(clientId);
+  if (!client) throw new Error("Client not found");
+
+  // Get all active assignments for this client
+  const assignments = await ClientUserAssignment.findAll({
+    where: {
+      clientId,
+      isActive: true,
+    },
+    include: [
+      {
+        model: User,
+        as: "assignedUser",
+        attributes: ["id", "firstName", "lastName", "email", "contact", "isActive"],
+        include: [
+          {
+            model: Role,
+            as: "role",
+            attributes: ["id", "name", "priority"],
+          },
+        ],
+      },
+    ],
+    order: [["role", "ASC"], ["createdAt", "ASC"]],
+  });
+
+  // Separate managers and employees
+  const managers = assignments
+    .filter((a) => a.role === "manager")
+    .map((a) => ({
+      assignmentId: a.id,
+      userId: (a as any).assignedUser.id,
+      firstName: (a as any).assignedUser.firstName,
+      lastName: (a as any).assignedUser.lastName,
+      email: (a as any).assignedUser.email,
+      contact: (a as any).assignedUser.contact,
+      isActive: (a as any).assignedUser.isActive,
+      role: {
+        id: (a as any).assignedUser.role.id,
+        name: (a as any).assignedUser.role.name,
+        priority: (a as any).assignedUser.role.priority,
+      },
+      assignedAt: a.createdAt,
+    }));
+
+  const employees = assignments
+    .filter((a) => a.role === "employee")
+    .map((a) => ({
+      assignmentId: a.id,
+      userId: (a as any).assignedUser.id,
+      firstName: (a as any).assignedUser.firstName,
+      lastName: (a as any).assignedUser.lastName,
+      email: (a as any).assignedUser.email,
+      contact: (a as any).assignedUser.contact,
+      isActive: (a as any).assignedUser.isActive,
+      role: {
+        id: (a as any).assignedUser.role.id,
+        name: (a as any).assignedUser.role.name,
+        priority: (a as any).assignedUser.role.priority,
+      },
+      assignedAt: a.createdAt,
+    }));
+
+  return {
+    clientId: client.id,
+    clientName: client.businessName || `${client.clientfirstName} ${client.clientLastName}`,
+    managers,
+    employees,
+    totalAssigned: managers.length + employees.length,
+  };
 };

@@ -52,6 +52,7 @@ export const initClientUserAssignmentModel = (sequelize: Sequelize) => {
       assignedBy: {
         type: DataTypes.UUID,
         allowNull: false,
+        references: { model: User, key: "id" },
       },
       isActive: {
         type: DataTypes.BOOLEAN,
@@ -68,8 +69,9 @@ export const initClientUserAssignmentModel = (sequelize: Sequelize) => {
       timestamps: false,
       indexes: [
         { fields: ["clientId"] },
-        { fields: ["userId"] },
-        { unique: true, fields: ["clientId", "userId"] },
+        { fields: ["assignedUserId"] },
+        { fields: ["assignedBy"] },
+        { unique: true, fields: ["clientId", "assignedUserId"] },
       ],
     }
   );

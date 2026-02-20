@@ -1481,18 +1481,32 @@ export function initControlDB(sequelize: Sequelize) {
 
   // ClientUserAssignment <-> User
   User.hasMany(ClientUserAssignment, {
-    foreignKey: "userId"
+    foreignKey: "assignedUserId",
+    as: "clientAssignments"
   });
   ClientUserAssignment.belongsTo(User, {
-    foreignKey: "userId"
+    foreignKey: "assignedUserId",
+    as: "assignedUser"
+  });
+
+  // ClientUserAssignment <-> User (assignedBy relationship)
+  User.hasMany(ClientUserAssignment, {
+    foreignKey: "assignedBy",
+    as: "assignmentsCreated"
+  });
+  ClientUserAssignment.belongsTo(User, {
+    foreignKey: "assignedBy",
+    as: "assignedByUser"
   });
 
   // ClientUserAssignment <-> Clients
   ClientUserAssignment.belongsTo(Clients, {
-    foreignKey: "clientId"
+    foreignKey: "clientId",
+    as: "client"
   });
   Clients.hasMany(ClientUserAssignment, {
-    foreignKey: "clientId"
+    foreignKey: "clientId",
+    as: "assignments"
   });
 
   //Compony <-> Warehouse
