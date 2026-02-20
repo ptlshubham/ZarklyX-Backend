@@ -18,6 +18,7 @@ import { assignRoleToUser } from "../../api-webapp/roles/role-handler";
 import { getRolePermissions } from "../../api-webapp/role-permissions/role-permissions-handler";
 import { User } from "../../api-webapp/authentication/user/user-model";
 import { Role } from "../../api-webapp/roles/role-model";
+import { expandPermissionsWithCascade, expandPermissionsForRemovalCascade } from "../../api-webapp/rbac/rbac-check-handler";
 
 const router = Router();
 
@@ -107,7 +108,7 @@ router.post("/createOverride", async (req: Request, res: Response) => {
 
 // Bulk create permission overrides for a user
 router.post("/createOverrides", async (req: Request, res: Response) => {
-  const { userId, overrides, grantedByUserId } = req.body;
+  const { userId, overrides, grantedByUserId, enableCascade = true } = req.body;
 
   if (!userId || !Array.isArray(overrides) || overrides.length === 0) {
     return res.status(400).json({
@@ -124,26 +125,76 @@ router.post("/createOverrides", async (req: Request, res: Response) => {
     });
   }
 
-  // Validate authorization for each permission (priority check)
-  for (const override of overrides) {
-    const authCheck = await validateOverrideAuthorization(
-      grantedByUserId,
-      userId,
-      override.permissionId
-    );
-    if (!authCheck.valid) {
-      return res.status(403).json({
-        success: false,
-        message: `Authorization failed for permission ${override.permissionId}: ${authCheck.error}`,
-      });
-    }
-  }
-
   const t = await dbInstance.transaction();
   try {
+    // Apply cascading logic for "allow" overrides
+    let finalOverrides = [...overrides];
+    
+    if (enableCascade) {
+      // Separate allow and deny overrides
+      const allowOverrides = overrides.filter((o: any) => o.effect === "allow");
+      const denyOverrides = overrides.filter((o: any) => o.effect === "deny");
+      
+      // Cascade allow overrides (parent → children)
+      if (allowOverrides.length > 0) {
+        const allowPermissionIds = allowOverrides.map((o: any) => o.permissionId);
+        const expandedAllowIds = await expandPermissionsWithCascade(allowPermissionIds);
+        
+        // Create expanded allow overrides
+        finalOverrides = [
+          ...expandedAllowIds.map(permId => {
+            const original = allowOverrides.find((o: any) => o.permissionId === permId);
+            return {
+              permissionId: permId,
+              effect: "allow" as const,
+              reason: original?.reason || "Cascaded from parent module",
+              expiresAt: original?.expiresAt,
+            };
+          }),
+          ...denyOverrides, // Keep deny overrides as-is
+        ];
+      }
+      
+      // Cascade deny overrides (child → parents)
+      if (denyOverrides.length > 0) {
+        const denyPermissionIds = denyOverrides.map((o: any) => o.permissionId);
+        const expandedDenyIds = await expandPermissionsForRemovalCascade(denyPermissionIds);
+        
+        // Create expanded deny overrides
+        finalOverrides = [
+          ...allowOverrides, // Keep allow overrides as-is
+          ...expandedDenyIds.map(permId => {
+            const original = denyOverrides.find((o: any) => o.permissionId === permId);
+            return {
+              permissionId: permId,
+              effect: "deny" as const,
+              reason: original?.reason || "Cascaded from child module denial",
+              expiresAt: original?.expiresAt,
+            };
+          }),
+        ];
+      }
+    }
+
+    // Validate authorization for each permission (priority check)
+    for (const override of finalOverrides) {
+      const authCheck = await validateOverrideAuthorization(
+        grantedByUserId,
+        userId,
+        override.permissionId
+      );
+      if (!authCheck.valid) {
+        await t.rollback();
+        return res.status(403).json({
+          success: false,
+          message: `Authorization failed for permission ${override.permissionId}: ${authCheck.error}`,
+        });
+      }
+    }
+
     const results = await createUserPermissionOverrides(
       userId,
-      overrides.map((o: any) => ({
+      finalOverrides.map((o: any) => ({
         permissionId: o.permissionId,
         effect: o.effect,
         reason: o.reason,
@@ -153,10 +204,18 @@ router.post("/createOverrides", async (req: Request, res: Response) => {
       t
     );
     await t.commit();
+    
     return res.status(201).json({
       success: true,
-      data: results,
-      message: `${results.length} permission overrides created successfully`,
+      data: {
+        overrides: results,
+        cascaded: enableCascade && finalOverrides.length > overrides.length,
+        totalCreated: results.length,
+        originalCount: overrides.length,
+      },
+      message: enableCascade && finalOverrides.length > overrides.length
+        ? `${results.length} permission overrides created (${finalOverrides.length - overrides.length} cascaded)`
+        : `${results.length} permission overrides created successfully`,
     });
   } catch (error: any) {
     await t.rollback();

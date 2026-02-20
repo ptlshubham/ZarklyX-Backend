@@ -8,6 +8,10 @@ import {
   deleteAllUserOverrides,
   validateOverrideAuthorization,
 } from "../../../../api-webapp/superAdmin/rbac/user-permission-overrides/user-permission-overrides-handler";
+import {
+  expandZarklyXPermissionsWithCascade,
+  expandZarklyXPermissionsForRemovalCascade,
+} from "../../../../api-webapp/superAdmin/rbac/zarklyX-rbac-check-handler";
 
 const router = express.Router();
 
@@ -131,7 +135,7 @@ router.post("/createUserPermission", zarklyXAuthMiddleware, async (req: Request,
  */
 router.post("/createBulkUserPermission", zarklyXAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId, overrides } = req.body;
+    const { userId, overrides, enableCascade = true } = req.body;
 
     if (!userId || !Array.isArray(overrides) || overrides.length === 0) {
       res.status(400).json({
@@ -164,8 +168,57 @@ router.post("/createBulkUserPermission", zarklyXAuthMiddleware, async (req: Requ
       }
     }
 
+    // Apply cascading logic
+    let finalOverrides = [...overrides];
+    
+    if (enableCascade) {
+      // Separate allow and deny overrides
+      const allowOverrides = overrides.filter((o: any) => o.effect === "allow");
+      const denyOverrides = overrides.filter((o: any) => o.effect === "deny");
+      
+      // Cascade allow overrides (parent → children)
+      if (allowOverrides.length > 0) {
+        const allowPermissionIds = allowOverrides.map((o: any) => o.permissionId);
+        const expandedAllowIds = await expandZarklyXPermissionsWithCascade(allowPermissionIds);
+        
+        // Create expanded allow overrides
+        finalOverrides = [
+          ...expandedAllowIds.map(permId => {
+            const original = allowOverrides.find((o: any) => o.permissionId === permId);
+            return {
+              permissionId: permId,
+              effect: "allow" as const,
+              reason: original?.reason || "Cascaded from parent module",
+              expiresAt: original?.expiresAt,
+            };
+          }),
+          ...denyOverrides, // Keep deny overrides as-is
+        ];
+      }
+      
+      // Cascade deny overrides (child → parents)
+      if (denyOverrides.length > 0) {
+        const denyPermissionIds = denyOverrides.map((o: any) => o.permissionId);
+        const expandedDenyIds = await expandZarklyXPermissionsForRemovalCascade(denyPermissionIds);
+        
+        // Create expanded deny overrides
+        finalOverrides = [
+          ...allowOverrides, // Keep allow overrides as-is
+          ...expandedDenyIds.map(permId => {
+            const original = denyOverrides.find((o: any) => o.permissionId === permId);
+            return {
+              permissionId: permId,
+              effect: "deny" as const,
+              reason: original?.reason || "Cascaded from child module denial",
+              expiresAt: original?.expiresAt,
+            };
+          }),
+        ];
+      }
+    }
+
     // Validate authorization for each permission
-    for (const override of overrides) {
+    for (const override of finalOverrides) {
       const validation = await validateOverrideAuthorization(
         req.zarklyXUser!.id,
         userId,
@@ -183,7 +236,7 @@ router.post("/createBulkUserPermission", zarklyXAuthMiddleware, async (req: Requ
 
     const result = await bulkCreatePermissionOverrides(
       userId,
-      overrides,
+      finalOverrides,
       req.zarklyXUser!.id
     );
 
@@ -194,8 +247,15 @@ router.post("/createBulkUserPermission", zarklyXAuthMiddleware, async (req: Requ
 
     res.status(201).json({
       success: true,
-      message: result.message,
-      data: result.data,
+      message: enableCascade && finalOverrides.length > overrides.length
+        ? `${result.data?.length || 0} permission overrides created (${finalOverrides.length - overrides.length} cascaded)`
+        : result.message,
+      data: {
+        overrides: result.data,
+        cascaded: enableCascade && finalOverrides.length > overrides.length,
+        totalCreated: result.data?.length || 0,
+        originalCount: overrides.length,
+      },
     });
   } catch (error: any) {
     res.status(500).json({

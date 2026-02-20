@@ -13,7 +13,7 @@ import {
   cloneRolePermissions,
   getRolePermissionCount,
 } from "../../api-webapp/role-permissions/role-permissions-handler";
-import { getRoleEffectivePermissions } from "../../api-webapp/rbac/rbac-check-handler";
+import { getRoleEffectivePermissions, expandPermissionsWithCascade, expandPermissionsForRemovalCascade } from "../../api-webapp/rbac/rbac-check-handler";
 import { Permissions } from "../../api-webapp/superAdmin/permissions/permissions-model";
 import { Modules } from "../../api-webapp/superAdmin/modules/modules-model";
 import { checkCompanyModuleAccess, checkCompanyPermissionAccess } from "../../api-webapp/rbac/rbac-check-handler";
@@ -69,7 +69,7 @@ router.post("/assignPermission", async (req: Request, res: Response) => {
 
 // Bulk assign permissions to a role
 router.post("/assignBulkPermissions", async (req: Request, res: Response) => {
-  const { roleId, permissionIds } = req.body;
+  const { roleId, permissionIds, enableCascade = true } = req.body;
 
   if (!roleId || !Array.isArray(permissionIds) || permissionIds.length === 0) {
     return res.status(400).json({
@@ -80,12 +80,18 @@ router.post("/assignBulkPermissions", async (req: Request, res: Response) => {
 
   const t = await dbInstance.transaction();
   try {
-    const assignments = await assignBulkPermissionsToRole(roleId, permissionIds, t);
+    // Apply cascading logic: parent permissions auto-enable submodule permissions
+    let finalPermissionIds = permissionIds;
+    if (enableCascade) {
+      finalPermissionIds = await expandPermissionsWithCascade(permissionIds);
+    }
+
+    const assignments = await assignBulkPermissionsToRole(roleId, finalPermissionIds, t);
     await t.commit();
     
     // Fetch permissions with module details
     const permissions = await Permissions.findAll({
-      where: { id: permissionIds },
+      where: { id: finalPermissionIds },
       include: [{
         model: Modules,
         as: "module",
@@ -97,8 +103,13 @@ router.post("/assignBulkPermissions", async (req: Request, res: Response) => {
       data: {
         assignments,
         permissions,
+        cascaded: enableCascade && finalPermissionIds.length > permissionIds.length,
+        totalAssigned: finalPermissionIds.length,
+        originalCount: permissionIds.length,
       },
-      message: `${assignments.length} permissions assigned to role successfully`,
+      message: enableCascade && finalPermissionIds.length > permissionIds.length
+        ? `${assignments.length} permissions assigned (${finalPermissionIds.length - permissionIds.length} cascaded from parent modules)`
+        : `${assignments.length} permissions assigned to role successfully`,
     });
   } catch (error: any) {
     await t.rollback();
@@ -148,7 +159,7 @@ router.delete("/removePermission", async (req: Request, res: Response) => {
 
 // Bulk remove permissions from a role
 router.delete("/removePermissions", async (req: Request, res: Response) => {
-  const { roleId, permissionIds } = req.body;
+  const { roleId, permissionIds, enableCascade = true } = req.body;
 
   if (!roleId || !Array.isArray(permissionIds) || permissionIds.length === 0) {
     return res.status(400).json({
@@ -159,12 +170,25 @@ router.delete("/removePermissions", async (req: Request, res: Response) => {
 
   const t = await dbInstance.transaction();
   try {
-    const removed = await removePermissionsFromRole(roleId, permissionIds, t);
+    // Apply cascading logic: removing submodule permissions auto-removes parent permissions
+    let finalPermissionIds = permissionIds;
+    if (enableCascade) {
+      finalPermissionIds = await expandPermissionsForRemovalCascade(permissionIds);
+    }
+
+    const removed = await removePermissionsFromRole(roleId, finalPermissionIds, t);
     await t.commit();
     return res.status(200).json({
       success: true,
-      data: { count: removed },
-      message: `${removed} permissions removed from role successfully`,
+      data: { 
+        count: removed,
+        cascaded: enableCascade && finalPermissionIds.length > permissionIds.length,
+        totalRemoved: finalPermissionIds.length,
+        originalCount: permissionIds.length,
+      },
+      message: enableCascade && finalPermissionIds.length > permissionIds.length
+        ? `${removed} permissions removed (${finalPermissionIds.length - permissionIds.length} cascaded parent permissions)`
+        : `${removed} permissions removed from role successfully`,
     });
   } catch (error: any) {
     await t.rollback();
@@ -268,7 +292,7 @@ router.get("/checkRolePermission", async (req: Request, res: Response) => {
 
 // Sync role permissions (replace all)
 router.put("/syncRolePermissions", async (req: Request, res: Response) => {
-  const { roleId, permissionIds } = req.body;
+  const { roleId, permissionIds, enableCascade = true } = req.body;
 
   if (!roleId || !Array.isArray(permissionIds)) {
     return res.status(400).json({
@@ -279,12 +303,25 @@ router.put("/syncRolePermissions", async (req: Request, res: Response) => {
 
   const t = await dbInstance.transaction();
   try {
-    const assignments = await syncRolePermissions(roleId, permissionIds, t);
+    // Apply cascading logic before syncing
+    let finalPermissionIds = permissionIds;
+    if (enableCascade) {
+      finalPermissionIds = await expandPermissionsWithCascade(permissionIds);
+    }
+
+    const assignments = await syncRolePermissions(roleId, finalPermissionIds, t);
     await t.commit();
     return res.status(200).json({
       success: true,
-      data: assignments,
-      message: `Role permissions synced successfully (${assignments.length} permissions)`,
+      data: {
+        assignments,
+        cascaded: enableCascade && finalPermissionIds.length > permissionIds.length,
+        totalSynced: finalPermissionIds.length,
+        originalCount: permissionIds.length,
+      },
+      message: enableCascade && finalPermissionIds.length > permissionIds.length
+        ? `Role permissions synced successfully (${assignments.length} permissions, ${finalPermissionIds.length - permissionIds.length} cascaded)`
+        : `Role permissions synced successfully (${assignments.length} permissions)`,
     });
   } catch (error: any) {
     await t.rollback();

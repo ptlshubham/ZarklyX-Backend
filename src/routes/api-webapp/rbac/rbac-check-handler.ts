@@ -25,7 +25,39 @@ import {
 export const ACTIVE_OVERRIDE_FILTER = getActiveOverrideFilter();
 
 /**
- * Preload all accessible module IDs for a company
+ * Recursively get all submodule IDs for a given parent module
+ * @param parentModuleId - The parent module ID
+ * @returns Set of all descendant module IDs (including nested submodules)
+ */
+export async function getAllSubmoduleIds(
+  parentModuleId: string
+): Promise<Set<string>> {
+  const submoduleIds = new Set<string>();
+
+  // Get direct children
+  const children = await Modules.findAll({
+    where: {
+      parentModuleId: parentModuleId,
+      isActive: true,
+      isDeleted: false,
+    },
+    attributes: ["id"],
+  });
+
+  // Add each child and recursively get their children
+  for (const child of children) {
+    submoduleIds.add(child.id);
+    
+    // Recursively get nested submodules
+    const nestedSubmodules = await getAllSubmoduleIds(child.id);
+    nestedSubmodules.forEach((id) => submoduleIds.add(id));
+  }
+
+  return submoduleIds;
+}
+
+/**
+ * Preload all accessible module IDs for a company (with submodule expansion)
  */
 export async function getCompanyAccessibleModuleIds(
   companyId: string
@@ -79,12 +111,20 @@ export async function getCompanyAccessibleModuleIds(
 
   companyModules.forEach((cm) => moduleIds.add(cm.moduleId));
 
+  // NEW: Expand parent modules to include all submodules
+  // Create a copy to iterate over (avoid modifying Set during iteration)
+  const parentModuleIds = Array.from(moduleIds);
+  for (const moduleId of parentModuleIds) {
+    const submodules = await getAllSubmoduleIds(moduleId);
+    submodules.forEach((id) => moduleIds.add(id));
+  }
+
   return moduleIds;
 }
 
 /**
- * Check if a company has access to a module
- * Checks: 1) Free modules, 2) Subscription plan, 3) Company-specific add-ons
+ * Check if a company has access to a module (with parent hierarchy support)
+ * Checks: 1) Free modules, 2) Subscription plan, 3) Company-specific add-ons, 4) Parent module access
  */
 export async function checkCompanyModuleAccess(
   companyId: string,
@@ -94,13 +134,16 @@ export async function checkCompanyModuleAccess(
   const module = await Modules.findOne({
     where: {
       id: moduleId,
-      isFreeForAll: true,
       isActive: true,
       isDeleted: false,
     },
   });
 
-  if (module) {
+  if (!module) {
+    return false; // Module doesn't exist
+  }
+
+  if (module.isFreeForAll) {
     return true; // Free module, grant access immediately
   }
 
@@ -118,7 +161,7 @@ export async function checkCompanyModuleAccess(
     return true;
   }
 
-  // Check subscription plan modules
+  // STEP 3: Check subscription plan modules
   const subscription = await CompanySubscription.findOne({
     where: {
       companyId,
@@ -128,20 +171,31 @@ export async function checkCompanyModuleAccess(
     },
   });
 
-  if (!subscription) {
-    return false;
+  if (subscription) {
+    const planModule = await SubscriptionPlanModule.findOne({
+      where: {
+        subscriptionPlanId: subscription.subscriptionPlanId,
+        moduleId,
+        isActive: true,
+        isDeleted: false,
+      },
+    });
+
+    if (planModule) {
+      return true;
+    }
   }
 
-  const planModule = await SubscriptionPlanModule.findOne({
-    where: {
-      subscriptionPlanId: subscription.subscriptionPlanId,
-      moduleId,
-      isActive: true,
-      isDeleted: false,
-    },
-  });
+  // STEP 4: NEW - Check parent module access (hierarchical support)
+  // If this is a submodule, check if parent module is accessible
+  if (module.parentModuleId) {
+    const hasParentAccess = await checkCompanyModuleAccess(companyId, module.parentModuleId);
+    if (hasParentAccess) {
+      return true; // Parent module grants access to all submodules
+    }
+  }
 
-  return !!planModule;
+  return false;
 }
 
 /**
@@ -934,4 +988,149 @@ export async function getUserAccessSnapshot(userId: string) {
     permissions: allowedPermissions.map(p => p.name),
     modules: Object.values(modulePermissionMap),
   };
+}
+
+// ============================================================
+// CASCADING PERMISSION ASSIGNMENT UTILITIES
+// ============================================================
+
+/**
+ * Get all submodule permissions with the same action as parent permission
+ * 
+ * Example: 
+ * Input: "accounting.create" (parent module)
+ * Output: ["accounting.invoices.create", "accounting.payments.create", ...]
+ * 
+ * @param permissionId - Parent permission ID
+ * @returns Array of submodule permission IDs with matching action
+ */
+export async function getSubmoduleCascadedPermissions(
+  permissionId: string
+): Promise<string[]> {
+  // Get the parent permission details
+  const parentPermission = await Permissions.findByPk(permissionId, {
+    include: [{
+      model: Modules,
+      as: "module",
+    }],
+  });
+
+  if (!parentPermission) return [];
+
+  const parentModule = (parentPermission as any).module;
+  if (!parentModule) return [];
+
+  // Get all submodules recursively
+  const submoduleIds = await getAllSubmoduleIds(parentModule.id);
+  
+  if (submoduleIds.size === 0) return [];
+
+  // Find all permissions in submodules with the same action
+  const submodulePermissions = await Permissions.findAll({
+    where: {
+      moduleId: { [Op.in]: Array.from(submoduleIds) },
+      action: parentPermission.action,
+      isActive: true,
+      isDeleted: false,
+    },
+    attributes: ["id"],
+  });
+
+  return submodulePermissions.map(p => p.id);
+}
+
+/**
+ * Get all parent module permissions with the same action
+ * Used when removing a submodule permission to cascade removal to parents
+ * 
+ * Example:
+ * Input: "accounting.invoices.create" (submodule)
+ * Output: ["accounting.create"] (parent with same action)
+ * 
+ * @param permissionId - Submodule permission ID
+ * @returns Array of parent permission IDs with matching action
+ */
+export async function getParentCascadedPermissions(
+  permissionId: string
+): Promise<string[]> {
+  const permission = await Permissions.findByPk(permissionId, {
+    include: [{
+      model: Modules,
+      as: "module",
+    }],
+  });
+
+  if (!permission) return [];
+
+  const module = (permission as any).module;
+  if (!module || !module.parentModuleId) return [];
+
+  const parentPermissionIds: string[] = [];
+
+  // Recursively get parent permissions with matching action
+  let currentParentId = module.parentModuleId;
+  
+  while (currentParentId) {
+    const parentModule = await Modules.findByPk(currentParentId);
+    if (!parentModule) break;
+
+    // Find permission in parent module with same action
+    const parentPermission = await Permissions.findOne({
+      where: {
+        moduleId: parentModule.id,
+        action: permission.action,
+        isActive: true,
+        isDeleted: false,
+      },
+    });
+
+    if (parentPermission) {
+      parentPermissionIds.push(parentPermission.id);
+    }
+
+    // Move up to next parent
+    currentParentId = parentModule.parentModuleId;
+  }
+
+  return parentPermissionIds;
+}
+
+/**
+ * Apply cascading logic for permission assignment (enable parent → enable children)
+ * 
+ * @param permissionIds - Original permission IDs to assign
+ * @returns Expanded array including all cascaded submodule permissions
+ */
+export async function expandPermissionsWithCascade(
+  permissionIds: string[]
+): Promise<string[]> {
+  const expandedSet = new Set<string>(permissionIds);
+
+  // For each permission, add cascaded submodule permissions
+  for (const permissionId of permissionIds) {
+    const submodulePermissions = await getSubmoduleCascadedPermissions(permissionId);
+    submodulePermissions.forEach(id => expandedSet.add(id));
+  }
+
+  return Array.from(expandedSet);
+}
+
+/**
+ * Apply cascading logic for permission removal (disable child → disable parents)
+ * 
+ * @param permissionIds - Original permission IDs to remove
+ * @returns Expanded array including all cascaded parent permissions
+ */
+export async function expandPermissionsForRemovalCascade(
+  permissionIds: string[]
+): Promise<string[]> {
+  const expandedSet = new Set<string>(permissionIds);
+
+  // For each permission, add cascaded parent permissions
+  for (const permissionId of permissionIds) {
+    const parentPermissions = await getParentCascadedPermissions(permissionId);
+    parentPermissions.forEach(id => expandedSet.add(id));
+  }
+
+  return Array.from(expandedSet);
 }
