@@ -460,3 +460,191 @@ export async function checkZarklyXRoleHierarchy(
     reason: "Authorized to modify target role",
   };
 }
+
+// ============================================================
+// CASCADING PERMISSION ASSIGNMENT UTILITIES (ZARKLYX)
+// ============================================================
+
+/**
+ * Recursively get all submodule IDs for a given parent module
+ * @param parentModuleId - The parent module ID
+ * @returns Set of all descendant module IDs (including nested submodules)
+ */
+export async function getAllZarklyXSubmoduleIds(
+  parentModuleId: string
+): Promise<Set<string>> {
+  const submoduleIds = new Set<string>();
+
+  // Import Modules model to avoid circular dependency
+  const { Modules } = await import("../../../../api-webapp/superAdmin/modules/modules-model");
+
+  // Get direct children
+  const children = await Modules.findAll({
+    where: {
+      parentModuleId: parentModuleId,
+      isActive: true,
+      isDeleted: false,
+    },
+    attributes: ["id"],
+  });
+
+  // Add each child and recursively get their children
+  for (const child of children) {
+    submoduleIds.add(child.id);
+    
+    // Recursively get nested submodules
+    const nestedSubmodules = await getAllZarklyXSubmoduleIds(child.id);
+    nestedSubmodules.forEach((id) => submoduleIds.add(id));
+  }
+
+  return submoduleIds;
+}
+
+/**
+ * Get all submodule permissions with the same action as parent permission (ZarklyX)
+ * 
+ * Example: 
+ * Input: "platform.accounting.create" (parent module)
+ * Output: ["platform.accounting.invoices.create", "platform.accounting.payments.create", ...]
+ * 
+ * @param permissionId - Parent permission ID
+ * @returns Array of submodule permission IDs with matching action
+ */
+export async function getZarklyXSubmoduleCascadedPermissions(
+  permissionId: string
+): Promise<string[]> {
+  // Import Modules model to avoid circular dependency
+  const { Modules } = await import("../../../../api-webapp/superAdmin/modules/modules-model");
+
+  // Get the parent permission details
+  const parentPermission = await ZarklyXPermission.findByPk(permissionId, {
+    include: [{
+      model: Modules,
+      as: "module",
+    }],
+  });
+
+  if (!parentPermission) return [];
+
+  const parentModule = (parentPermission as any).module;
+  if (!parentModule) return [];
+
+  // Get all submodules recursively
+  const submoduleIds = await getAllZarklyXSubmoduleIds(parentModule.id);
+  
+  if (submoduleIds.size === 0) return [];
+
+  // Find all permissions in submodules with the same action
+  const submodulePermissions = await ZarklyXPermission.findAll({
+    where: {
+      moduleId: { [Op.in]: Array.from(submoduleIds) },
+      action: parentPermission.action,
+      isActive: true,
+      isDeleted: false,
+    },
+    attributes: ["id"],
+  });
+
+  return submodulePermissions.map(p => p.id);
+}
+
+/**
+ * Get all parent module permissions with the same action (ZarklyX)
+ * Used when removing a submodule permission to cascade removal to parents
+ * 
+ * Example:
+ * Input: "platform.accounting.invoices.create" (submodule)
+ * Output: ["platform.accounting.create"] (parent with same action)
+ * 
+ * @param permissionId - Submodule permission ID
+ * @returns Array of parent permission IDs with matching action
+ */
+export async function getZarklyXParentCascadedPermissions(
+  permissionId: string
+): Promise<string[]> {
+  // Import Modules model to avoid circular dependency
+  const { Modules } = await import("../../../../api-webapp/superAdmin/modules/modules-model");
+
+  const permission = await ZarklyXPermission.findByPk(permissionId, {
+    include: [{
+      model: Modules,
+      as: "module",
+    }],
+  });
+
+  if (!permission) return [];
+
+  const module = (permission as any).module;
+  if (!module || !module.parentModuleId) return [];
+
+  const parentPermissionIds: string[] = [];
+
+  // Recursively get parent permissions with matching action
+  let currentParentId = module.parentModuleId;
+  
+  while (currentParentId) {
+    const parentModule = await Modules.findByPk(currentParentId);
+    if (!parentModule) break;
+
+    // Find permission in parent module with same action
+    const parentPermission = await ZarklyXPermission.findOne({
+      where: {
+        moduleId: parentModule.id,
+        action: permission.action,
+        isActive: true,
+        isDeleted: false,
+      },
+    });
+
+    if (parentPermission) {
+      parentPermissionIds.push(parentPermission.id);
+    }
+
+    // Move up to next parent
+    currentParentId = parentModule.parentModuleId;
+  }
+
+  return parentPermissionIds;
+}
+
+/**
+ * Apply cascading logic for permission assignment (ZarklyX)
+ * Enable parent → enable children
+ * 
+ * @param permissionIds - Original permission IDs to assign
+ * @returns Expanded array including all cascaded submodule permissions
+ */
+export async function expandZarklyXPermissionsWithCascade(
+  permissionIds: string[]
+): Promise<string[]> {
+  const expandedSet = new Set<string>(permissionIds);
+
+  // For each permission, add cascaded submodule permissions
+  for (const permissionId of permissionIds) {
+    const submodulePermissions = await getZarklyXSubmoduleCascadedPermissions(permissionId);
+    submodulePermissions.forEach(id => expandedSet.add(id));
+  }
+
+  return Array.from(expandedSet);
+}
+
+/**
+ * Apply cascading logic for permission removal (ZarklyX)
+ * Disable child → disable parents
+ * 
+ * @param permissionIds - Original permission IDs to remove
+ * @returns Expanded array including all cascaded parent permissions
+ */
+export async function expandZarklyXPermissionsForRemovalCascade(
+  permissionIds: string[]
+): Promise<string[]> {
+  const expandedSet = new Set<string>(permissionIds);
+
+  // For each permission, add cascaded parent permissions
+  for (const permissionId of permissionIds) {
+    const parentPermissions = await getZarklyXParentCascadedPermissions(permissionId);
+    parentPermissions.forEach(id => expandedSet.add(id));
+  }
+
+  return Array.from(expandedSet);
+}

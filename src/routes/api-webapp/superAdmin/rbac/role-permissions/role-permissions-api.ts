@@ -8,6 +8,10 @@ import {
   removeAllRolePermissions,
   checkRoleHasPermission,
 } from "../../../../api-webapp/superAdmin/rbac/role-permissions/role-permissions-handler";
+import {
+  expandZarklyXPermissionsWithCascade,
+  expandZarklyXPermissionsForRemovalCascade,
+} from "../../../../api-webapp/superAdmin/rbac/zarklyX-rbac-check-handler";
 
 const router = express.Router();
 
@@ -20,7 +24,7 @@ router.post("/assign/:roleId", zarklyXAuthMiddleware, async (req: Request, res: 
     let { roleId } = req.params;
     if (Array.isArray(roleId)) roleId = roleId[0];
 
-    const { permissionIds } = req.body;
+    const { permissionIds, enableCascade = true } = req.body;
 
     if (!Array.isArray(permissionIds) || permissionIds.length === 0) {
       res.status(400).json({
@@ -40,7 +44,13 @@ router.post("/assign/:roleId", zarklyXAuthMiddleware, async (req: Request, res: 
       return;
     }
 
-    const result = await assignBulkPermissionsToRole(roleId, permissionIds, req.zarklyXUser!.id);
+    // Apply cascading logic: parent permissions auto-enable submodule permissions
+    let finalPermissionIds = permissionIds;
+    if (enableCascade) {
+      finalPermissionIds = await expandZarklyXPermissionsWithCascade(permissionIds);
+    }
+
+    const result = await assignBulkPermissionsToRole(roleId, finalPermissionIds, req.zarklyXUser!.id);
 
     if (!result.success) {
       res.status(400).json(result);
@@ -49,7 +59,14 @@ router.post("/assign/:roleId", zarklyXAuthMiddleware, async (req: Request, res: 
 
     res.status(200).json({
       success: true,
-      message: result.message,
+      message: enableCascade && finalPermissionIds.length > permissionIds.length
+        ? `${finalPermissionIds.length} permissions assigned (${finalPermissionIds.length - permissionIds.length} cascaded from parent modules)`
+        : result.message,
+      data: {
+        cascaded: enableCascade && finalPermissionIds.length > permissionIds.length,
+        totalAssigned: finalPermissionIds.length,
+        originalCount: permissionIds.length,
+      },
     });
   } catch (error: any) {
     res.status(500).json({
@@ -69,6 +86,8 @@ router.post("/add/:roleId/:permissionId", zarklyXAuthMiddleware, async (req: Req
     if (Array.isArray(roleId)) roleId = roleId[0];
     if (Array.isArray(permissionId)) permissionId = permissionId[0];
 
+    const { enableCascade = true } = req.body;
+
     if (!roleId || !permissionId) {
       res.status(400).json({
         success: false,
@@ -77,16 +96,28 @@ router.post("/add/:roleId/:permissionId", zarklyXAuthMiddleware, async (req: Req
       return;
     }
 
-    const result = await addPermissionToRole(roleId, permissionId, req.zarklyXUser!.id);
+    // Apply cascading logic for single permission
+    let permissionsToAdd = [permissionId];
+    if (enableCascade) {
+      permissionsToAdd = await expandZarklyXPermissionsWithCascade([permissionId]);
+    }
 
-    if (!result.success) {
-      res.status(400).json(result);
-      return;
+    // Add all cascaded permissions
+    let successCount = 0;
+    for (const pId of permissionsToAdd) {
+      const result = await addPermissionToRole(roleId, pId, req.zarklyXUser!.id);
+      if (result.success) successCount++;
     }
 
     res.status(200).json({
       success: true,
-      message: result.message,
+      message: enableCascade && permissionsToAdd.length > 1
+        ? `${successCount} permissions added (${permissionsToAdd.length - 1} cascaded from parent module)`
+        : `Permission added successfully`,
+      data: {
+        cascaded: enableCascade && permissionsToAdd.length > 1,
+        totalAdded: successCount,
+      },
     });
   } catch (error: any) {
     res.status(500).json({
@@ -106,6 +137,8 @@ router.delete("/remove/:roleId/:permissionId", zarklyXAuthMiddleware, async (req
     if (Array.isArray(roleId)) roleId = roleId[0];
     if (Array.isArray(permissionId)) permissionId = permissionId[0];
 
+    const { enableCascade = true } = req.body;
+
     if (!roleId || !permissionId) {
       res.status(400).json({
         success: false,
@@ -114,16 +147,28 @@ router.delete("/remove/:roleId/:permissionId", zarklyXAuthMiddleware, async (req
       return;
     }
 
-    const result = await removePermissionFromRole(roleId, permissionId, req.zarklyXUser!.id);
+    // Apply cascading logic: removing submodule permissions auto-removes parent permissions
+    let permissionsToRemove = [permissionId];
+    if (enableCascade) {
+      permissionsToRemove = await expandZarklyXPermissionsForRemovalCascade([permissionId]);
+    }
 
-    if (!result.success) {
-      res.status(400).json(result);
-      return;
+    // Remove all cascaded permissions
+    let successCount = 0;
+    for (const pId of permissionsToRemove) {
+      const result = await removePermissionFromRole(roleId, pId, req.zarklyXUser!.id);
+      if (result.success) successCount++;
     }
 
     res.status(200).json({
       success: true,
-      message: result.message,
+      message: enableCascade && permissionsToRemove.length > 1
+        ? `${successCount} permissions removed (${permissionsToRemove.length - 1} cascaded parent permissions)`
+        : `Permission removed successfully`,
+      data: {
+        cascaded: enableCascade && permissionsToRemove.length > 1,
+        totalRemoved: successCount,
+      },
     });
   } catch (error: any) {
     res.status(500).json({
